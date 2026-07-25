@@ -1,0 +1,75 @@
+{
+  "name": "video-studio",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Turn a JSON shot list into AI-generated video clips, with a cost ladder that locks each decision before the expensive one",
+  "keywords": [
+    "ai-video",
+    "cli",
+    "ffmpeg",
+    "generative-video",
+    "seedance",
+    "shot-list",
+    "storyboard",
+    "text-to-video"
+  ],
+  "homepage": "https://github.com/mblode/video-studio#readme",
+  "bugs": {
+    "url": "https://github.com/mblode/video-studio/issues"
+  },
+  "license": "MIT",
+  "author": "Matthew Blode",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mblode/video-studio.git"
+  },
+  "bin": {
+    "vs": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE.md"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "start": "node dist/cli.js",
+    "lint": "ultracite check",
+    "format": "ultracite fix",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "check": "npm run lint && npm run typecheck",
+    "verify": "npm run check && npm run test",
+    "prepare": "npm run build && (lefthook install || true)"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.7.0",
+    "commander": "^15.0.0",
+    "p-limit": "^7.3.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "lefthook": "^2.1.10",
+    "oxfmt": "^0.58.0",
+    "oxlint": "^1.73.0",
+    "tsdown": "^0.22.5",
+    "typescript": "7.0.2",
+    "ultracite": "7.9.3",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

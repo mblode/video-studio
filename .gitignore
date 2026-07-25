@@ -1,0 +1,40 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.log
+.env
+.env.local
+.DS_Store
+.claude/settings.local.json
+
+# films/ is a local workspace. Only the lighthouse demo is public; every film
+# you create stays on your machine unless you deliberately un-ignore it.
+films/*
+!films/lighthouse/
+
+# Generated artifacts, for every film including the demo. Regenerate with
+# `vs stills` / `vs generate`; never commit them.
+films/**/output/
+films/**/output-*/
+films/**/stills/
+films/**/review/
+films/**/review-*/
+films/**/frames/
+films/**/frames-*/
+
+# Media backstop. Nothing should put a rendered clip, a scanned photograph, or a
+# voice recording into a commit, whatever directory it lands in. One re-recorded
+# narration.wav was 127 MB of this repo's old history.
+films/**/*.mp4
+films/**/*.mov
+films/**/*.wav
+films/**/*.mp3
+films/**/*.m4a
+films/**/*.png
+films/**/*.jpg
+films/**/*.jpeg
+
+# A film's tasks.json is intentionally committable so a generation can resume on
+# any machine. The demo's is not, so the public repo ships no real task ids.
+films/lighthouse/tasks*.json

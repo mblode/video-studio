@@ -1,0 +1,15 @@
+pre-commit:
+  jobs:
+    # {staged_files} is load-bearing. Without it `ultracite fix` walks the whole
+    # repo, and stage_fixed then sweeps every unrelated reformatted file into
+    # the commit you were trying to keep small.
+    - run: npx ultracite fix {staged_files}
+      glob:
+        - "**/*.js"
+        - "**/*.jsx"
+        - "**/*.ts"
+        - "**/*.tsx"
+        - "**/*.json"
+        - "**/*.jsonc"
+        - "**/*.css"
+      stage_fixed: true

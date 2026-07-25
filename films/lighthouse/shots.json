@@ -1,0 +1,96 @@
+{
+  "film": {
+    "title": "The Lighthouse Keeper",
+    "outputDir": "./output",
+    "defaults": {
+      "ratio": "16:9",
+      "duration": 6,
+      "resolution": "720p",
+      "generateAudio": true,
+      "watermark": false
+    },
+    "promptPreamble": "Photorealistic cinematic short about a lighthouse keeper lighting the lamp at nightfall on a windswept coast. Consistent look across every shot: cold blue twilight exteriors warming to amber lamp light interiors, real weather, sea mist, shallow depth of field, film grain. The keeper is a weathered man in his sixties, grey stubble, navy wool coat. Realtime speed, brisk natural motion. Audio is wind, sea, and machine room tone only. Keep every frame subtitle-free and free of any watermark or on-screen lettering."
+  },
+  "cards": [
+    {
+      "after": "start",
+      "text": "THE LIGHTHOUSE KEEPER",
+      "duration": 3,
+      "transition": 0.4
+    },
+    {
+      "after": "end",
+      "text": "Every night, the light goes on.",
+      "duration": 3,
+      "fontSize": 48,
+      "transition": 0.6
+    }
+  ],
+  "shots": [
+    {
+      "id": "s01-dusk-cliff",
+      "prompt": "The opening frame matches the provided keyframe: the lighthouse on its cliff at last light.\nShot 1: aerial wide pushing in over the headland; wind flattens the long grass in fast waves and gulls scatter off the cliff edge; the tower stands right of frame above a grey breaking sea; <wind gusting, surf hitting rock far below>.\nShot 2: cut to a low ground-level medium tracking right; the keeper strides across the wet grass toward the tower door, coat snapping behind him; he crosses frame left to right; <boots on wet stone, coat fabric cracking in the gust>.\nShot 3: hard cut to a tight shot on the door; he hauls the iron door open and steps through, then swings it shut behind him; the doorway fills frame; <hinge groan, a heavy slam, the wind dropping to a muffled roar>.",
+      "seed": 7101,
+      "transition": 0.4,
+      "references": [
+        {
+          "type": "image",
+          "url": "./stills/s01-dusk-cliff.png",
+          "role": "first_frame"
+        }
+      ]
+    },
+    {
+      "id": "s02-keeper-stairs",
+      "prompt": "The opening frame matches the provided keyframe: the keeper mid-climb on the spiral staircase, lantern raised.\nShot 1: medium tracking beside him on the curve, rising with the climb; he takes the iron steps two at a time and the swinging lantern throws amber light racing across the curved white wall; he stays screen centre behind the stair rail; <boots ringing on iron treads, the lantern handle rattling>.\nShot 2: cut to a low angle straight up the stairwell; the spiral corkscrews away above him as his lantern light climbs the wall ahead of it; he is small at the bottom of frame; <wind moaning down the stone shaft>.\nShot 3: cut to a close profile pushing in; he clears the top step, sets his jaw and looks up at the lamp room hatch; his face fills the right of frame, lit from below; <a last footfall, a hard breath, the hatch latch clicking>.",
+      "seed": 7102,
+      "transition": 0.3,
+      "references": [
+        {
+          "type": "image",
+          "url": "./stills/s02-keeper-stairs.png",
+          "role": "first_frame"
+        }
+      ]
+    },
+    {
+      "id": "s03-lamp-ignites",
+      "prompt": "The opening frame matches the provided keyframe: the keeper at the Fresnel lens, hand on the ignition valve, lamp dark.\nShot 1: locked-off medium, the camera completely static on a tripod for the whole beat; he cranks the brass valve open and strikes the igniter twice; his hands work at frame centre against the glass; <a gas hiss building, two sharp flint strikes>.\nShot 2: cut to a macro on the burner, camera still locked; the mantle catches and flares white, light exploding out through the cut glass; the flame fills frame; <an ignition thump, a rising electrical hum>.\nShot 3: cut to a static wide of the lamp room; the lens starts to rotate and throws hard bars of light across his face and the walls, sea mist crossing the beam; he stands left of frame, the lens right; <the deep mechanical turn of the gearing, wind against the gallery glass>.",
+      "seed": 7103,
+      "transition": 0.3,
+      "references": [
+        {
+          "type": "image",
+          "url": "./stills/s03-lamp-ignites.png",
+          "role": "first_frame"
+        }
+      ]
+    },
+    {
+      "id": "s04-beam-sweeps",
+      "prompt": "The opening frame matches the provided keyframe: the lit tower at night, the first beam breaking out over black water.\nShot 1: extreme wide from out at sea, craning up; the beam swings across the heaving water and rakes the cliff face; the tower is small and burning at frame centre; <surf detonating on rock, the muffled turn of the lamp>.\nShot 2: cut to a mid shot at the gallery rail, arcing around the tower; the beam sweeps straight past the lens and flares the frame white, then clears; the wet rail cuts across the lower third; <a hard wind buffet, the mechanical rhythm of the lamp>.\nShot 3: hard cut to a top-down aerial climbing away; the beam scythes a full circle over open sea, whitecaps racing beneath it; the lighthouse sits dead centre and shrinks; <open wind, distant surf>.",
+      "seed": 7104,
+      "transition": 0.6,
+      "references": [
+        {
+          "type": "image",
+          "url": "./stills/s04-beam-sweeps.png",
+          "role": "first_frame"
+        }
+      ]
+    },
+    {
+      "id": "s05-boat-turns",
+      "prompt": "The opening frame matches the provided keyframe: a small fishing boat far out in heavy swell, the beam reaching it.\nShot 1: wide at sea level riding the swell; the boat pitches hard over a crest and the beam catches its wheelhouse; the boat is left of frame, the far light right; <hull slamming into water, a diesel engine labouring>.\nShot 2: cut to a close shot through the streaming wheelhouse glass; the skipper spins the wheel hand over hand and the bow swings toward the light; his hands and the wet glass fill frame; <the wheel chain running, rain driving on glass>.\nShot 3: cut to a wide stern view trailing the boat; it settles onto the new heading and runs straight at the distant beam, its wake straightening behind it; the light sits on the horizon at frame centre; <the engine steadying, surf, wind easing>.",
+      "seed": 7105,
+      "transition": 0.5,
+      "references": [
+        {
+          "type": "image",
+          "url": "./stills/s05-boat-turns.png",
+          "role": "first_frame"
+        }
+      ]
+    }
+  ]
+}

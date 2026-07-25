@@ -1,0 +1,57 @@
+name: Provider breakage
+description: A generation API changed and the client no longer matches it
+labels: [provider]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Several things this client sends are documented assumptions rather than
+        contract, and they are isolated on purpose: the task endpoint path in
+        `src/ark.ts`, and the duration, ratio, and resolution limits in
+        `src/types.ts`. If a provider moved, this is the report that fixes it.
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options:
+        - BytePlus ModelArk (Seedance)
+        - BytePlus ModelArk (Seedream)
+        - Google (Nano Banana / Gemini image)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Model id
+      placeholder: dreamina-seedance-2-0-260128
+    validations:
+      required: true
+
+  - type: textarea
+    id: request
+    attributes:
+      label: Request sent
+      description: "`--dry-run` prints the exact payload. Redact nothing but your key."
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: response
+    attributes:
+      label: Response received
+      description: Status code and body. Redact any signed URL.
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: docs
+    attributes:
+      label: Link to the provider's current documentation
+      description: The page showing the new behaviour, so the fix can cite it.
+    validations:
+      required: false

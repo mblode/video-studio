@@ -1,0 +1,57 @@
+name: Bug
+description: Something the tool does wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: run `vs doctor`. Most reports turn out to be a missing
+        key, a missing ffmpeg, or a Node version mismatch, and it checks all
+        three.
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: vs doctor output
+      description: Paste the full output. It contains no secrets, only whether each check passed.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: The command you ran, and what happened
+      description: |
+        Include the exact command and the full output. Re-run with `--verbose`
+        if you can, it prints the underlying cause.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: shots
+    attributes:
+      label: Relevant shots.json excerpt
+      description: |
+        The smallest shot that reproduces it, if the bug involves a shot list.
+        Do not paste `tasks.json`: result URLs are presigned and carry provider
+        credentials.
+      render: json
+    validations:
+      required: false
+
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: macOS 15.2 / Ubuntu 24.04
+    validations:
+      required: true

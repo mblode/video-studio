@@ -1,0 +1,582 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+import { loadShotsFile, loadStillsFile } from "./shots.js";
+
+async function writeShotsFile(content: unknown): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "vs-shots-"));
+  const path = join(dir, "shots.json");
+  await writeFile(path, JSON.stringify(content));
+  return path;
+}
+
+const validShot = { id: "shot-01", prompt: "a quiet street" };
+
+describe("loadShotsFile", () => {
+  it("accepts a minimal valid file", async () => {
+    const path = await writeShotsFile({
+      film: { title: "T" },
+      shots: [validShot],
+    });
+    const file = await loadShotsFile(path);
+    expect(file.shots).toHaveLength(1);
+  });
+
+  it("rejects duration outside 4-15", async () => {
+    const path = await writeShotsFile({
+      film: { title: "T" },
+      shots: [{ ...validShot, duration: 16 }],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/duration|15/u);
+  });
+
+  it("rejects duplicate shot ids", async () => {
+    const path = await writeShotsFile({
+      film: { title: "T" },
+      shots: [validShot, validShot],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/duplicate shot id/u);
+  });
+
+  it("rejects http (non-https) video references", async () => {
+    const path = await writeShotsFile({
+      film: { title: "T" },
+      shots: [
+        {
+          ...validShot,
+          references: [
+            {
+              role: "reference_video",
+              type: "video",
+              url: "http://example.com/v.mp4",
+            },
+          ],
+        },
+      ],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/https/u);
+  });
+
+  it("allows local paths for image references", async () => {
+    const path = await writeShotsFile({
+      film: { title: "T" },
+      shots: [
+        {
+          ...validShot,
+          references: [
+            {
+              role: "reference_image",
+              type: "image",
+              url: "./stills/a.png",
+            },
+          ],
+        },
+      ],
+    });
+    await expect(loadShotsFile(path)).resolves.toBeDefined();
+  });
+});
+
+describe("v2 validation", () => {
+  it("rejects mixing first_frame with reference_image", async () => {
+    const path = await writeShotsFile({
+      film: { title: "T" },
+      shots: [
+        {
+          ...validShot,
+          references: [
+            { role: "first_frame", type: "image", url: "./a.png" },
+            { role: "reference_image", type: "image", url: "./b.png" },
+          ],
+        },
+      ],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/cannot be mixed/u);
+  });
+
+  it("rejects last_frame on a video reference", async () => {
+    const path = await writeShotsFile({
+      film: { title: "T" },
+      shots: [
+        {
+          ...validShot,
+          references: [
+            {
+              role: "last_frame",
+              type: "video",
+              url: "https://example.com/v.mp4",
+            },
+          ],
+        },
+      ],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/must be images/u);
+  });
+
+  it("rejects continueFrom pointing to a later shot", async () => {
+    const path = await writeShotsFile({
+      film: { title: "T" },
+      shots: [
+        { continueFrom: "b", id: "a", prompt: "p" },
+        { id: "b", prompt: "p" },
+      ],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/EARLIER shot/u);
+  });
+
+  it("rejects continueFrom self-reference", async () => {
+    const path = await writeShotsFile({
+      film: { title: "T" },
+      shots: [{ continueFrom: "a", id: "a", prompt: "p" }],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/itself|EARLIER/u);
+  });
+
+  it("rejects continueFrom combined with reference stills", async () => {
+    const path = await writeShotsFile({
+      film: { title: "T" },
+      shots: [
+        { id: "a", prompt: "p" },
+        {
+          continueFrom: "a",
+          id: "b",
+          prompt: "p",
+          references: [
+            { role: "reference_image", type: "image", url: "./s.png" },
+          ],
+        },
+      ],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/cannot be mixed/u);
+  });
+
+  it("rejects continueFrom combined with an explicit first_frame", async () => {
+    const path = await writeShotsFile({
+      film: { title: "T" },
+      shots: [
+        { id: "a", prompt: "p" },
+        {
+          continueFrom: "a",
+          id: "b",
+          prompt: "p",
+          references: [{ role: "first_frame", type: "image", url: "./s.png" }],
+        },
+      ],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(
+      /already supplies the first_frame/u
+    );
+  });
+
+  it("accepts duration -1 and 15, rejects 0 and 16", async () => {
+    const ok = await writeShotsFile({
+      film: { title: "T" },
+      shots: [
+        { duration: -1, id: "a", prompt: "p" },
+        { duration: 15, id: "b", prompt: "p" },
+      ],
+    });
+    await expect(loadShotsFile(ok)).resolves.toBeDefined();
+    for (const duration of [0, 16]) {
+      const bad = await writeShotsFile({
+        film: { title: "T" },
+        shots: [{ duration, id: "a", prompt: "p" }],
+      });
+      await expect(loadShotsFile(bad)).rejects.toThrow(/invalid/u);
+    }
+  });
+
+  it("validates card placement", async () => {
+    const bad = await writeShotsFile({
+      cards: [{ after: "nope", text: "X" }],
+      film: { title: "T" },
+      shots: [validShot],
+    });
+    await expect(loadShotsFile(bad)).rejects.toThrow(/existing shot id/u);
+    const ok = await writeShotsFile({
+      cards: [
+        { after: "start", text: "A" },
+        { after: "shot-01", text: "B" },
+        { after: "end", text: "C" },
+      ],
+      film: { title: "T" },
+      shots: [validShot],
+    });
+    await expect(loadShotsFile(ok)).resolves.toBeDefined();
+  });
+
+  it("lintShotsFile warns on >5 refs and deep chains", async () => {
+    const { lintShotsFile } = await import("./shots.js");
+    const refs = Array.from({ length: 6 }, (_, i) => ({
+      role: "reference_image" as const,
+      type: "image" as const,
+      url: `./s${i}.png`,
+    }));
+    const warnings = lintShotsFile({
+      film: { title: "T" },
+      shots: [
+        { id: "a", prompt: "p", references: refs },
+        { continueFrom: "a", id: "b", prompt: "p" },
+        { continueFrom: "b", id: "c", prompt: "p" },
+        { continueFrom: "c", id: "d", prompt: "p" },
+        { continueFrom: "d", id: "e", prompt: "p" },
+      ],
+    });
+    expect(warnings.some((w) => w.includes("6 references"))).toBe(true);
+    expect(warnings.some((w) => w.includes("chain depth 4"))).toBe(true);
+    expect(warnings.filter((w) => w.includes("continueFrom"))).toHaveLength(4);
+  });
+
+  it("lintShotsFile warns on continueFrom and on a missing image anchor", async () => {
+    const { lintShotsFile } = await import("./shots.js");
+    const warnings = lintShotsFile({
+      film: { title: "T" },
+      shots: [
+        { id: "text-only", prompt: "p", seed: 1 },
+        { continueFrom: "text-only", id: "chained", prompt: "p", seed: 2 },
+        {
+          id: "anchored",
+          prompt: "p",
+          references: [{ role: "first_frame", type: "image", url: "./k.png" }],
+          seed: 3,
+        },
+      ],
+    });
+    const noImage = warnings.filter((w) => w.includes("no image reference"));
+    expect(noImage).toHaveLength(1);
+    expect(noImage[0]?.startsWith("text-only: no image reference")).toBe(true);
+    expect(warnings.filter((w) => w.includes("continueFrom"))).toHaveLength(1);
+    // the keyframe-anchored shot is clean
+    expect(warnings.some((w) => w.includes("anchored"))).toBe(false);
+  });
+
+  it("lintShotsFile warns on a shot with no seed", async () => {
+    const { lintShotsFile } = await import("./shots.js");
+    const warnings = lintShotsFile({
+      film: { title: "T" },
+      shots: [
+        { id: "seeded", prompt: "p", seed: 7 },
+        { id: "unseeded", prompt: "p" },
+      ],
+    });
+    const noSeed = warnings.filter((w) => w.includes("no seed"));
+    expect(noSeed).toHaveLength(1);
+    expect(noSeed[0]?.startsWith("unseeded: no seed")).toBe(true);
+  });
+
+  it("lintShotsFile warns on cameraFixed combined with an image reference (i2v)", async () => {
+    const { lintShotsFile } = await import("./shots.js");
+    const warnings = lintShotsFile({
+      film: { title: "T" },
+      shots: [
+        {
+          cameraFixed: true,
+          id: "locked",
+          prompt: "p",
+          references: [{ role: "first_frame", type: "image", url: "./k.png" }],
+          seed: 1,
+        },
+      ],
+    });
+    expect(warnings.some((w) => w.includes("cameraFixed"))).toBe(true);
+  });
+
+  it("lintShotsFile warns when a prompt (incl. preamble) exceeds ~400 words", async () => {
+    const { lintShotsFile } = await import("./shots.js");
+    const bloated = Array.from({ length: 420 }, () => "word").join(" ");
+    const multiBeat = Array.from({ length: 300 }, () => "word").join(" ");
+    const warnings = lintShotsFile({
+      film: { title: "T" },
+      shots: [
+        { id: "multibeat", prompt: multiBeat, seed: 1 },
+        { id: "bloated", prompt: bloated, seed: 2 },
+      ],
+    });
+    const tooLong = warnings.filter((w) => w.includes("words"));
+    expect(tooLong).toHaveLength(1);
+    expect(tooLong[0]?.startsWith("bloated: prompt is 420 words")).toBe(true);
+  });
+
+  it("lintShotsFile warns on a cluster of 3+ slow/soft motion terms", async () => {
+    const { lintShotsFile } = await import("./shots.js");
+    const warnings = lintShotsFile({
+      film: { title: "T" },
+      shots: [
+        {
+          id: "brisk",
+          prompt: "he sprints across the yard and gently taps the gate",
+          seed: 1,
+        },
+        {
+          id: "languid",
+          prompt:
+            "she slowly drifts down the hall, gently holding a candle, the light creeps tenderly across the wall",
+          seed: 2,
+        },
+      ],
+    });
+    const slow = warnings.filter((w) => w.includes("slow/soft motion terms"));
+    expect(slow).toHaveLength(1);
+    expect(slow[0]?.startsWith("languid:")).toBe(true);
+  });
+
+  it("lintShotsFile counts the promptPreamble toward the word budget", async () => {
+    const { lintShotsFile } = await import("./shots.js");
+    const preamble = Array.from({ length: 400 }, () => "style").join(" ");
+    const warnings = lintShotsFile({
+      film: { promptPreamble: preamble, title: "T" },
+      shots: [
+        { id: "s", prompt: "a calm single action beat here now", seed: 1 },
+      ],
+    });
+    expect(warnings.some((w) => w.includes("incl. promptPreamble"))).toBe(true);
+  });
+});
+
+describe("path safety", () => {
+  it("rejects a shot output that escapes the film directory", async () => {
+    const path = await writeShotsFile({
+      film: { title: "T" },
+      shots: [{ ...validShot, output: "../escape.mp4" }],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/stay within/u);
+  });
+
+  it("rejects an absolute shot output", async () => {
+    const path = await writeShotsFile({
+      film: { title: "T" },
+      shots: [{ ...validShot, output: "/tmp/escape.mp4" }],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/stay within/u);
+  });
+
+  it("rejects a local image reference that escapes the film directory", async () => {
+    const path = await writeShotsFile({
+      film: { title: "T" },
+      shots: [
+        {
+          ...validShot,
+          references: [
+            { role: "reference_image", type: "image", url: "../../.env.png" },
+          ],
+        },
+      ],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/stay within/u);
+  });
+
+  it("still accepts a safe local image reference and an https one", async () => {
+    const path = await writeShotsFile({
+      film: { title: "T" },
+      shots: [
+        {
+          ...validShot,
+          references: [
+            { role: "reference_image", type: "image", url: "./stills/a.png" },
+          ],
+        },
+      ],
+    });
+    await expect(loadShotsFile(path)).resolves.toBeDefined();
+  });
+
+  it("rejects a still reference that escapes the film directory", async () => {
+    const path = await writeShotsFile({
+      stills: [{ id: "a", prompt: "p", references: ["../secret.png"] }],
+    });
+    await expect(loadStillsFile(path)).rejects.toThrow(/stay within/u);
+  });
+
+  it("accepts safe and remote still references", async () => {
+    const path = await writeShotsFile({
+      stills: [
+        {
+          id: "a",
+          prompt: "p",
+          references: ["./refs/a.png", "https://example.com/b.png"],
+        },
+      ],
+    });
+    await expect(loadStillsFile(path)).resolves.toBeDefined();
+  });
+});
+
+describe("loadStillsFile", () => {
+  it("rejects duplicate still ids", async () => {
+    const path = await writeShotsFile({
+      stills: [
+        { id: "a", prompt: "p" },
+        { id: "a", prompt: "q" },
+      ],
+    });
+    await expect(loadStillsFile(path)).rejects.toThrow(/duplicate still id/u);
+  });
+});
+
+/**
+ * A misspelled key used to parse fine and do nothing at all, so the user got a
+ * shot with no locked camera, no preamble, and no explanation.
+ */
+describe("strict schemas", () => {
+  async function loadError(content: unknown) {
+    const path = await writeShotsFile(content);
+    return (await loadShotsFile(path).catch((error: unknown) => error)) as
+      | (Error & { code?: string; hint?: string })
+      | undefined;
+  }
+
+  it("rejects a typo'd shot key and names it", async () => {
+    const error = await loadError({
+      film: { title: "T" },
+      shots: [{ ...validShot, cameraFixxed: true }],
+    });
+    expect(error?.code).toBe("invalid_input");
+    expect(error?.message).toContain("cameraFixxed");
+    expect(error?.hint).toContain("spelling");
+  });
+
+  it("rejects a typo'd film key", async () => {
+    const error = await loadError({
+      film: { promptPremble: "style", title: "T" },
+      shots: [validShot],
+    });
+    expect(error?.message).toContain("promptPremble");
+  });
+
+  it("rejects unknown keys in film.defaults, cards, and references", async () => {
+    const defaults = await loadError({
+      film: { defaults: { resolutions: "720p" }, title: "T" },
+      shots: [validShot],
+    });
+    expect(defaults?.message).toContain("resolutions");
+
+    const card = await loadError({
+      cards: [{ after: "start", colour: "red", text: "X" }],
+      film: { title: "T" },
+      shots: [validShot],
+    });
+    expect(card?.message).toContain("colour");
+
+    const reference = await loadError({
+      film: { title: "T" },
+      shots: [
+        {
+          ...validShot,
+          references: [
+            {
+              role: "first_frame",
+              strength: 0.5,
+              type: "image",
+              url: "./a.png",
+            },
+          ],
+        },
+      ],
+    });
+    expect(reference?.message).toContain("strength");
+  });
+
+  it("rejects a typo'd still key", async () => {
+    const path = await writeShotsFile({
+      stills: [{ id: "a", prompt: "p", sized: "2K" }],
+    });
+    await expect(loadStillsFile(path)).rejects.toThrow(/sized/u);
+  });
+});
+
+describe("loadJson failures", () => {
+  it("points a missing file at the path and at `vs init`", async () => {
+    const failure = (await loadShotsFile("/nope/does-not-exist.json").catch(
+      (error: unknown) => error
+    )) as Error & { code?: string; hint?: string };
+    expect(failure.code).toBe("file_not_found");
+    expect(failure.message).toContain("/nope/does-not-exist.json");
+    expect(failure.hint).toContain("vs init");
+  });
+
+  it("says what to look for in malformed JSON", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vs-shots-"));
+    const path = join(dir, "shots.json");
+    await writeFile(path, '{ "film": { "title": "T" }, }');
+    const failure = (await loadShotsFile(path).catch(
+      (error: unknown) => error
+    )) as Error & { code?: string; hint?: string };
+    expect(failure.code).toBe("invalid_input");
+    expect(failure.message).toContain("not valid JSON");
+    expect(failure.hint).toContain("trailing comma");
+  });
+});
+
+describe("lintStillsFile", () => {
+  it("warns on a missing seed and a bloated prompt", async () => {
+    const { lintStillsFile } = await import("./shots.js");
+    const warnings = lintStillsFile({
+      stills: [
+        { id: "seeded", prompt: "one clean composition", seed: 1 },
+        { id: "unseeded", prompt: "one clean composition" },
+        {
+          id: "bloated",
+          prompt: Array.from({ length: 220 }, () => "word").join(" "),
+          seed: 2,
+        },
+      ],
+    });
+    expect(warnings.filter((w) => w.includes("no seed"))).toHaveLength(1);
+    const long = warnings.find((w) => w.includes("220 words"));
+    expect(long?.startsWith("bloated:")).toBe(true);
+  });
+
+  it("warns that a gemini model ignores a pixel size", async () => {
+    const { lintStillsFile } = await import("./shots.js");
+    const gemini = lintStillsFile({
+      model: "gemini-3-pro-image",
+      stills: [{ id: "a", prompt: "p", seed: 1, size: "2560x1440" }],
+    });
+    expect(
+      gemini.some((w) => w.includes("ignored by gemini-3-pro-image"))
+    ).toBe(true);
+    // Seedream does honour `size`, so the same file lints clean there.
+    const seedream = lintStillsFile({
+      model: "seedream-5-0-260128",
+      stills: [{ id: "a", prompt: "p", seed: 1, size: "2560x1440" }],
+    });
+    expect(seedream).toEqual([]);
+  });
+
+  it("warns only about local references that are not on disk", async () => {
+    const { lintStillsFile } = await import("./shots.js");
+    const dir = await mkdtemp(join(tmpdir(), "vs-stills-"));
+    await writeFile(join(dir, "here.png"), "png");
+    const warnings = lintStillsFile(
+      {
+        stills: [
+          {
+            id: "a",
+            prompt: "p",
+            references: [
+              "./here.png",
+              "./gone.png",
+              "https://example.com/remote.png",
+            ],
+            seed: 1,
+          },
+        ],
+      },
+      { stillsDir: dir }
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("gone.png");
+  });
+
+  it("checks nothing on disk without a stillsDir", async () => {
+    const { lintStillsFile } = await import("./shots.js");
+    expect(
+      lintStillsFile({
+        stills: [{ id: "a", prompt: "p", references: ["./gone.png"], seed: 1 }],
+      })
+    ).toEqual([]);
+  });
+});

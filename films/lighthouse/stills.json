@@ -1,0 +1,37 @@
+{
+  "model": "seedream-5-0-260128",
+  "outputDir": "./stills",
+  "ratio": "16:9",
+  "stills": [
+    {
+      "id": "s01-dusk-cliff",
+      "prompt": "Photorealistic cinematic keyframe, the literal opening composition of the shot: a lone white stone lighthouse on a rugged sea cliff at last light, lamp room dark, deep blue twilight sky, long grass flattened by wind, grey breaking sea below, wide aerial establishing composition, natural light, clean frame with no lettering.",
+      "size": "2560x1440",
+      "seed": 7101
+    },
+    {
+      "id": "s02-keeper-stairs",
+      "prompt": "Photorealistic cinematic keyframe, the literal opening composition of the shot: a weathered lighthouse keeper in his sixties, grey stubble and a navy wool coat, mid-climb on a tight spiral iron staircase with a lantern raised, warm amber light on the curved white wall, shallow depth of field, clean frame with no lettering.",
+      "size": "2560x1440",
+      "seed": 7102
+    },
+    {
+      "id": "s03-lamp-ignites",
+      "prompt": "Photorealistic cinematic keyframe, the literal opening composition of the shot: interior lamp room, the same weathered keeper in a navy wool coat stands at a great glass Fresnel lens with one hand on the brass ignition valve, the lamp still dark, cold blue dusk through the gallery windows, locked-off medium composition, clean frame with no lettering.",
+      "size": "2560x1440",
+      "seed": 7103
+    },
+    {
+      "id": "s04-beam-sweeps",
+      "prompt": "Photorealistic cinematic keyframe, the literal opening composition of the shot: wide night exterior of the same lighthouse from out at sea, the first beam breaking out across black heaving water, foam bursting on the rocks below, stars overhead, clean frame with no lettering.",
+      "size": "2560x1440",
+      "seed": 7104
+    },
+    {
+      "id": "s05-boat-turns",
+      "prompt": "Photorealistic cinematic keyframe, the literal opening composition of the shot: a small weathered fishing boat far out in heavy night swell, wheelhouse lights burning, the distant lighthouse beam reaching across the water and catching its hull, sea-level wide composition, clean frame with no lettering.",
+      "size": "2560x1440",
+      "seed": 7105
+    }
+  ]
+}

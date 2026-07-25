@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Feature request
+    url: https://github.com/mblode/video-studio/blob/main/CONTRIBUTING.md#scope
+    about: >-
+      There is no feature template on purpose. Read the scope note first; if the idea fits inside it, open a bug-shaped issue describing the problem rather than the solution.
+  - name: Security vulnerability
+    url: https://github.com/mblode/video-studio/security/advisories/new
+    about: Report privately, not in a public issue.

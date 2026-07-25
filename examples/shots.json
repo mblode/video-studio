@@ -1,0 +1,53 @@
+{
+  "film": {
+    "title": "Example Film",
+    "outputDir": "./output",
+    "model": "dreamina-seedance-2-0-260128",
+    "draftModel": "dreamina-seedance-2-0-fast-260128",
+    "defaults": {
+      "ratio": "16:9",
+      "duration": 6,
+      "resolution": "720p",
+      "generateAudio": true,
+      "watermark": false
+    },
+    "promptPreamble": "Photorealistic cinematic short set in a small fishing harbour at dawn. Consistent look across every shot: cold blue pre-sunrise light warming to low gold, wet stone, sea haze, shallow depth of field. Realtime speed, brisk natural motion. Audio is water, gulls, and working boat sounds only. Keep every frame subtitle-free and free of any watermark or on-screen lettering."
+  },
+  "cards": [
+    {
+      "after": "start",
+      "text": "EXAMPLE FILM",
+      "duration": 3,
+      "transition": 0.4
+    },
+    { "after": "end", "text": "The End", "duration": 2, "transition": 0.6 }
+  ],
+  "shots": [
+    {
+      "id": "s01-harbour-wakes",
+      "prompt": "The opening frame matches the provided keyframe: the harbour from the breakwater at first light.\nShot 1: wide pushing in along the breakwater; halyards whip against masts and gulls lift off the wall in a scatter; the moored fleet fills the right of frame; <halyards ticking on metal, gulls calling, water slapping stone>.\nShot 2: cut to a low medium tracking right; a skipper in oilskins walks the quay and drops a crate of empty boxes onto the deck of his boat; he crosses frame left to right; <boots on wet stone, a plastic crate landing hard>.\nShot 3: hard cut to a tight shot on the stern line; his hands whip the rope off the bollard and coil it in three fast turns; the bollard fills the lower frame; <rope hissing over iron, a diesel engine turning over>.",
+      "seed": 4201,
+      "transition": 0.4,
+      "references": [
+        {
+          "type": "image",
+          "url": "./stills/s01-harbour-wakes.png",
+          "role": "first_frame"
+        }
+      ]
+    },
+    {
+      "id": "s02-boat-leaves",
+      "prompt": "The opening frame matches the provided keyframe: the boat clearing the harbour mouth into open water.\nShot 1: mid shot from the quay, camera panning to follow; the boat swings past the harbour light and picks up speed, its wake fanning out across flat water; it crosses frame left to right; <the engine opening up, wash breaking on the harbour wall>.\nShot 2: cut to a close shot in the wheelhouse; the skipper pushes the throttle forward and checks the horizon; his hands and the wet glass fill the frame; <the throttle clunking, radio chatter under the engine>.\nShot 3: cut to a wide aerial climbing away; the boat runs out toward a low gold sunrise and the harbour shrinks behind it; the boat sits at frame centre; <open wind, the engine steady, distant gulls>.",
+      "seed": 4202,
+      "transition": 0.5,
+      "references": [
+        {
+          "type": "image",
+          "url": "./stills/s02-boat-leaves.png",
+          "role": "first_frame"
+        }
+      ]
+    }
+  ]
+}
