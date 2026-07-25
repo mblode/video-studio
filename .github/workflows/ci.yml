@@ -32,7 +32,18 @@ jobs:
           cache: npm
 
       - name: Install ffmpeg
-        uses: FedericoCarboni/setup-ffmpeg@v3
+        shell: bash
+        run: |
+          if ! command -v ffmpeg >/dev/null; then
+            if [[ "$RUNNER_OS" == "macOS" ]]; then
+              brew install ffmpeg
+            else
+              sudo apt-get update
+              sudo apt-get install --yes ffmpeg
+            fi
+          fi
+          ffmpeg -version
+          ffprobe -version
 
       - name: Install
         run: npm ci
