@@ -13,6 +13,7 @@ import { runStatus } from "./commands/status.js";
 import { runStills } from "./commands/stills.js";
 import { runStitch } from "./commands/stitch.js";
 import { runUpscale } from "./commands/upscale.js";
+import { runUse } from "./commands/use.js";
 
 // Title cards are rasterised by family name, so the default has to be a face
 // every machine already has. Pass --font to use your own (it must be installed;
@@ -32,6 +33,14 @@ function usdArgument(value: string): number {
     );
   }
   return usd;
+}
+
+function versionArgument(value: string): number {
+  const version = Number(value.replace(/^v/iu, ""));
+  if (!Number.isSafeInteger(version) || version < 1) {
+    throw new InvalidArgumentError("expected a revision such as 1 or v003");
+  }
+  return version;
 }
 
 /**
@@ -92,7 +101,11 @@ export function buildProgram(): Command {
       false
     )
     .option("--no-wait", "submit only; do not poll")
-    .option("--force", "re-submit shots that already succeeded", false)
+    .option(
+      "--force",
+      "submit a new numbered revision for shots that already succeeded",
+      false
+    )
     .option("--poll-interval <seconds>", "poll interval", "10")
     .option("--timeout <minutes>", "per-task poll timeout", "20")
     .option(
@@ -169,12 +182,27 @@ export function buildProgram(): Command {
     });
 
   program
+    .command("use")
+    .description("Select which downloaded clip revision a shot uses")
+    .argument("<shots-file>", "path to shots.json")
+    .argument("<shot-id>", "shot whose selected revision should change")
+    .argument("<version>", "revision number, e.g. 1 or v003", versionArgument)
+    .option("--draft", "select from the draft manifest", false)
+    .action(
+      async (shotsFile: string, shotId: string, version: number, options) => {
+        await runUse(shotsFile, shotId, version, {
+          draft: options.draft,
+        });
+      }
+    );
+
+  program
     .command("stitch")
     .description("Assemble downloaded clips (and title cards) into one film")
     .argument("<shots-file>", "path to shots.json")
     .option(
       "--output <file>",
-      "output file, relative to the cwd (default <outputDir>/film.mp4)"
+      "exact output file, relative to the cwd (default <outputDir>/renders/final/vNNN.mp4)"
     )
     .option("--xfade <seconds>", "crossfade duration between clips", "0")
     .option("--music <file>", "continuous music bed mixed under clip audio")
@@ -224,7 +252,7 @@ export function buildProgram(): Command {
     .argument("<video>", "path to the finished mp4")
     .option(
       "--output <file>",
-      "output file, relative to the cwd (default <name>-whatsapp.mp4)"
+      "exact output file, relative to the cwd (default exports/<name>-whatsapp/vNNN.mp4)"
     )
     .option("--max-mb <n>", "hard size ceiling in MB", "49")
     .option("--height <n>", "cap output height (only downscales)", "720")
@@ -277,7 +305,7 @@ export function buildProgram(): Command {
     .argument("<shots-file>", "path to shots.json")
     .option(
       "--output <file>",
-      "output file, relative to the cwd (default <outputDir>/animatic.mp4)"
+      "exact output file, relative to the cwd (default <outputDir>/animatics/vNNN.mp4)"
     )
     .option("--music <file>", "temp music bed mixed under the reel")
     .option("--music-gain <dB>", "music level in dB", "-18")

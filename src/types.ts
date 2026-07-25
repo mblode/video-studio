@@ -358,15 +358,40 @@ export interface CreateImageResponse {
 
 export type ManifestStatus = TaskStatus | "submitted" | "downloaded";
 
-export interface ManifestEntry {
-  shotId: string;
+/**
+ * One paid generation attempt. Revisions are append-only: a retake gets the
+ * next number and never replaces the task, bill, or file from an earlier take.
+ */
+export interface ManifestRevision {
+  version: number;
   taskId: string;
   status: ManifestStatus;
   /** Relative to the manifest's directory, set once downloaded. */
   outputPath?: string;
   videoUrl?: string;
   error?: string;
+  submittedAt: string;
+  updatedAt: string;
+  payloadHash?: string;
+  tokensUsed?: number;
+  params?: ManifestEntry["params"];
+}
+
+export interface ManifestEntry {
+  shotId: string;
+  /** Latest task, retained at the top level for readable status output. */
+  taskId: string;
+  status: ManifestStatus;
+  /** The selected successful revision's path, relative to the manifest. */
+  outputPath?: string;
+  videoUrl?: string;
+  error?: string;
+  /** Total submissions, also the number assigned to the latest revision. */
   attempts: number;
+  /** Revision used by stitch/review/chain. Failed retakes never change it. */
+  selectedVersion?: number;
+  /** Complete task history for this shot. */
+  versions?: ManifestRevision[];
   submittedAt: string;
   updatedAt: string;
   /** sha256 of the submitted payload (data-URL bodies hashed, not embedded). */
@@ -391,7 +416,7 @@ export interface ManifestEntry {
 }
 
 export interface Manifest {
-  version: 1;
+  version: 2;
   shotsFile: string;
   entries: Record<string, ManifestEntry>;
 }

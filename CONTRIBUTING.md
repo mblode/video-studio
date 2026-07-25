@@ -61,6 +61,8 @@ purpose, so it will not reformat anything you did not touch.
   parameter belongs in the estimate.
 - **Never re-submit an in-flight task.** The manifest re-attaches by task id
   precisely so a retry does not pay twice.
+- **Never overwrite generated video.** Paid takes and local renders use numbered
+  revisions. A failed retake must leave the last successful selection intact.
 - **Pure planners, thin commands.** The arg builders and planners in `src/` are
   pure functions with unit tests; the `commands/` layer does IO. New logic goes
   in the pure half where it can be tested without a network or a GPU.

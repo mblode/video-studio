@@ -60,17 +60,18 @@ Rules that follow:
   describing it.
 
 A shot from the demo film, verbatim (`films/lighthouse/shots.json`,
-`s03-lamp-ignites`):
+`s10-beam-returns`):
 
 ```
-The opening frame matches the provided keyframe: the keeper at the Fresnel lens, hand on the ignition valve, lamp dark.
-Shot 1: locked-off medium, the camera completely static on a tripod for the whole beat; he cranks the brass valve open and strikes the igniter twice; his hands work at frame centre against the glass; <a gas hiss building, two sharp flint strikes>.
-Shot 2: cut to a macro on the burner, camera still locked; the mantle catches and flares white, light exploding out through the cut glass; the flame fills frame; <an ignition thump, a rising electrical hum>.
-Shot 3: cut to a static wide of the lamp room; the lens starts to rotate and throws hard bars of light across his face and the walls, sea mist crossing the beam; he stands left of frame, the lens right; <the deep mechanical turn of the gearing, wind against the gallery glass>.
+The opening frame matches the provided keyframe: close two-shot over exposed gears as THE KEEPER offers the brass winding key across to THE RELIEF, his left palm wrapped, her service motor ready beside the flywheel.
+Shot 1: locked close; she accepts the key with both hands, their eyes meet, then he points the key toward the hidden clutch release; <key ring chiming once, alarm bell stopping>.
+Shot 2: cut low along the drive; he braces the clutch open with his good hand while she locks the motor coupling onto the shaft and turns it on, their hands moving in one rhythm; <clutch clack, electric motor rising, gears catching cleanly>.
+Shot 3: crane upward through the stairwell into the lamp room; the Fresnel lens begins turning again and the amber beam moves off the cliff, sweeps through rain and crosses their faces below; <steady mechanical turn, glass resonance, wind>.
 ```
 
-Note how the camera lock is written into every beat as prose. That shot has a
-`first_frame`, so `cameraFixed` is unavailable to it (below).
+Each beat changes camera, verb, and story state. The prompt also carries the
+hero-prop handover and the characters' first shared action without asking the
+model to infer either from another generation.
 
 ## Bracket semantics
 

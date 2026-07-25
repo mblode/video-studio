@@ -33,18 +33,24 @@ below.
 
 ## The table layout
 
-The demo film (`films/lighthouse/`), five generations and two cards:
+The demo film (`films/lighthouse/`), thirteen generations and two cards:
 
 ```
-| #   | Generation     | Time (film) | Dur | Anchor              | Beat                                                          | Narration |
-| --- | -------------- | ----------- | --- | ------------------- | ------------------------------------------------------------- | --------- |
-| --- | TITLE card     | 0:00-0:03   | 3s  | card                |                                                                 |           |
-| s01 | Dusk cliff     | 0:03-0:09   | 6s  | KEYFRAME s01-dusk-cliff | aerial over the headland / keeper strides to the door / door slams | line 1 |
-| s02 | Keeper stairs  | 0:09-0:15   | 6s  | KEYFRAME s02-keeper-stairs | climbs two at a time / lantern light races the spiral / clears the top step | line 2 |
-| s03 | Lamp ignites   | 0:15-0:21   | 6s  | KEYFRAME s03-lamp-ignites | cranks the valve, strikes / mantle flares white / the lens starts to turn | line 3 |
-| s04 | Beam sweeps    | 0:21-0:27   | 6s  | KEYFRAME s04-beam-sweeps | beam rakes the cliff / flares past the gallery rail / a full circle from above | line 4 |
-| s05 | Boat turns     | 0:27-0:33   | 6s  | KEYFRAME s05-boat-turns | boat pitches over a crest / skipper spins the wheel / runs at the light | line 5 |
-| --- | END card       | 0:33-0:36   | 3s  | card                |                                                                 |           |
+| # | Generation | Dur | Anchor | Beat |
+| --- | --- | --- | --- | --- |
+| s01 | Final arrival | 8s | KEYFRAME s01-final-arrival | suitcase closes / relief approaches / dark tower waits |
+| s02 | Threshold | 8s | KEYFRAME s02-threshold | offer refused / key retained / mugs separated |
+| s03 | Two methods | 8s | KEYFRAME s03-two-methods | he listens / she measures / warning dismissed |
+| s04 | Warning | 8s | KEYFRAME s04-warning | barometer falls / boat vanishes / duty gains stakes |
+| s05 | First light | 8s | KEYFRAME s05-first-light | lamp catches / drive turns / his method appears enough |
+| s06 | Drive breaks | 8s | KEYFRAME s06-drive-breaks | lightning / chain snaps / beam freezes inland |
+| s07 | Boat in dark | 8s | KEYFRAME s07-boat-in-dark | reef appears / wheel fails / weak signal |
+| s08 | Force fails | 8s | KEYFRAME s08-force-fails | key forced / clutch kicks / keeper injured |
+| s09 | Relief acts | 8s | KEYFRAME s09-relief-acts | circuit traced / clutch exposed / new plan |
+| s10 | Beam returns | 8s | KEYFRAME s10-beam-returns | key offered / methods combine / lens turns |
+| s11 | Course corrected | 8s | KEYFRAME s11-course-corrected | beam finds boat / wheel turns / reef clears |
+| s12 | Handover | 8s | KEYFRAME s12-the-handover | key left / key taken / keeper departs |
+| s13 | Next watch | 8s | KEYFRAME s13-next-watch | she listens / lamp starts / beam reaches stranger |
 ```
 
 - **#**: the shot id, the join key to `shots.json`. Cards get a `-`.
@@ -65,9 +71,8 @@ at the right character sheet. Cards are rows because they consume real runtime.
 Pick a structural frame first (`story-principles.md`), then map it onto N rows.
 
 - **Design the FINAL beat first.** Decide the last image, then work backward so
-  every earlier row drives at it. The lighthouse film designed s05 first, the
-  boat turning toward a light whose keeper it never sees; everything before it
-  exists to make that turn mean something.
+  every earlier row drives at it. The lighthouse film designed s13 first: old
+  key and new meter share the frame while the inherited beam reaches a stranger.
 - **Escalate down the rows.** Each beat should raise the stakes or tighten the
   screw over the one above. A flat middle is the most common structural
   failure, and the table makes it visible at a glance.
@@ -79,8 +84,8 @@ Pick a structural frame first (`story-principles.md`), then map it onto N rows.
 
 Do the arithmetic before any spend.
 
-The demo film: five generations at 6s each is 30s of clips, plus two 3s cards,
-so about 36s before crossfade overlap, and about 35s in the finished cut.
+The demo film: thirteen generations at 8s each is 104s of clips, plus two 3s
+cards, so about 1:50 before crossfade overlap.
 
 Run the same sums for your film:
 
@@ -103,18 +108,16 @@ re-typed row rather than a paid regeneration.
 Four kinds worth running:
 
 - **Theme ladder.** One line per beat showing how it advances the controlling
-  idea. For the lighthouse film ("the light is kept for someone you never
-  meet"): the tower stands empty and dark, the keeper climbs anyway, the lamp
-  catches, the beam goes out over nothing visible, someone out there turns
-  toward it. A rung that does not advance the idea is decoration.
+  idea. For the lighthouse film: the keeper retains the key, dismisses the
+  relief's meter, fails alone, combines methods, hands over the key, and finally
+  leaves key and meter together. A rung that does not advance the idea is
+  decoration.
 - **An object traced as states.** Follow one thing through its whole life. The
-  light: unlit (s01), carried as a hand lantern (s02), ignited (s03), sweeping
-  the sea (s04), received (s05). Every state gets a row; a missing state is a
-  plot hole.
+  key: retained (s02), used (s03), forced (s08), offered (s10), accepted (s12),
+  integrated with the meter (s13). Every state gets a row.
 - **Constraint audits.** Rules the film must never break, verified row by row.
-  The lighthouse constraint: the keeper and the skipper never share a frame and
-  never acknowledge each other, because the whole point is that they do not
-  meet. List the constraint, then the rows that honour it.
+  The lighthouse keeps every role anonymous, the keeper's left palm uninjured
+  before s08 and wrapped after it, and the key with the keeper until s10.
 - **Anchor map.** Every row's KEYFRAME or CHAIN choice in one place, confirming
   no chain runs deeper than 3 and that re-anchor points land where drift would
   otherwise creep in.

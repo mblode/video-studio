@@ -39,7 +39,7 @@ async function scaffold(): Promise<string> {
         },
       },
       shotsFile: shotsPath,
-      version: 1,
+      version: 2,
     })
   );
   return shotsPath;

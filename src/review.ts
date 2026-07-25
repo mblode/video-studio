@@ -104,8 +104,12 @@ export function renderIndexMd(
       continue;
     }
     const { params } = row.entry;
+    const selected =
+      row.entry.selectedVersion === undefined
+        ? ""
+        : ` · selected v${String(row.entry.selectedVersion).padStart(3, "0")}`;
     lines.push(
-      `- status: ${row.entry.status} · attempts: ${row.entry.attempts} · task: ${row.entry.taskId}`,
+      `- status: ${row.entry.status} · attempts: ${row.entry.attempts}${selected} · task: ${row.entry.taskId}`,
       params
         ? `- ${params.model} · ${params.duration}s · ${params.ratio} · ${params.resolution ?? "api default"}${params.seed === undefined ? "" : ` · seed ${params.seed}`}`
         : "- (no params recorded)",

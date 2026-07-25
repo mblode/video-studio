@@ -8,7 +8,7 @@ import { isComplete, isInFlight, upsertEntry } from "./manifest.js";
 import type { Manifest, ManifestEntry } from "./types.js";
 
 function emptyManifest(): Manifest {
-  return { entries: {}, shotsFile: "shots.json", version: 1 };
+  return { entries: {}, shotsFile: "shots.json", version: 2 };
 }
 
 function entry(overrides: Partial<ManifestEntry>): ManifestEntry {
@@ -74,7 +74,7 @@ describe("resume logic", () => {
       status: "succeeded",
       taskId: "task-1",
       videoUrl:
-        "https://tos.example.com/clip.mp4?X-Tos-Credential=AKLTsecret&X-Tos-Signature=abc",
+        "https://tos.example.com/clip.mp4?X-Tos-Credential=credential-marker&X-Tos-Signature=signature-marker",
     });
     expect(manifest.entries["shot-01"]?.videoUrl).toContain("X-Tos-Credential");
 
@@ -85,7 +85,7 @@ describe("resume logic", () => {
     });
     const downloaded = manifest.entries["shot-01"];
     expect(downloaded?.videoUrl).toBeUndefined();
-    expect(JSON.stringify(downloaded)).not.toContain("AKLT");
+    expect(JSON.stringify(downloaded)).not.toContain("credential-marker");
     // the rest of the audit trail survives
     expect(downloaded?.taskId).toBe("task-1");
     expect(downloaded?.outputPath).toBe("shot-01.mp4");
@@ -130,5 +130,73 @@ describe("resume logic", () => {
     const result = manifest.entries["shot-01"];
     expect(result?.attempts).toBe(2);
     expect(result?.taskId).toBe("task-2");
+    expect(result?.versions?.map((revision) => revision.version)).toEqual([
+      1, 2,
+    ]);
+  });
+
+  it("keeps the selected good revision when a retake fails", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vs-manifest-retake-"));
+    await writeFile(join(dir, "v001.mp4"), "good take");
+    const manifest = emptyManifest();
+
+    upsertEntry(manifest, {
+      newAttempt: true,
+      shotId: "shot-01",
+      status: "submitted",
+      taskId: "task-1",
+    });
+    upsertEntry(manifest, {
+      outputPath: "v001.mp4",
+      shotId: "shot-01",
+      status: "downloaded",
+      taskId: "task-1",
+      tokensUsed: 100,
+    });
+    upsertEntry(manifest, {
+      newAttempt: true,
+      shotId: "shot-01",
+      status: "submitted",
+      taskId: "task-2",
+    });
+    upsertEntry(manifest, {
+      error: "provider rejected the retake",
+      shotId: "shot-01",
+      status: "failed",
+      taskId: "task-2",
+    });
+
+    const result = manifest.entries["shot-01"];
+    expect(result?.status).toBe("failed");
+    expect(result?.selectedVersion).toBe(1);
+    expect(result?.outputPath).toBe("v001.mp4");
+    expect(isComplete(result, dir)).toBe(true);
+    expect(result?.versions).toHaveLength(2);
+    expect(result?.tokensUsed).toBeUndefined();
+    expect(result?.versions?.[0]?.tokensUsed).toBe(100);
+  });
+
+  it("scrubs an older presigned URL when a new attempt starts", () => {
+    const manifest = emptyManifest();
+    upsertEntry(manifest, {
+      newAttempt: true,
+      shotId: "shot-01",
+      status: "submitted",
+      taskId: "task-1",
+    });
+    upsertEntry(manifest, {
+      shotId: "shot-01",
+      status: "succeeded",
+      taskId: "task-1",
+      videoUrl: "https://x/first.mp4?credential-marker",
+    });
+    upsertEntry(manifest, {
+      newAttempt: true,
+      shotId: "shot-01",
+      status: "submitted",
+      taskId: "task-2",
+    });
+
+    expect(JSON.stringify(manifest)).not.toContain("credential-marker");
   });
 });

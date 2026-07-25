@@ -102,9 +102,12 @@ export type { GeminiImageRequest, GeminiInlineImage } from "./gemini.js";
 export {
   isComplete,
   isInFlight,
+  isRevisionComplete,
+  latestRevision,
   loadManifest,
   manifestPath,
   saveManifest,
+  selectedRevision,
   upsertEntry,
 } from "./manifest.js";
 export type { EntryUpdate } from "./manifest.js";
@@ -167,3 +170,10 @@ export type {
 } from "./stitch.js";
 export { buildUpscalePlan } from "./upscale.js";
 export type { UpscalePlan, UpscalePlanInput } from "./upscale.js";
+export {
+  assertNewVideoOutput,
+  clipRevisionPath,
+  nextExportPath,
+  nextRenderPath,
+  versionLabel,
+} from "./versions.js";

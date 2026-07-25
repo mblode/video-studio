@@ -20,9 +20,10 @@ way. If you cannot write it, you do not yet have a film.
 Formula: `[A protagonist] wants [a goal], but [an obstacle], so [the stakes or
 turn].`
 
-Example (the demo film): an ageing lighthouse keeper climbs his tower into a
-rising gale to light the lamp, and far out in the dark a skipper he will never
-meet turns toward it.
+Example (the demo film): on his final night at a remote lighthouse, a veteran
+keeper shuts out the young relief sent to replace him; when the lamp drive
+fails in a storm, their old and new methods must work together before a boat
+reaches the reef.
 
 ## Emotional throughline
 
@@ -35,15 +36,17 @@ feel in the final frame, then build the logline and the beats to earn it.
 
 Worked example:
 
-- Throughline: the light is kept for someone you will never meet.
-- Final image: a small boat settling onto a new heading, running straight at a
-  distant beam, its wake straightening behind it.
-- Logline derived from that image: the keeper's work is only completed by a
-  stranger, out of sight, hours later.
+- Throughline: stewardship survives when knowledge is passed on and allowed to
+  change.
+- Final image: the relief stands behind the turning lens while the old brass
+  key and her modern meter share the foreground and the beam reaches an unknown
+  vessel.
+- Logline derived from that image: a keeper who mistakes ownership for duty
+  must trust his replacement before he can leave the light in her hands.
 
-The turning boat is the throughline made literal. The keeper never learns it
-happened; the audience does. You design that frame first, then ask what each
-earlier beat must do to make it land.
+The shared ledge is the throughline made literal. Old knowledge remains, new
+knowledge earns its place, and the distant boat makes the duty larger than
+either character.
 
 ## Why must you tell THIS story
 
@@ -70,8 +73,8 @@ Open with a single intro line stating RUNTIME and GENERATION COUNT, then write
 the acts or beats in order. The intro line is your honest scope statement.
 
 ```
-A short film in five generations (~0:35). No dialogue. Wind, sea, and
-machinery carry it; any narration is mixed in post.
+A short film in thirteen generations (~1:50). No dialogue. Wind, sea, radio,
+and machinery carry it; any score is mixed in post.
 ```
 
 Two valid prose registers, chosen by how tightly narrative must tie to
@@ -93,7 +96,7 @@ version simply does more of the beat sheet's work up front.
 
 Runtime ties directly to generation count and each generation costs money, so
 keep the treatment honest about scope. Roughly: a 35-second film is five
-generations, a three-minute film is thirteen. Title cards add real runtime on
+generations; a two-minute film can be 10 to 15. Title cards add real runtime on
 top of the summed clip durations. If the treatment implies forty beats, it
 implies forty generations and a bill to match. Trim the story to the budget
 here, in prose, where trimming is free.

@@ -1,139 +1,156 @@
-# The Lighthouse Keeper
+# The Last Watch
 
-The demo film. Five shots, about 35 seconds with the title cards: a keeper crosses
-a cliff at last light, climbs the tower, lights the lamp, the beam goes out over
-the sea, and a fishing boat far out turns toward it.
+The complete example film: 13 shots, about 1 minute 50 seconds with title cards.
 
-It exists to be run, not just read. Every feature the CLI has an opinion about is
-used here once, so copying this directory gives you a film that is already set up
-the way the pipeline wants. For what the commands and flags do, see the
-[root README](../../README.md).
+On his final night at a remote lighthouse, a veteran keeper shuts out the young
+relief sent to replace him. When the lamp drive fails during a storm, their old
+and new methods must work together before a boat reaches the reef.
+
+The story is fictional and deliberately anonymous. It contains no real people,
+families, companies, places, or dates.
+
+## Start with the film
+
+The preproduction documents are part of the example:
+
+1. [Treatment](treatment.md) — premise, characters, synopsis, final image
+2. [Style bible](style-bible.md) — visual, character, prop, and sound continuity
+3. [Beat sheet](beat-sheet.md) — escalation, setups/payoffs, anchor map
+4. [Screenplay](screenplay.md) — the silent story in scene order
+5. [Shot list](shot-list.md) — camera, action, audio, continuity per generation
+6. [Stills](stills.json) — literal first-frame keyframes
+7. [Shots](shots.json) — validated Seedance requests
+
+The documents progress from story decisions to build instructions. If an idea
+changes upstream, update everything below it before paying for a generation.
 
 ## Run it
 
-From the repo root, after `npm run build` and with `ARK_API_KEY` in `.env`
-(`node dist/cli.js doctor` checks both). Each rung is cheap and locks something
-before the next one spends.
+From the repository root:
 
 ```bash
-# 0. Free. Print the exact request bodies and the best-practice lint, spend nothing.
-node dist/cli.js generate films/lighthouse/shots.json --dry-run
-
-# 1. Cents. Five keyframe stills -> films/lighthouse/stills/
-#    Locks the LOOK: characters, palette, and the literal opening composition of every shot.
-node dist/cli.js stills films/lighthouse/stills.json
-
-# 2. $0 of video. A story reel cut from those stills, held to each shot's duration.
-#    Locks PACING and shot order before any clip is generated.
-node dist/cli.js animatic films/lighthouse/shots.json     # -> output/animatic.mp4
-
-# 3. ~$1.30. A 480p, audio-off draft pass, side by side with the final.
-#    Locks MOTION: does the action actually read at this length?
-node dist/cli.js generate films/lighthouse/shots.json --draft
-node dist/cli.js review   films/lighthouse/shots.json --draft   # -> review-draft/index.md
-
-# 4. ~$2.90. The 720p final. Run this once, on the shots the draft approved.
-node dist/cli.js generate films/lighthouse/shots.json
-
-# 5. Free. Cut it together with the title cards.
-node dist/cli.js stitch films/lighthouse/shots.json --xfade 0.4   # -> output/film.mp4
+npm install
+npm link
+cp .env.example .env   # add ARK_API_KEY
+vs doctor
 ```
 
-The dollar figures are the CLI's own estimate for five 6-second shots (it prints
-the same number and asks before any paid submission; `--yes` skips the prompt).
-A draft is about 45% of the final, so running the full ladder adds roughly half a
-final pass on top. Set `film.draftModel` to the fast Seedance variant once it is
-activated in your BytePlus console to knock another ~27% off the draft.
-
-Retake one shot without re-running the film:
+Then climb the cost ladder:
 
 ```bash
-node dist/cli.js generate films/lighthouse/shots.json --shot s03-lamp-ignites --force
+# Free: validate every request and see the full price.
+vs generate films/lighthouse/shots.json --dry-run
+
+# Cents: generate the 13 literal opening frames.
+vs stills films/lighthouse/stills.json
+
+# Free: watch the whole edit from held stills.
+vs animatic films/lighthouse/shots.json
+
+# About $7.78: test motion at 480p with audio off.
+vs generate films/lighthouse/shots.json --draft --max-cost 8
+vs review films/lighthouse/shots.json --draft
+
+# About $17.30: generate only the approved final clips.
+vs generate films/lighthouse/shots.json --max-cost 18
+
+# Free: assemble the selected revisions.
+vs stitch films/lighthouse/shots.json --xfade 0.4
 ```
 
-At any point, `stitch --latest` gives you a watchable reel from whatever exists
-so far, preferring the final clip, then the draft, then the held still:
+Those prices are estimates for 13 eight-second clips. The CLI recalculates them
+from the exact model, duration, resolution, and token formula before charging.
+Use your own lower `--max-cost` if you want the run to stop earlier.
+
+## Nothing gets overwritten
+
+Every paid take is permanent and sortable:
+
+```text
+output/
+  clips/
+    s01-final-arrival/
+      v001.mp4
+      v002.mp4
+  renders/
+    final/
+      v001.mp4
+      v002.mp4
+  animatics/
+    v001.mp4
+```
+
+`--force` means “make a new revision,” not “replace the file”:
 
 ```bash
-node dist/cli.js stitch films/lighthouse/shots.json --latest   # -> output/film-latest.mp4
+vs generate films/lighthouse/shots.json \
+  --shot s06-drive-breaks --force --max-cost 2
 ```
 
-`stills/`, `output/`, `review/` and the manifests are gitignored: the demo
-generates its own artifacts, the repo ships only the two JSON files.
+The new take becomes selected only after it downloads successfully. If it
+fails, the previous good take remains selected and stitchable.
 
-## What each part of the film is demonstrating
+See the latest attempt, selected take, and every available revision:
 
-**`film.promptPreamble`, the colour script.** The shared look (palette, weather,
-the keeper's description, the realtime-motion instruction, the subtitle and
-watermark exclusion) lives once at the top and is auto-prepended to every shot.
-Per-shot prompts then only carry what is unique to that shot, which is also what
-keeps them under the linter's word budget.
-
-**`film.defaults` with `resolution: "720p"`.** 720p is what Seedance actually
-generates at; 1080p is an upscale that costs more than twice as much per shot.
-Generate here, then `vs upscale --shot <ids>` only the shots that survive the
-edit. Ratio, duration, audio and watermark defaults live alongside it so shots
-stay short.
-
-**One `first_frame` keyframe per shot.** Every shot points at
-`./stills/<shot-id>.png`, a still generated by `stills.json` with the same id, so
-the two files stay in lockstep and the keyframe is the literal opening
-composition rather than a mood board. Anchoring the frame keeps the model in a
-narrow lane, and because no shot depends on another's output, the five submit
-concurrently and a retake never cascades. There is deliberately no `continueFrom`
-here: chaining serializes the run and invalidates everything downstream of a
-retake.
-
-**Per-shot `seed`.** Each shot's seed matches its still's seed. A draft and its
-final share the seed, so promoting an approved draft reproduces the same
-composition family instead of re-rolling it.
-
-**`transition` per shot.** Crossfade lengths carry the edit rhythm: 0.3s inside
-the tower for a tight cut, 0.6s out to the beam for the film's one breath. Each
-overrides `--xfade` for the cut *into* that shot.
-
-**`cards`.** Title cards are rendered in post rather than asked of the model,
-which spells text unreliably. The opening card sits at `after: "start"` and the
-closer at `after: "end"`; `after` also accepts a shot id to drop a card mid-film.
-The opening card renders without a fade-in so frame 0 is the visible title, not
-black, which is what messaging apps grab as the poster.
-
-**`s03-lamp-ignites` locks the camera in the prompt, not with `cameraFixed`.**
-Seedance rejects `camera_fixed` in image-to-video mode, and every shot here has a
-first frame, so the ignition beat asks for a static tripod in the prompt text
-instead. The linter warns if you combine the two.
-
-## Prompt form
-
-Prompts use the official BytePlus multi-shot syntax rather than second-level
-timecodes, which the prompt guide warns is unstable:
-
-```
-Shot 1: [camera method]; [subject actions]; [position in frame]; [audio].
-Shot 2: ...
+```bash
+vs status films/lighthouse/shots.json
 ```
 
-Three beats per generation, each opening on a distinct camera setup and an
-explicit cut, which is what produces internal cuts instead of one stretched
-gesture. Audio cues go in `<angle brackets>`, which the model reads as sound
-effects. `(parentheses)` mean music, `{curly braces}` mean dialogue and
-`【full-width brackets】` mean subtitles, so none of those appear here: the score
-and any narration are mixed at stitch time, not generated per clip.
+Roll back instantly:
 
-Seedance has no negative prompt field. Exclusions are written as plain
-instructions ("keep every frame subtitle-free"), and motion is directed
-positively with brisk verbs, since soft vocabulary renders literally as slow
-motion.
+```bash
+vs use films/lighthouse/shots.json s06-drive-breaks v001
+```
+
+Stitches, animatics, upscales, and share exports also receive the next `vNNN`
+path. An explicit `--output` is never replaced; choose a new name or omit it for
+automatic versioning.
+
+## Cut whatever exists
+
+At any point, make a complete reel from the best available source for each shot:
+final clip, then draft clip, then still.
+
+```bash
+vs stitch films/lighthouse/shots.json --latest
+```
+
+This is useful after every few approved shots. It keeps story and pacing visible
+while the final is still incomplete.
+
+## Why this example holds together
+
+**One final image drives the film.** The old brass key and the relief’s modern
+meter share a ledge while the inherited beam reaches an unknown boat. Every
+earlier prop and action prepares that image.
+
+**The two characters have opposite gifts.** He knows the tower by sound and
+touch. She measures and improvises. Each method fails alone before they combine
+in the climax.
+
+**The storm pays for its screen time.** The counterweight shudders before the
+chain breaks. The boat appears before it needs rescue. The service motor is
+shown before it moves the lens. The key changes hands in frame.
+
+**Every generation is independently anchored.** Each shot has one same-id
+`first_frame` still and matching seed. There are no chains, so all 13 shots can
+run concurrently and a retake never invalidates its neighbours.
+
+**Text and score stay in post.** The video model produces only image, motion,
+ambience, and effects. Title cards are rendered by `vs stitch`; music and
+narration are mixed there too.
 
 ## Add sound
 
-A plain stitch is diegetic sound only (wind, sea, machinery) and will feel empty.
-Bring your own tracks and re-stitch after any regenerated shot:
+A plain stitch contains wind, sea, machinery, and boat audio but no score or
+voiceover. Add your own tracks:
 
 ```bash
-node dist/cli.js stitch films/lighthouse/shots.json \
-  --xfade 0.4 --music score.mp3 --narration vo.mp3
+vs stitch films/lighthouse/shots.json \
+  --xfade 0.4 \
+  --music score.mp3 \
+  --narration narration.mp3
 ```
 
-The mix ducks the music under the narration and masters to broadcast level.
-Neither track is committed here, so the demo ships without media.
+The mix ducks music under narration and masters the result. Media, manifests,
+reviews, and generated outputs remain local and are ignored by git.

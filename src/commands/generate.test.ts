@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -165,7 +166,7 @@ describe("runGenerate", () => {
     const manifest = await loadManifest(shotsPath);
     expect(manifest.entries.a?.status).toBe("downloaded");
     expect(manifest.entries.b?.status).toBe("downloaded");
-    expect(manifest.entries.a?.outputPath).toBe("output/a.mp4");
+    expect(manifest.entries.a?.outputPath).toBe("output/clips/a/v001.mp4");
     expect(client.createTask).toHaveBeenCalledTimes(2);
   });
 
@@ -210,6 +211,22 @@ describe("runGenerate", () => {
     );
     const manifest = await loadManifest(shotsPath);
     expect(manifest.entries.a?.status).toBe("downloaded");
+  });
+
+  it("never duplicates an in-flight task, even when --force is passed", async () => {
+    const shotsPath = await scaffold([{ id: "a", prompt: "p" }], {
+      a: entry({ shotId: "a", status: "running", taskId: "task-live" }),
+    });
+    const client = fakeClient();
+    await runGenerate(shotsPath, opts({ force: true }), { client });
+
+    expect(client.createTask).not.toHaveBeenCalled();
+    expect(client.pollTask).toHaveBeenCalledWith(
+      "task-live",
+      expect.anything()
+    );
+    const manifest = await loadManifest(shotsPath);
+    expect(manifest.entries.a?.attempts).toBe(1);
   });
 
   it("fails fast instead of hanging when the cost prompt has no TTY", async () => {
@@ -314,6 +331,28 @@ describe("runGenerate", () => {
     const manifest = await loadManifest(shotsPath);
     expect(manifest.entries.a?.status).toBe("failed");
     expect(manifest.entries.b?.status).toBe("downloaded");
+  });
+
+  it("writes retakes beside the selected take instead of overwriting it", async () => {
+    const shotsPath = await scaffold([{ id: "a", prompt: "p" }]);
+    await runGenerate(shotsPath, opts(), { client: fakeClient() });
+    await runGenerate(shotsPath, opts({ force: true }), {
+      client: fakeClient(),
+    });
+
+    const manifest = await loadManifest(shotsPath);
+    const filmDir = dirname(shotsPath);
+    expect(manifest.entries.a?.selectedVersion).toBe(2);
+    expect(manifest.entries.a?.outputPath).toBe("output/clips/a/v002.mp4");
+    expect(
+      manifest.entries.a?.versions?.map((version) => version.outputPath)
+    ).toEqual(["output/clips/a/v001.mp4", "output/clips/a/v002.mp4"]);
+    expect(existsSync(join(filmDir, "output", "clips", "a", "v001.mp4"))).toBe(
+      true
+    );
+    expect(existsSync(join(filmDir, "output", "clips", "a", "v002.mp4"))).toBe(
+      true
+    );
   });
 });
 

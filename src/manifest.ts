@@ -4,7 +4,12 @@ import { dirname, join, resolve } from "node:path";
 
 import { passSuffix } from "./paths.js";
 import type { Pass } from "./paths.js";
-import type { Manifest, ManifestEntry, ManifestStatus } from "./types.js";
+import type {
+  Manifest,
+  ManifestEntry,
+  ManifestRevision,
+  ManifestStatus,
+} from "./types.js";
 
 export function manifestPath(
   shotsFilePath: string,
@@ -13,16 +18,67 @@ export function manifestPath(
   return join(dirname(resolve(shotsFilePath)), `tasks${passSuffix(pass)}.json`);
 }
 
+interface LegacyManifest {
+  entries?: Record<string, ManifestEntry>;
+  shotsFile?: string;
+  version?: number;
+}
+
+function legacyRevision(entry: ManifestEntry): ManifestRevision | undefined {
+  if (!entry.taskId) {
+    return undefined;
+  }
+  return {
+    error: entry.error,
+    outputPath: entry.outputPath,
+    params: entry.params,
+    payloadHash: entry.payloadHash,
+    status: entry.status,
+    submittedAt: entry.submittedAt,
+    taskId: entry.taskId,
+    tokensUsed: entry.tokensUsed,
+    updatedAt: entry.updatedAt,
+    version: Math.max(entry.attempts, 1),
+    videoUrl: entry.videoUrl,
+  };
+}
+
+/** Read v1 manifests without moving or renaming their existing clips. */
+function migrateManifest(raw: LegacyManifest): Manifest {
+  const entries = raw.entries ?? {};
+  for (const entry of Object.values(entries)) {
+    if (!entry.versions) {
+      const revision = legacyRevision(entry);
+      entry.versions = revision ? [revision] : [];
+    }
+    if (
+      entry.selectedVersion === undefined &&
+      entry.outputPath &&
+      (entry.status === "downloaded" || entry.status === "succeeded")
+    ) {
+      entry.selectedVersion =
+        entry.versions.findLast(
+          (revision) => revision.outputPath === entry.outputPath
+        )?.version ?? Math.max(entry.attempts, 1);
+    }
+  }
+  return {
+    entries,
+    shotsFile: raw.shotsFile ?? "",
+    version: 2,
+  };
+}
+
 export async function loadManifest(
   shotsFilePath: string,
   pass: Pass = "final"
 ): Promise<Manifest> {
   const path = manifestPath(shotsFilePath, pass);
   if (!existsSync(path)) {
-    return { entries: {}, shotsFile: shotsFilePath, version: 1 };
+    return { entries: {}, shotsFile: shotsFilePath, version: 2 };
   }
   const raw = await readFile(path, "utf-8");
-  return JSON.parse(raw) as Manifest;
+  return migrateManifest(JSON.parse(raw) as LegacyManifest);
 }
 
 const writeQueues = new Map<string, Promise<void>>();
@@ -82,6 +138,17 @@ function carriedFields(
   ManifestEntry,
   "error" | "outputPath" | "params" | "payloadHash" | "tokensUsed"
 > {
+  if (update.newAttempt) {
+    return {
+      error: update.error,
+      // This is the selected successful path, not an attribute of the latest
+      // attempt, so it remains available until a new download replaces it.
+      outputPath: existing?.outputPath,
+      params: update.params,
+      payloadHash: update.payloadHash,
+      tokensUsed: update.tokensUsed,
+    };
+  }
   return {
     error: update.error ?? existing?.error,
     outputPath: update.outputPath ?? existing?.outputPath,
@@ -89,6 +156,87 @@ function carriedFields(
     payloadHash: update.payloadHash ?? existing?.payloadHash,
     tokensUsed: update.tokensUsed ?? existing?.tokensUsed,
   };
+}
+
+function revisionFields(
+  update: EntryUpdate,
+  existing: ManifestRevision | undefined,
+  now: string,
+  version: number
+): ManifestRevision {
+  return {
+    error: update.error ?? existing?.error,
+    outputPath: update.outputPath ?? existing?.outputPath,
+    params: update.params ?? existing?.params,
+    payloadHash: update.payloadHash ?? existing?.payloadHash,
+    status: update.status,
+    submittedAt: existing?.submittedAt ?? now,
+    taskId: update.taskId ?? existing?.taskId ?? "",
+    tokensUsed: update.tokensUsed ?? existing?.tokensUsed,
+    updatedAt: now,
+    version,
+    videoUrl:
+      update.status === "downloaded"
+        ? undefined
+        : (update.videoUrl ?? existing?.videoUrl),
+  };
+}
+
+interface RevisionUpdate {
+  revisionVersion: number;
+  versions: ManifestRevision[];
+}
+
+function updateRevisions(
+  existing: ManifestEntry | undefined,
+  update: EntryUpdate,
+  attempts: number,
+  now: string
+): RevisionUpdate {
+  const versions = (existing?.versions ?? []).map((revision) =>
+    update.newAttempt ? { ...revision, videoUrl: undefined } : revision
+  );
+  let revisionIndex = update.newAttempt
+    ? -1
+    : versions.findLastIndex(
+        (revision) =>
+          update.taskId === undefined || revision.taskId === update.taskId
+      );
+  if (revisionIndex < 0 && existing && versions.length === 0) {
+    const revision = legacyRevision(existing);
+    if (revision) {
+      versions.push(revision);
+      revisionIndex = update.newAttempt ? -1 : 0;
+    }
+  }
+  const revisionVersion = update.newAttempt
+    ? Math.max(attempts, 1)
+    : (versions[revisionIndex]?.version ?? Math.max(attempts, 1));
+  const revision = revisionFields(
+    update,
+    revisionIndex >= 0 ? versions[revisionIndex] : undefined,
+    now,
+    revisionVersion
+  );
+  if (revisionIndex >= 0) {
+    versions[revisionIndex] = revision;
+  } else {
+    versions.push(revision);
+  }
+  return { revisionVersion, versions };
+}
+
+function currentVideoUrl(
+  existing: ManifestEntry | undefined,
+  update: EntryUpdate
+): string | undefined {
+  if (update.status === "downloaded") {
+    return undefined;
+  }
+  if (update.videoUrl !== undefined) {
+    return update.videoUrl;
+  }
+  return update.newAttempt ? undefined : existing?.videoUrl;
 }
 
 /**
@@ -103,22 +251,65 @@ export function upsertEntry(
 ): ManifestEntry {
   const now = new Date().toISOString();
   const existing = manifest.entries[update.shotId];
-  const videoUrl =
-    update.status === "downloaded"
-      ? undefined
-      : (update.videoUrl ?? existing?.videoUrl);
+  const attempts = (existing?.attempts ?? 0) + (update.newAttempt ? 1 : 0);
+  const { revisionVersion, versions } = updateRevisions(
+    existing,
+    update,
+    attempts,
+    now
+  );
+  const selectedVersion =
+    update.status === "downloaded" && update.outputPath
+      ? revisionVersion
+      : existing?.selectedVersion;
   const next: ManifestEntry = {
     ...carriedFields(update, existing),
-    attempts: (existing?.attempts ?? 0) + (update.newAttempt ? 1 : 0),
+    attempts,
+    selectedVersion,
     shotId: update.shotId,
     status: update.status,
-    submittedAt: existing?.submittedAt ?? now,
+    submittedAt: update.newAttempt ? now : (existing?.submittedAt ?? now),
     taskId: update.taskId ?? existing?.taskId ?? "",
     updatedAt: now,
-    videoUrl,
+    versions,
+    videoUrl: currentVideoUrl(existing, update),
   };
   manifest.entries[update.shotId] = next;
   return next;
+}
+
+export function selectedRevision(
+  entry: ManifestEntry | undefined
+): ManifestRevision | undefined {
+  if (!entry) {
+    return undefined;
+  }
+  if (entry.selectedVersion !== undefined) {
+    return entry.versions?.find(
+      (revision) => revision.version === entry.selectedVersion
+    );
+  }
+  return legacyRevision(entry);
+}
+
+export function latestRevision(
+  entry: ManifestEntry | undefined
+): ManifestRevision | undefined {
+  return entry?.versions?.at(-1) ?? (entry ? legacyRevision(entry) : undefined);
+}
+
+export function isRevisionComplete(
+  revision: ManifestRevision | undefined,
+  manifestDir: string
+): boolean {
+  if (!revision?.outputPath) {
+    return false;
+  }
+  if (revision.status !== "succeeded" && revision.status !== "downloaded") {
+    return false;
+  }
+  const path = resolve(manifestDir, revision.outputPath);
+  return existsSync(path) && statSync(path).size > 0;
 }
 
 /**
@@ -129,14 +320,8 @@ export function isComplete(
   entry: ManifestEntry | undefined,
   manifestDir: string
 ): boolean {
-  if (!entry?.outputPath) {
-    return false;
-  }
-  if (entry.status !== "succeeded" && entry.status !== "downloaded") {
-    return false;
-  }
-  const path = resolve(manifestDir, entry.outputPath);
-  return existsSync(path) && statSync(path).size > 0;
+  const selected = selectedRevision(entry);
+  return isRevisionComplete(selected, manifestDir);
 }
 
 /** Tasks still in flight at the API — re-attach instead of re-paying. */

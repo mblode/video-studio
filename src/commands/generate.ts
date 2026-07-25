@@ -47,12 +47,8 @@ import type {
   ShotReference,
   ShotsFile,
 } from "../types.js";
-import {
-  assertInteractive,
-  createArkClient,
-  resolveFilm,
-  safeJoin,
-} from "./context.js";
+import { clipRevisionPath } from "../versions.js";
+import { assertInteractive, createArkClient, resolveFilm } from "./context.js";
 import {
   emit,
   fail,
@@ -389,8 +385,13 @@ async function settleTask(options: {
   const tokensUsed = final.usage?.completion_tokens;
   const videoUrl = final.content?.video_url;
   if (options.download && videoUrl) {
-    const outputName = shot.output ?? `${shot.id}.mp4`;
-    const outputPath = safeJoin(options.outputDir, outputName);
+    const version = manifest.entries[shot.id]?.attempts ?? 1;
+    const outputPath = clipRevisionPath(
+      options.outputDir,
+      shot.id,
+      version,
+      shot.output
+    );
     await downloadFile(videoUrl, outputPath);
     upsertEntry(manifest, {
       outputPath: relative(options.shotsDir, outputPath),
@@ -484,6 +485,9 @@ export async function runGenerate(
     if (options.force) {
       return true;
     }
+    if (isInFlight(entry)) {
+      return true;
+    }
     if (isComplete(entry, shotsDir)) {
       note(`${shot.id} already complete, skipping`);
       return false;
@@ -511,12 +515,10 @@ export async function runGenerate(
   }
 
   const toSubmit = pending.filter(
-    (shot) => options.force || !isInFlight(manifest.entries[shot.id])
+    (shot) => !isInFlight(manifest.entries[shot.id])
   );
   const toReattach = new Set(
-    pending.filter(
-      (shot) => !options.force && isInFlight(manifest.entries[shot.id])
-    )
+    pending.filter((shot) => isInFlight(manifest.entries[shot.id]))
   );
 
   if (toSubmit.length > 0) {

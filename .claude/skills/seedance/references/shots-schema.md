@@ -30,8 +30,8 @@ composition of every shot, plus any character, prop, or environment plate.
   "ratio": "16:9",
   "stills": [
     {
-      "id": "s01-dusk-cliff",
-      "prompt": "Photorealistic cinematic keyframe, the literal opening composition of the shot: a lone white stone lighthouse on a rugged sea cliff at last light, lamp room dark, deep blue twilight sky, long grass flattened by wind, grey breaking sea below, wide aerial establishing composition, natural light, clean frame with no lettering.",
+      "id": "s01-final-arrival",
+      "prompt": "Photorealistic cinematic keyframe, literal opening composition: remote whitewashed lighthouse and cottage on a treeless headland at steel-blue dusk, lamp room dark, warm cottage window, path entering lower left, tower on right third, wide aerial, no lettering.",
       "size": "2560x1440",
       "seed": 7101
     }
@@ -64,7 +64,7 @@ Generated with `vs generate`. One shot is one paid task.
 ```json
 {
   "film": {
-    "title": "The Lighthouse Keeper",
+    "title": "The Last Watch",
     "outputDir": "./output",
     "defaults": {
       "ratio": "16:9",
@@ -73,20 +73,20 @@ Generated with `vs generate`. One shot is one paid task.
       "generateAudio": true,
       "watermark": false
     },
-    "promptPreamble": "Photorealistic cinematic short about a lighthouse keeper... Realtime speed, brisk natural motion. Keep every frame subtitle-free and free of any watermark or on-screen lettering."
+    "promptPreamble": "Photorealistic cinematic silent short set at an unnamed lighthouse... Natural realtime motion, precise physical action. No readable labels, subtitles, watermark or on-screen lettering."
   },
   "cards": [
-    { "after": "start", "text": "THE LIGHTHOUSE KEEPER", "duration": 3, "transition": 0.4 },
-    { "after": "end", "text": "Every night, the light goes on.", "duration": 3, "fontSize": 48, "transition": 0.6 }
+    { "after": "start", "text": "THE LAST WATCH", "duration": 3, "transition": 0.4 },
+    { "after": "end", "text": "THE WATCH PASSES ON", "duration": 3, "fontSize": 48, "transition": 0.7 }
   ],
   "shots": [
     {
-      "id": "s01-dusk-cliff",
+      "id": "s01-final-arrival",
       "prompt": "<Shot 1: ... Shot 2: ... Shot 3: ...   see seedance-prompting.md>",
       "seed": 7101,
       "transition": 0.4,
       "references": [
-        { "type": "image", "url": "./stills/s01-dusk-cliff.png", "role": "first_frame" }
+        { "type": "image", "url": "./stills/s01-final-arrival.png", "role": "first_frame" }
       ]
     }
   ]
@@ -99,6 +99,8 @@ Generated with `vs generate`. One shot is one paid task.
 `camera_fixed`), `references`, `continueFrom` (an earlier shot id), `output`
 (filename, defaults `${id}.mp4`, must stay inside the film dir), `seed` (int),
 `transition` (0.05 to 2, the crossfade **into** this shot; 0.05 is a hard cut).
+Downloaded takes default to `output/clips/<id>/vNNN.mp4`. A custom `output`
+value is preserved inside that shot's numbered revision directory.
 
 **`film` fields.** `title` (required), `model`, `draftModel` (the cheaper model
 used under `--draft`), `outputDir`, `promptPreamble` (prepended to every shot

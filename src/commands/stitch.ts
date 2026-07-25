@@ -27,6 +27,7 @@ import type {
   ShotsFile,
   TitleCard,
 } from "../types.js";
+import { assertNewVideoOutput, nextRenderPath } from "../versions.js";
 import { resolveFilm, resolveOutput } from "./context.js";
 import { emit, heading, line, note, ok, warn } from "./output.js";
 
@@ -295,7 +296,7 @@ async function runLatestStitch(
   const workDir = join(outputDir, "latest");
   const outputPath = resolveOutput(
     options.output,
-    join(outputDir, "film-latest.mp4")
+    nextRenderPath(join(outputDir, "renders", "latest"))
   );
 
   const segments: LatestSegment[] = [];
@@ -366,7 +367,9 @@ async function runLatestStitch(
     return;
   }
 
+  assertNewVideoOutput(outputPath);
   await mkdir(workDir, { recursive: true });
+  await mkdir(dirname(outputPath), { recursive: true });
   for (const s of segments) {
     if (s.slate) {
       await renderCardPng(
@@ -411,7 +414,10 @@ export async function runStitch(
     warn(warning);
   }
   const manifest = await loadManifest(shotsFilePath, pass);
-  const outputPath = resolveOutput(options.output, join(outputDir, "film.mp4"));
+  const outputPath = resolveOutput(
+    options.output,
+    nextRenderPath(join(outputDir, "renders", "final"))
+  );
 
   const { clipPaths, probes, reference } = await resolveClips(
     file.shots,
@@ -493,6 +499,7 @@ export async function runStitch(
     return;
   }
 
+  assertNewVideoOutput(outputPath);
   if (cardJobs.length > 0) {
     await mkdir(cardsDir, { recursive: true });
     for (const job of cardJobs) {
@@ -515,6 +522,7 @@ export async function runStitch(
       note(`rendered ${job.mp4}`);
     }
   }
+  await mkdir(dirname(outputPath), { recursive: true });
   if (plan.concatList) {
     await mkdir(dirname(concatListPath), { recursive: true });
     await writeFile(concatListPath, plan.concatList, "utf-8");

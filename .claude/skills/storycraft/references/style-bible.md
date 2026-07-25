@@ -53,13 +53,10 @@ One block per location, written as emotional language rather than decoration.
 Colour and light carry feeling and mark act turns, so choose a palette for what
 it makes the audience feel, then describe it concretely.
 
-The lighthouse film runs three, and the cuts between them are the act turns:
-**cliff at dusk** is cold blue twilight, wind-flattened grass, grey breaking
-sea (exposed, unlit, waiting); **the lamp room** is amber and brass and cut
-glass (warmth, purpose, the only interior in the film); **open sea at night**
-is black water, white foam, and one moving beam (scale, and how small the
-rescue is against it). The audience feels the change from the second one before
-they can name it.
+The lighthouse film moves through four linked palettes: **steel-blue dusk** for
+the guarded arrival, **warm tower interiors** for craft and disagreement,
+**near-black storm** broken by lightning and amber beam for crisis, then
+**silver dawn and clear indigo** for the handover and new watch.
 
 Write each block as setting, plus light, plus colour family, plus a few
 concrete fixtures.
@@ -82,27 +79,28 @@ The lighthouse pair:
 
 ```text
 THE KEEPER
-A weathered man in his sixties, tall and slightly stooped, grey stubble,
-heavy navy wool coat over a thick jumper, working with brisk economy and
-no wasted step.
+A lean weathered man in his late sixties, grey stubble, navy wool coat, faded
+red scarf, working with deliberate economy and no wasted step.
 
-THE SKIPPER
-Younger and broad, in yellow oilskins with the hood down, hair plastered
-flat by rain, hands fast and certain on the wheel.
+THE RELIEF
+A woman in her early thirties with cropped dark curls, mustard-yellow oilskin,
+dark teal sweater and brown canvas tool roll; still while observing, fast and
+precise once she acts.
 ```
 
-Tall and grey against broad and yellow: the audience reads them apart in one
-frame, which matters in a film where they never share one. When a character
-ages, write the older block as "the same character as X, grown into...", keep
-the load-bearing features, and update only what time changes.
+Navy and red against mustard and teal: the audience reads them apart even in a
+storm-lit machinery room. When a character ages, write the older block as "the
+same character as X, grown into...", keep the load-bearing features, and update
+only what time changes.
 
 ## PROP blocks
 
 A hero prop that must read identically every appearance gets its own block. The
 test is thematic, not visual: an object earns a block when the story turns on
-it. The lighthouse film pins the Fresnel lens (a great cut-glass drum, brass
-frame, visible facets, taller than the keeper) because it is in three shots and
-a generic lamp would break both continuity and the point.
+it. The lighthouse film pins the brass winding key and grey meter because their
+ownership and final coexistence carry the character arc. It also pins the
+Fresnel lens and drive because their working, frozen, and restored states carry
+the external stakes.
 
 Describe the prop tightly and positively. A prop that is just set dressing does
 not need a block.
@@ -126,11 +124,10 @@ Where story constraints live, not just visual consistency. Anchors are rules
 that shape staging across shots; secrets are facts the audience does not yet
 know, which dictate what the camera may reveal and when.
 
-The lighthouse film runs two. **The lamp is dark until s03**, so s01 specifies
-"lamp room dark" and s02 gives the keeper a hand lantern instead: the ignition
-has to be the first time the audience sees the light, or the payoff is spent.
-**The keeper and the skipper never share a frame**, because the film is about
-the person you do the work for and never meet.
+The lighthouse film runs four. **The lamp is dark until s05. The key remains
+with the keeper until s10. His left palm is uninjured before s08 and wrapped
+afterward. The boat's reef geography in s07 and s11 mirrors exactly**, so the
+corrected course reads without explanation.
 
 Write anchors as flat rules. A single constraint like that governs staging,
 eyelines, and pacing for half the film. When a chained shot inherits a previous

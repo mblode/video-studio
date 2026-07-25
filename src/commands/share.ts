@@ -1,9 +1,10 @@
-import { stat } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 
 import { assertFfmpeg, probeClip, runFfmpeg } from "../ffmpeg.js";
 import { buildSharePlan } from "../share.js";
+import { assertNewVideoOutput, nextExportPath } from "../versions.js";
 import { resolveOutput } from "./context.js";
 import { emit, heading, line, note, ok, warn } from "./output.js";
 
@@ -15,11 +16,11 @@ export interface ShareCommandOptions {
   output?: string;
 }
 
-/** Default output path: `<name>-whatsapp.mp4` beside the input. */
+/** Default output path: `exports/<name>-whatsapp/vNNN.mp4` beside the input. */
 function defaultOutput(inputPath: string): string {
   const dir = dirname(inputPath);
   const name = basename(inputPath, extname(inputPath));
-  return join(dir, `${name}-whatsapp.mp4`);
+  return nextExportPath(join(dir, "exports", `${name}-whatsapp`), inputPath);
 }
 
 /**
@@ -70,7 +71,9 @@ export async function runShare(
     return;
   }
 
+  assertNewVideoOutput(outputPath);
   note(`pass 1/2: video ${plan.videoKbps}kbps (target ${options.maxMb}MB)`);
+  await mkdir(dirname(outputPath), { recursive: true });
   await runFfmpeg(plan.pass1);
   note("pass 2/2: encoding + audio");
   await runFfmpeg(plan.pass2);

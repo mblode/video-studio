@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import {
   ANIMATIC_FPS,
@@ -15,6 +15,7 @@ import type { Pass } from "../paths.js";
 import { lintShotsFile } from "../shots.js";
 import { buildStitchPlan, orderTimeline } from "../stitch.js";
 import type { StitchClip } from "../stitch.js";
+import { assertNewVideoOutput, nextRenderPath } from "../versions.js";
 import { resolveFilm, resolveOutput } from "./context.js";
 import { emit, heading, line, note, ok, warn } from "./output.js";
 import { filmFrame } from "./stitch.js";
@@ -48,7 +49,7 @@ export async function runAnimatic(
   const workDir = join(outputDir, "animatic");
   const outputPath = resolveOutput(
     options.output,
-    join(outputDir, "animatic.mp4")
+    nextRenderPath(join(outputDir, "animatics"))
   );
 
   const timeline = orderTimeline(file.shots, file.cards ?? []);
@@ -129,7 +130,9 @@ export async function runAnimatic(
     return;
   }
 
+  assertNewVideoOutput(outputPath);
   await mkdir(workDir, { recursive: true });
+  await mkdir(dirname(outputPath), { recursive: true });
   for (const job of segmentJobs) {
     if (job.slate) {
       await renderCardPng(

@@ -3,8 +3,10 @@ import { dirname, resolve } from "node:path";
 import {
   isComplete,
   isInFlight,
+  latestRevision,
   loadManifest,
   saveManifest,
+  selectedRevision,
   upsertEntry,
 } from "../manifest.js";
 import type { Pass } from "../paths.js";
@@ -65,7 +67,15 @@ export async function runStatus(
 
   const rows = Object.values(manifest.entries).map((entry) => ({
     ...entry,
+    availableVersions: (entry.versions ?? [])
+      .filter(
+        (revision) =>
+          revision.status === "downloaded" && revision.outputPath !== undefined
+      )
+      .map((revision) => revision.version),
     complete: isComplete(entry, manifestDir),
+    latestVersion: latestRevision(entry)?.version,
+    selectedVersion: selectedRevision(entry)?.version,
   }));
 
   emit({ entries: rows, pass, shotsFile }, () => {
@@ -77,8 +87,22 @@ export async function runStatus(
       } else if (row.complete) {
         hue = "green";
       }
+      const revisions =
+        row.latestVersion === undefined
+          ? ""
+          : `  latest v${String(row.latestVersion).padStart(3, "0")}${
+              row.selectedVersion === undefined
+                ? ""
+                : ` · selected v${String(row.selectedVersion).padStart(3, "0")}`
+            }${
+              row.availableVersions.length === 0
+                ? ""
+                : ` · available ${row.availableVersions
+                    .map((version) => `v${String(version).padStart(3, "0")}`)
+                    .join(", ")}`
+            }`;
       line(
-        `${row.shotId.padEnd(width)}  ${color(hue, row.status.padEnd(10))}  ${row.taskId}${row.outputPath ? `  ${row.outputPath}` : ""}${row.error ? `  ${color("red", row.error)}` : ""}`
+        `${row.shotId.padEnd(width)}  ${color(hue, row.status.padEnd(10))}  ${row.taskId}${revisions}${row.outputPath ? `  ${row.outputPath}` : ""}${row.error ? `  ${color("red", row.error)}` : ""}`
       );
     }
   });

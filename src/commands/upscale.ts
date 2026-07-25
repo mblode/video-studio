@@ -1,10 +1,11 @@
 import { mkdir } from "node:fs/promises";
-import { basename, resolve } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 
 import { assertFfmpeg, probeClip, runFfmpeg } from "../ffmpeg.js";
 import { isComplete, loadManifest } from "../manifest.js";
 import type { Pass } from "../paths.js";
 import { buildUpscalePlan } from "../upscale.js";
+import { nextRenderPath } from "../versions.js";
 import { resolveFilm, resolveOutput } from "./context.js";
 import { emit, heading, line, note, ok, warn } from "./output.js";
 
@@ -55,7 +56,10 @@ export async function runUpscale(
       continue;
     }
     const inputPath = resolve(shotsDir, entry?.outputPath as string);
-    const outputPath = resolve(destDir, basename(inputPath));
+    const outputPath = nextRenderPath(
+      join(destDir, "clips", shot.id),
+      extname(inputPath) || ".mp4"
+    );
     const probe = await probeClip(inputPath);
     const plan = buildUpscalePlan({
       crf: options.crf,
@@ -81,6 +85,7 @@ export async function runUpscale(
       continue;
     }
 
+    await mkdir(dirname(outputPath), { recursive: true });
     await runFfmpeg(plan.args);
     ok(`${shot.id} → ${outputPath}`);
     upscaled.push(shot.id);

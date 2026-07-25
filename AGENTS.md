@@ -45,6 +45,11 @@ Run `npm run verify` (lint, typecheck, tests) before a commit. Narrower tiers:
   4xx is never retried. Result URLs expire in about 24 hours, so `generate`
   downloads immediately, and the URL is dropped from the manifest once the file
   is on disk (it is presigned and carries the provider's access key id).
+- **Generated video is immutable.** Clips live under
+  `output/clips/<shot>/vNNN.mp4`; renders and exports also allocate `vNNN`.
+  `ManifestEntry.status` describes the latest attempt, while `selectedVersion`
+  is what stitch/review/chain use. A failed retake must never move the
+  selection. `vs use` is the rollback path.
 - **The opening title card renders with `fadeIn: false`** so frame 0 is the
   visible card rather than black. Otherwise WhatsApp and friends grab a black
   poster frame. Keep any shareable cut opening on a non-black frame.

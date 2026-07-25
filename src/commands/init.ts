@@ -187,6 +187,9 @@ Tips:
 - Keep each shot a self-contained beat and let the cut land on the generation
   length — standalone shots regenerate independently and never cascade a retake.
 - \`--dry-run\` on \`stills\`/\`generate\` prints payloads without spending anything.
+- Video takes and finished renders are numbered \`v001\`, \`v002\`, and so on;
+  \`--force\` creates a new take, \`vs status\` shows latest vs selected, and
+  \`vs use <shots-file> <shot-id> <version>\` rolls back without deleting media.
 - Default duration ${config.duration}s, ratio ${config.ratio}, and 720p generation
   live in \`shots.json\` under \`film.defaults\`. 720p is Seedance's native ceiling —
   upscale only the shots that make the final edit if you need 1080p delivery.

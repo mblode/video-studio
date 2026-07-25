@@ -25,6 +25,11 @@ result URL once a clip is downloaded: those URLs expire in about 24 hours and
 carry the provider's access key id in the query string, which is how one ended
 up in this repository's pre-release history.
 
+**Generated video is append-only by default.** Every take, render, animatic,
+upscale, and share export gets a numbered path. Failed retakes do not replace
+the manifest's selected successful revision, and explicit output paths refuse
+to replace an existing video.
+
 **Generated media is gitignored by default.** `films/**` ignores video, audio,
 and image files outright, so a reference photograph or a voice recording cannot
 be committed by accident.

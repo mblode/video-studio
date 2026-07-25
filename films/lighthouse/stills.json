@@ -4,34 +4,82 @@
   "ratio": "16:9",
   "stills": [
     {
-      "id": "s01-dusk-cliff",
-      "prompt": "Photorealistic cinematic keyframe, the literal opening composition of the shot: a lone white stone lighthouse on a rugged sea cliff at last light, lamp room dark, deep blue twilight sky, long grass flattened by wind, grey breaking sea below, wide aerial establishing composition, natural light, clean frame with no lettering.",
+      "id": "s01-final-arrival",
+      "prompt": "Photorealistic cinematic keyframe, literal opening composition: remote whitewashed stone lighthouse and small keeper cottage on a treeless rock headland at steel-blue dusk, lamp room dark, one warm cottage window, wet path entering from lower left, tower on right third, long grass flattened by coastal wind, grey sea below, wide aerial, restrained film grain, no people close enough for identifiable faces, no lettering or watermark.",
       "size": "2560x1440",
-      "seed": 7101
+      "seed": 8101
     },
     {
-      "id": "s02-keeper-stairs",
-      "prompt": "Photorealistic cinematic keyframe, the literal opening composition of the shot: a weathered lighthouse keeper in his sixties, grey stubble and a navy wool coat, mid-climb on a tight spiral iron staircase with a lantern raised, warm amber light on the curved white wall, shallow depth of field, clean frame with no lettering.",
+      "id": "s02-threshold",
+      "prompt": "Photorealistic cinematic keyframe, literal opening composition: open iron lighthouse door dividing two anonymous keepers in a medium two-shot, veteran man late sixties with lean weathered face, grey stubble, navy wool coat and faded red scarf inside warm light; young woman early thirties with cropped dark curls, mustard-yellow oilskin, dark teal sweater and brown canvas tool roll standing in cold rain outside, tactile wet stone and iron, no lettering or watermark.",
       "size": "2560x1440",
-      "seed": 7102
+      "seed": 8102
     },
     {
-      "id": "s03-lamp-ignites",
-      "prompt": "Photorealistic cinematic keyframe, the literal opening composition of the shot: interior lamp room, the same weathered keeper in a navy wool coat stands at a great glass Fresnel lens with one hand on the brass ignition valve, the lamp still dark, cold blue dusk through the gallery windows, locked-off medium composition, clean frame with no lettering.",
+      "id": "s03-two-methods",
+      "prompt": "Photorealistic cinematic keyframe, literal opening composition: cramped lighthouse machinery room, large hanging counterweight and brass-and-steel clockwork drive dividing two keepers, same veteran man in navy coat and red scarf on left holding a brass winding key, same young woman in mustard oilskin on right holding a compact grey electrical meter and brown tool roll, warm tungsten pools, whitewashed stone, maintained working equipment, medium two-shot, no labels, lettering or watermark.",
       "size": "2560x1440",
-      "seed": 7103
+      "seed": 8103
     },
     {
-      "id": "s04-beam-sweeps",
-      "prompt": "Photorealistic cinematic keyframe, the literal opening composition of the shot: wide night exterior of the same lighthouse from out at sea, the first beam breaking out across black heaving water, foam bursting on the rocks below, stars overhead, clean frame with no lettering.",
+      "id": "s04-warning",
+      "prompt": "Photorealistic cinematic keyframe, literal opening composition: tiny lighthouse radio room beneath the lamp, same veteran man in navy wool coat and same young woman in mustard oilskin facing an old unbranded radio, a red warning lamp flashing between their faces, rain streaming down the sea window behind, barometer present with unreadable face, cold storm light and warm practical light, tense medium composition, no readable text, lettering or watermark.",
       "size": "2560x1440",
-      "seed": 7104
+      "seed": 8104
     },
     {
-      "id": "s05-boat-turns",
-      "prompt": "Photorealistic cinematic keyframe, the literal opening composition of the shot: a small weathered fishing boat far out in heavy night swell, wheelhouse lights burning, the distant lighthouse beam reaching across the water and catching its hull, sea-level wide composition, clean frame with no lettering.",
+      "id": "s05-first-light",
+      "prompt": "Photorealistic cinematic keyframe, literal opening composition: lighthouse lamp room at blue nightfall, great cut-glass Fresnel lens still dark, same veteran keeper in navy coat and faded red scarf at centre with hand on brass ignition lever and winding key, same young relief keeper in mustard oilskin held behind near the drive housing, wet gallery glass, locked medium composition, cold blue ambient light before ignition, no lettering or watermark.",
       "size": "2560x1440",
-      "seed": 7105
+      "seed": 8105
+    },
+    {
+      "id": "s06-drive-breaks",
+      "prompt": "Photorealistic cinematic keyframe, literal opening composition: low angle inside lighthouse machinery room, fast-moving guarded clockwork chain and flywheel dominant above frame, same veteran keeper in navy coat and same relief keeper in mustard oilskin safely clear below, white lightning pulsing through narrow wet window, brass and steel surfaces under strain, dynamic wide composition, no injury yet, no lettering or watermark.",
+      "size": "2560x1440",
+      "seed": 8106
+    },
+    {
+      "id": "s07-boat-in-dark",
+      "prompt": "Photorealistic cinematic keyframe, literal opening composition: sea-level wide beside a small anonymous weathered work boat in heavy black night swell, dim wheelhouse lights on left, breaking white reef water emerging ahead on right, no lighthouse beam anywhere, rain and spray driven across frame, no flag, boat name, brand, lettering or watermark.",
+      "size": "2560x1440",
+      "seed": 8107
+    },
+    {
+      "id": "s08-force-fails",
+      "prompt": "Photorealistic cinematic keyframe, literal opening composition: lighthouse machinery room in storm light, same veteran keeper kneeling at stopped manual clutch with brass winding key in his right hand, left palm still uninjured, same young relief keeper in mustard oilskin close behind ready to help, motionless flywheel and fallen drive chain guarded in background, over-shoulder medium, no lettering or watermark.",
+      "size": "2560x1440",
+      "seed": 8108
+    },
+    {
+      "id": "s09-relief-acts",
+      "prompt": "Photorealistic cinematic keyframe, literal opening composition: same young relief keeper kneeling decisively at an open lighthouse drive panel with grey electrical meter and brown canvas tool roll, same veteran keeper seated behind holding his newly wrapped left palm, brass winding key on stone floor, stopped flywheel, cold lightning and warm work light, precise lateral medium frame, all equipment unbranded with no readable labels, no watermark.",
+      "size": "2560x1440",
+      "seed": 8109
+    },
+    {
+      "id": "s10-beam-returns",
+      "prompt": "Photorealistic cinematic keyframe, literal opening composition: close two-shot over exposed lighthouse gears, same veteran keeper with wrapped left palm offering the large brass winding key to the same young relief keeper in mustard oilskin, compact unbranded service motor aligned beside stopped flywheel, their faces and hands equally visible, storm light, emotional restraint, no readable labels, lettering or watermark.",
+      "size": "2560x1440",
+      "seed": 8110
+    },
+    {
+      "id": "s11-course-corrected",
+      "prompt": "Photorealistic cinematic keyframe, literal opening composition: high wide over violent dark water as a restored amber lighthouse beam reaches the same small anonymous work boat, breaking reef directly behind its starboard side, wheelhouse caught in light, rain and foam defining the safe open-water side, no flag, boat name, lettering or watermark.",
+      "size": "2560x1440",
+      "seed": 8111
+    },
+    {
+      "id": "s12-the-handover",
+      "prompt": "Photorealistic cinematic keyframe, literal opening composition: pale silver dawn inside lighthouse entrance, two plain enamel mugs touching beside a closed blank logbook on worn wooden table, same veteran keeper in damp navy coat holding the large brass winding key above the table with his good right hand, left palm wrapped, small dark suitcase nearby, same young relief keeper in mustard oilskin opposite, calm post-storm light, no readable text, lettering or watermark.",
+      "size": "2560x1440",
+      "seed": 8112
+    },
+    {
+      "id": "s13-next-watch",
+      "prompt": "Photorealistic cinematic keyframe, literal opening composition: clear indigo at the next dusk inside lighthouse lamp room, same young relief keeper alone in mustard-yellow oilskin and dark teal sweater, large brass winding key and compact grey meter together on foreground ledge, great Fresnel lamp dark behind her, composed mirror of an ending ritual, calm wet glass, cold blue and future amber palette, no labels, lettering or watermark.",
+      "size": "2560x1440",
+      "seed": 8113
     }
   ]
 }

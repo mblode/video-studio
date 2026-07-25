@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 
 import { assertFfmpeg, frameAtArgs, probeClip, runFfmpeg } from "../ffmpeg.js";
-import { isComplete, loadManifest } from "../manifest.js";
+import { isComplete, loadManifest, selectedRevision } from "../manifest.js";
 import type { Pass } from "../paths.js";
 import { passSuffix } from "../paths.js";
 import { frameTimestamps, probeWarnings, renderIndexMd } from "../review.js";
@@ -54,6 +54,17 @@ export async function runReview(
       continue;
     }
     const clipPath = resolve(shotsDir, entry.outputPath);
+    const selected = selectedRevision(entry);
+    const reviewedEntry = selected
+      ? {
+          ...entry,
+          error: selected.error,
+          params: selected.params,
+          status: selected.status,
+          taskId: selected.taskId,
+          tokensUsed: selected.tokensUsed,
+        }
+      : entry;
     const probe = await probeClip(clipPath);
     const frameFiles: string[] = [];
     const stamps = frameTimestamps(probe.duration, options.frames);
@@ -68,9 +79,9 @@ export async function runReview(
       }
       frameFiles.push(frameFile);
     }
-    const warnings = probeWarnings(probe, entry.params);
+    const warnings = probeWarnings(probe, reviewedEntry.params);
     rows.push({
-      entry,
+      entry: reviewedEntry,
       frameFiles,
       promptExcerpt: excerpt,
       shotId: shot.id,

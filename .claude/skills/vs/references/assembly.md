@@ -16,8 +16,8 @@ complete edit. Zero video spend, which makes it the cheapest place to discover
 that the shot order is wrong.
 
 A shot with no still (chained, or text-only) inherits the previous shot's
-still, or gets a labelled slate. Output is `output/animatic.mp4`, or
-`output-draft/` under `--draft`.
+still, or gets a labelled slate. Outputs are immutable:
+`output/animatics/vNNN.mp4`, or the same structure under `output-draft/`.
 
 ## `vs review`: the QA gate
 
@@ -59,7 +59,7 @@ after regenerating any shot. The reasoning and the full filter chain are in
 ### `--latest`: always a watchable reel
 
 ```bash
-node dist/cli.js stitch films/<slug>/shots.json --latest   # -> output/film-latest.mp4
+node dist/cli.js stitch films/<slug>/shots.json --latest   # -> output/renders/latest/vNNN.mp4
 ```
 
 Per shot it prefers the final clip, falls back to the draft clip, then to a
@@ -85,13 +85,14 @@ any shareable cut opening on a non-black frame.
 ## `vs upscale`: 720p masters to a delivery resolution
 
 ```bash
-node dist/cli.js upscale films/<slug>/shots.json --shot s01-dusk-cliff s04-beam-sweeps
+node dist/cli.js upscale films/<slug>/shots.json --shot s01-final-arrival s10-beam-returns
 ```
 
-Lanczos upscale (`scale=-2:1080:flags=lanczos`), video re-encoded at
-`--crf 18`, audio copied, written to a sibling `output-1080/` so the 720p
-masters are untouched. It only sources complete final clips and skips anything
-already at or above the target height.
+Lanczos upscale (`scale=-2:1080:flags=lanczos`), video re-encoded at `--crf 18`,
+audio copied, written as numbered files under
+`output-1080/clips/<shot>/vNNN.mp4` so the 720p masters and earlier upscales are
+untouched. It only sources complete final clips and skips anything already at
+or above the target height.
 
 This is the free half of the resolution strategy: generate at 720p, then
 upscale **only the shots that survive the edit**. `--shot` is how you scope it
@@ -100,7 +101,7 @@ to those; without it, every clip is upscaled.
 ## `vs share`: a size-capped export
 
 ```bash
-node dist/cli.js share films/<slug>/output/film.mp4 --max-mb 49
+node dist/cli.js share films/<slug>/output/renders/final/v001.mp4 --max-mb 49
 ```
 
 Two-pass x264 sized to land just under the ceiling (default 49 MB, for
@@ -111,3 +112,7 @@ bitrate budget is `maxBytes × 8 / duration − audio`, with 3% headroom.
 Run it on the finished cut, and re-run it after any re-stitch so it carries the
 latest audio. WhatsApp re-compresses hard on an in-app video send, so send the
 result as a **Document** to preserve the quality you just paid for.
+
+Default stitch, animatic, upscale, and share destinations allocate the next
+`vNNN` file. An explicit `--output` is exact and refuses to replace an existing
+video.

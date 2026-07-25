@@ -36,29 +36,27 @@ One entry per generation, in film order:
 - **Continuity:** the bookkeeping a future you needs. What must not appear,
   which card follows, what this shot sets up or pays off.
 
-A real entry (`films/lighthouse/`, s03):
+A real entry (`films/lighthouse/`, s10):
 
 ```
-## s03 · `s03-lamp-ignites` · 6s · KEYFRAME
+## s10 · `s10-beam-returns` · 8s · KEYFRAME
 
-Refs: s03-lamp-ignites (first_frame). Interior lamp room, keeper at the Fresnel
-lens, hand on the brass ignition valve, lamp still dark.
-Beat 1: locked-off medium, camera completely static on a tripod. He cranks the
-brass valve open and strikes the igniter twice; hands at frame centre.
-Beat 2: cut to a macro on the burner, still locked. The mantle catches and
-flares white, light exploding out through the cut glass.
-Beat 3: cut to a static wide of the lamp room. The lens starts to rotate and
-throws hard bars of light across his face; he is left of frame, the lens right.
-Audio: gas hiss building, two flint strikes, an ignition thump, the deep
-mechanical turn of the gearing.
-Continuity: the film's one locked-camera shot, and the only warm interior. The
-camera lock is written into the prompt, not set with cameraFixed, because the
-shot has a first frame.
+Refs: s10-beam-returns (first_frame). Close two-shot over exposed gears as the
+keeper offers the brass key to the relief; service motor ready by the flywheel.
+Beat 1: locked close. She accepts the key; their eyes meet; he points it toward
+the hidden clutch release.
+Beat 2: cut low along the drive. He holds the clutch open while she couples the
+motor; their hands move in one rhythm.
+Beat 3: crane up through the stairwell. The Fresnel lens turns and amber light
+moves off the cliff, through rain, across both faces.
+Audio: key chime, alarm stopping, clutch clack, motor rising, gears catching.
+Continuity: first shared action; key ownership changes during the shot. Pays off
+the opposite methods established in s03 and the exposed solution in s09.
 ```
 
-The Continuity line is doing real work: it records why the ignition is the
-still point of a film that is otherwise all wind and motion, and it flags the
-one technical trap in the shot.
+The Continuity line is doing real work: it records the climax's relationship
+turn, the hero-prop handover, and the exact earlier setups this paid generation
+must resolve.
 
 ## Camera language
 
@@ -85,9 +83,9 @@ different stories.
   who steps toward it, where a character looks.
 - **Matched-pair mirroring.** When two shots are meant to rhyme, give them the
   same blocking and note the mirror in Continuity. The lighthouse film rhymes
-  s04 and s05: both end on the same beam, once from the tower looking out and
-  once from the sea looking back, which is what makes two people who never meet
-  read as connected.
+  s07 and s11: the same boat and reef geography changes from danger to clear
+  water, so the corrected course reads before the audience has to reason it
+  out.
 - **Emotional timing.** Build in the beat before the reaction. Stage the
   silence, not just the payoff.
 - **Open mid-action.** Enter a shot with movement already underway. Reserve a

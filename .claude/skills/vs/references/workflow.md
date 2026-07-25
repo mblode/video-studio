@@ -5,7 +5,8 @@ previs, animation, lighting, final render once. Every rung locks a decision
 cheaply before the next one spends. Skipping rungs is how a film gets
 regenerated three times.
 
-`films/lighthouse/README.md` walks this with real numbers for a five-shot film.
+`films/lighthouse/README.md` walks this with real numbers for the complete
+13-shot showcase.
 
 ## The ladder
 
@@ -22,7 +23,7 @@ regenerated three times.
 node dist/cli.js doctor                                        # keys, ffmpeg, Node, card tools
 node dist/cli.js generate films/<slug>/shots.json --dry-run    # payloads + lint, no network
 node dist/cli.js stills   films/<slug>/stills.json
-node dist/cli.js animatic films/<slug>/shots.json              # -> output/animatic.mp4
+node dist/cli.js animatic films/<slug>/shots.json              # -> output/animatics/v001.mp4
 node dist/cli.js generate films/<slug>/shots.json --draft
 node dist/cli.js review   films/<slug>/shots.json --draft      # -> review-draft/index.md
 node dist/cli.js generate films/<slug>/shots.json --max-cost 5
@@ -41,7 +42,7 @@ namespaces every artifact so it can never clobber the final:
 |              | final (default) | `--draft`          |
 | ------------ | --------------- | ------------------ |
 | manifest     | `tasks.json`    | `tasks.draft.json` |
-| clips        | `output/`       | `output-draft/`    |
+| clips        | `output/clips/<shot>/vNNN.mp4` | `output-draft/clips/<shot>/vNNN.mp4` |
 | chain frames | `frames/`       | `frames-draft/`    |
 | review sheet | `review/`       | `review-draft/`    |
 
@@ -69,13 +70,23 @@ usage is written back to the manifest so the model self-corrects. Details in
 ## Retakes and resumption
 
 ```bash
-node dist/cli.js generate films/<slug>/shots.json --shot s03-lamp-ignites --force
-node dist/cli.js stills   films/<slug>/stills.json --still s03-lamp-ignites --force
+node dist/cli.js generate films/<slug>/shots.json --shot s06-drive-breaks --force
+node dist/cli.js stills   films/<slug>/stills.json --still s06-drive-breaks --force
 ```
 
-`--shot` / `--still` narrow the run to specific ids; `--force` overwrites work
-that already succeeded. Without `--force`, completed shots are skipped, so
-re-running a whole film after a partial failure only pays for what is missing.
+`--shot` / `--still` narrow the run to specific ids. On video, `--force`
+submits the next immutable revision (`v001`, `v002`, …); it never replaces an
+earlier clip. A new revision becomes selected only after it downloads
+successfully, so a failed retake leaves the previous good take stitchable.
+Without `--force`, completed shots are skipped, so re-running a whole film after
+a partial failure only pays for what is missing.
+
+`vs status <shots-file>` shows the latest, selected, and available revisions.
+Roll back without moving media:
+
+```bash
+node dist/cli.js use films/<slug>/shots.json s06-drive-breaks v001
+```
 
 An in-flight task is **never resubmitted**: the manifest re-attaches by task id.
 4xx responses are not retried. Result URLs expire in about 24 hours, so

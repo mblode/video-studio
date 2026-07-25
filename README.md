@@ -11,6 +11,8 @@ it works in cheap steps: preview the whole edit from still images for $0, run a
 - **Set a limit:** `--max-cost` stops a run before it overspends.
 - **Pick up where you left off:** finished and in-flight shots are not submitted
   again.
+- **Keep every version:** retakes, renders, animatics, and exports get numbered
+  files instead of overwriting earlier work.
 
 ## Install
 
@@ -31,14 +33,15 @@ vs doctor
 
 ## Try it
 
-[`films/lighthouse/`](films/lighthouse/) is a complete five-shot example about
-a keeper lighting the lamp at nightfall. Run it top to bottom.
+[`films/lighthouse/`](films/lighthouse/) is a complete 13-shot fictional short
+with a treatment, style bible, beat sheet, screenplay, shot list, keyframes, and
+generation-ready JSON. Run it top to bottom.
 
 ```bash
 vs generate films/lighthouse/shots.json --dry-run   # free: check it, price it
 vs stills   films/lighthouse/stills.json            # cents: the reference images
 vs animatic films/lighthouse/shots.json             # $0: watch the whole edit
-vs generate films/lighthouse/shots.json --max-cost 5
+vs generate films/lighthouse/shots.json --max-cost 18
 vs stitch   films/lighthouse/shots.json --xfade 0.4
 ```
 
@@ -64,6 +67,7 @@ git; your films stay on your machine.
 | `vs animatic` | Cut the whole film from stills, no video spend |
 | `vs generate` | Generate the clips |
 | `vs status` | See what has finished |
+| `vs use` | Select or roll back a shot revision |
 | `vs download` | Fetch clips you already generated |
 | `vs review` | Contact sheet of frames, to spot problems |
 | `vs stitch` | Assemble the film |
@@ -73,6 +77,11 @@ git; your films stay on your machine.
 Useful flags: `--dry-run` to see what would happen, `--draft` for a cheap 480p
 pass that sits beside the real one, `--json` for scripts, `--verbose` when
 something breaks. Run `vs <command> --help` for the rest.
+
+Generated clips live at `output/clips/<shot>/vNNN.mp4`; finished cuts live at
+`output/renders/final/vNNN.mp4`. `--force` creates a new take, and `vs use`
+switches the selected take without deleting anything. `vs status` shows the
+latest, selected, and available revisions.
 
 Two things worth knowing. `vs stitch` on its own gives you a cut with sound
 effects but no music or voiceover, so pass `--music` and `--narration` for

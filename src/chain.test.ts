@@ -1,6 +1,7 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout } from "node:timers/promises";
 
 import { describe, expect, it } from "vitest";
 
@@ -30,6 +31,44 @@ describe("chainDependencies", () => {
 });
 
 describe("resolveChainFrame", () => {
+  it("names the cached frame after the selected revision", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vs-chain-version-"));
+    await writeFile(join(dir, "clip.mp4"), "video");
+    await setTimeout(5);
+    await mkdir(join(dir, "frames"), { recursive: true });
+    await writeFile(join(dir, "frames", "a-v002-last.png"), "frame");
+    const manifest: Manifest = {
+      entries: {
+        a: {
+          attempts: 2,
+          outputPath: "clip.mp4",
+          selectedVersion: 2,
+          shotId: "a",
+          status: "downloaded",
+          submittedAt: "2026-01-01T00:00:00.000Z",
+          taskId: "t2",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+          versions: [
+            {
+              outputPath: "clip.mp4",
+              status: "downloaded",
+              submittedAt: "2026-01-01T00:00:00.000Z",
+              taskId: "t2",
+              updatedAt: "2026-01-01T00:00:00.000Z",
+              version: 2,
+            },
+          ],
+        },
+      },
+      shotsFile: "shots.json",
+      version: 2,
+    };
+
+    await expect(
+      resolveChainFrame(shot("b", "a"), manifest, dir)
+    ).resolves.toBe(join("frames", "a-v002-last.png"));
+  });
+
   it("errors when the dependency is not downloaded", async () => {
     const dir = await mkdtemp(join(tmpdir(), "vs-chain-"));
     const manifest: Manifest = {
@@ -44,7 +83,7 @@ describe("resolveChainFrame", () => {
         },
       },
       shotsFile: "shots.json",
-      version: 1,
+      version: 2,
     };
     await expect(
       resolveChainFrame(shot("b", "a"), manifest, dir)
@@ -56,7 +95,7 @@ describe("resolveChainFrame", () => {
     const manifest: Manifest = {
       entries: {},
       shotsFile: "shots.json",
-      version: 1,
+      version: 2,
     };
     await expect(
       resolveChainFrame(shot("b", "a"), manifest, dir)

@@ -3,10 +3,11 @@ import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { lastFrameArgs, runFfmpeg } from "./ffmpeg.js";
-import { isComplete } from "./manifest.js";
+import { isComplete, selectedRevision } from "./manifest.js";
 import { passSuffix } from "./paths.js";
 import type { Pass } from "./paths.js";
 import type { Manifest, Shot } from "./types.js";
+import { versionLabel } from "./versions.js";
 
 /** Map of shot id -> the shot id it continues from. */
 export function chainDependencies(shots: Shot[]): Map<string, string> {
@@ -45,7 +46,12 @@ export async function resolveChainFrame(
   // on the draft hand-off, not the final's.
   const framesRel = `frames${passSuffix(pass)}`;
   const framesDir = join(shotsDir, framesRel);
-  const framePath = join(framesDir, `${depId}-last.png`);
+  const selectedVersion = selectedRevision(entry)?.version;
+  const frameName =
+    selectedVersion === undefined
+      ? `${depId}-last.png`
+      : `${depId}-${versionLabel(selectedVersion)}-last.png`;
+  const framePath = join(framesDir, frameName);
 
   const fresh =
     existsSync(framePath) &&
@@ -54,5 +60,5 @@ export async function resolveChainFrame(
     await mkdir(framesDir, { recursive: true });
     await runFfmpeg(lastFrameArgs(mp4Path, framePath));
   }
-  return join(framesRel, `${depId}-last.png`);
+  return join(framesRel, frameName);
 }

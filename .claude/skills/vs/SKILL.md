@@ -1,6 +1,6 @@
 ---
 name: vs
-description: Runs the video-studio `vs` CLI that turns a shot list into AI-generated video clips via BytePlus Seedance 2.0, with reference stills from Seedream or Nano Banana. Covers every command (init, doctor, stills, generate, status, download, animatic, review, stitch, upscale, share), the draft-to-final cost ladder, the audio mix, and model ids and rate limits. Use when the user wants to "run vs", "generate the film", "generate stills", "make the animatic", "stitch the cut", "check task status", "share the film", "upscale for delivery", "do a draft pass", "the mix sounds wrong", "which model should I use", or asks what a vs command or flag does. For authoring the shots.json/stills.json content itself, use seedance.
+description: Runs the video-studio `vs` CLI that turns a shot list into AI-generated video clips via BytePlus Seedance 2.0, with reference stills from Seedream or Nano Banana. Covers every command (init, doctor, stills, generate, status, use, download, animatic, review, stitch, upscale, share), immutable clip revisions, the draft-to-final cost ladder, the audio mix, and model ids and rate limits. Use when the user wants to "run vs", "generate the film", "generate stills", "make the animatic", "stitch the cut", "check task status", "roll back a take", "share the film", "upscale for delivery", "do a draft pass", "the mix sounds wrong", "which model should I use", or asks what a vs command or flag does. For authoring the shots.json/stills.json content itself, use seedance.
 ---
 
 # vs
@@ -27,8 +27,9 @@ spend, and `--dry-run` costs nothing.
 | `vs init <dir>`                | Scaffold a film (shots.json, stills.json, README) with 720p defaults    |
 | `vs doctor [task-id]`          | Check Node, `.env`, keys, ffmpeg, card tools; with an id, the endpoint shape |
 | `vs stills <stills-file>`      | Generate reference stills into `stills/`                                |
-| `vs generate <shots-file>`     | Submit, poll to completion, download clips to `output/`                 |
+| `vs generate <shots-file>`     | Submit, poll, download immutable clips to `output/clips/<shot>/vNNN.mp4` |
 | `vs status [shots-file-or-task-id]` | Show the manifest, or fetch one task from the API                  |
+| `vs use <shots-file> <shot> <version>` | Select or roll back a downloaded clip revision                |
 | `vs download [shots-file]`     | Fetch succeeded clips not yet on disk                                   |
 | `vs animatic <shots-file>`     | Story reel cut from the stills. $0 of video                             |
 | `vs review <shots-file>`       | Frame contact sheet plus delivered-vs-requested flags                   |
@@ -62,10 +63,13 @@ commands.
   applies even with `--yes`.
 - **Never resubmit an in-flight task.** The manifest re-attaches by id. Result
   URLs expire in about 24 hours, so `generate` downloads immediately.
+- **`--force` creates a new revision.** It never replaces a clip. A failed
+  retake leaves the previous downloaded revision selected.
 - **Title cards are macOS-only** (rasterised via `qlmanage` and `sips`), and
   ffmpeg is required for `animatic`, `review`, `stitch`, `upscale`, and
   chaining.
-- **`--output` resolves against the cwd**, not the film directory.
+- **`--output` resolves against the cwd** and refuses to replace an existing
+  video. Omit it for an automatically numbered render.
 
 ## Requirements
 

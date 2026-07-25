@@ -14,9 +14,10 @@ Seedance 2.0 prompt craft.
 - **IS NOT:** the story itself (`storycraft`), running the generations (`vs`),
   Nano Banana still prompts (`nano-banana-2`), or editing the CLI's TypeScript.
 
-`films/lighthouse/` is the worked example: five keyframe-anchored shots, a
-`promptPreamble`, title cards, no chaining. Read its `shots.json` before
-writing your own, and its `README.md` for what each part demonstrates.
+`films/lighthouse/` is the worked example: 13 keyframe-anchored shots backed by
+a full planning package, a `promptPreamble`, title cards, and no chaining. Read
+its `shots.json` before writing your own, and its `README.md` for what each part
+demonstrates.
 
 ## Read before writing
 
