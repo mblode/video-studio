@@ -9,6 +9,7 @@ const execFileAsync = promisify(execFile);
 export interface ClipProbe {
   duration: number;
   fps: number;
+  hasAudio: boolean;
   height: number;
   width: number;
 }
@@ -104,6 +105,7 @@ export async function probeClip(path: string): Promise<ClipProbe> {
     }[];
   };
   const video = data.streams?.find((s) => s.codec_type === "video");
+  const hasAudio = data.streams?.some((s) => s.codec_type === "audio") ?? false;
   if (!(video?.width && video.height)) {
     throw new VsError("probe_failed", `${path}: no video stream found`, {
       hint: "the file is audio-only or truncated: delete it and re-run `vs download <shots-file>` (or `vs generate ... --shot <id> --force`)",
@@ -121,6 +123,7 @@ export async function probeClip(path: string): Promise<ClipProbe> {
         ? Math.min(videoDuration, formatDuration || videoDuration)
         : formatDuration,
     fps: den ? (num ?? 25) / den : 25,
+    hasAudio,
     height: video.height,
     width: video.width,
   };

@@ -440,6 +440,7 @@ export async function runStitch(
       const path = clipPaths.get(item.shot.id) as string;
       clips.push({
         duration: probes.get(path)?.duration ?? 0,
+        hasAudio: probes.get(path)?.hasAudio ?? true,
         path,
         transition: item.shot.transition,
       });
@@ -455,6 +456,7 @@ export async function runStitch(
       });
       clips.push({
         duration: item.card.duration ?? 3,
+        hasAudio: true,
         path: mp4,
         transition: item.card.transition,
       });

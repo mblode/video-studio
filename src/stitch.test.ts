@@ -75,6 +75,22 @@ describe("buildStitchPlan", () => {
     expect(filter).toContain("acrossfade=d=0.4");
   });
 
+  it("adds matched silence when a re-encoded clip has no audio", () => {
+    const plan = buildStitchPlan(
+      [
+        { duration: 8, hasAudio: false, path: "/a/muted.mp4" },
+        { duration: 10, path: "/a/sound.mp4" },
+      ],
+      options({ xfade: 0.4 })
+    );
+    const args = plan.steps[0]?.args ?? [];
+    const filter = args[args.indexOf("-filter_complex") + 1] as string;
+
+    expect(args).toContain("anullsrc=channel_layout=stereo:sample_rate=44100");
+    expect(filter).toContain("[0:v][2:v]xfade");
+    expect(filter).toContain("[1:a][2:a]acrossfade");
+  });
+
   it("music adds a volume filter at the configured gain and a final fade", () => {
     const plan = buildStitchPlan(
       clips,

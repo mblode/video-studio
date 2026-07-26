@@ -4,6 +4,8 @@ export interface StitchClip {
   /** Absolute path of the mp4 (clip or rendered card). */
   path: string;
   duration: number;
+  /** Defaults to true. Muted clips get a matching silent input when re-encoded. */
+  hasAudio?: boolean;
   /** Crossfade INTO this clip, in seconds; falls back to the global xfade. */
   transition?: number;
 }
@@ -91,6 +93,38 @@ export function concatListContent(clips: StitchClip[]): string {
   return `${clips.map((clip) => `file '${clip.path.replaceAll("'", "'\\''")}'`).join("\n")}\n`;
 }
 
+function clipInputArgs(clips: StitchClip[]): {
+  args: string[];
+  audioInputs: number[];
+  inputCount: number;
+  videoInputs: number[];
+} {
+  const args: string[] = [];
+  const videoInputs: number[] = [];
+  const audioInputs: number[] = [];
+  let inputCount = 0;
+  for (const clip of clips) {
+    args.push("-i", clip.path);
+    videoInputs.push(inputCount);
+    if (clip.hasAudio === false) {
+      inputCount += 1;
+      args.push(
+        "-f",
+        "lavfi",
+        "-t",
+        clip.duration.toString(),
+        "-i",
+        "anullsrc=channel_layout=stereo:sample_rate=44100"
+      );
+      audioInputs.push(inputCount);
+    } else {
+      audioInputs.push(inputCount);
+    }
+    inputCount += 1;
+  }
+  return { args, audioInputs, inputCount, videoInputs };
+}
+
 /**
  * Gold-standard narration-over-music mix:
  * - Voiceover is brought forward: de-rumble high-pass, a gentle presence lift
@@ -105,7 +139,7 @@ export function concatListContent(clips: StitchClip[]): string {
  */
 function audioMixArgs(
   options: StitchOptions,
-  videoInputCount: number,
+  inputCount: number,
   totalDuration: number
 ): {
   extraInputs: string[];
@@ -115,7 +149,7 @@ function audioMixArgs(
   const extraInputs: string[] = [];
   const filterParts: string[] = [];
   const stereo = "aformat=channel_layouts=stereo:sample_rates=44100";
-  let inputIndex = videoInputCount;
+  let inputIndex = inputCount;
 
   let narrationLabel: string | null = null;
   let narrationKey: string | null = null;
@@ -216,7 +250,12 @@ export function buildStitchPlan(
     };
   }
 
-  const inputs = clips.flatMap((clip) => ["-i", clip.path]);
+  const {
+    args: inputs,
+    audioInputs,
+    inputCount,
+    videoInputs,
+  } = clipInputArgs(clips);
   const filterParts: string[] = [];
   let videoLabel: string;
   let audioLabel: string;
@@ -226,23 +265,25 @@ export function buildStitchPlan(
       clips.map((clip) => clip.duration),
       junctionFades
     );
-    let v = "[0:v]";
-    let a = "[0:a]";
+    let v = `[${videoInputs[0]}:v]`;
+    let a = `[${audioInputs[0]}:a]`;
     for (let i = 1; i < clips.length; i += 1) {
       const fade = Math.max(0.05, junctionFades[i - 1] ?? 0.05);
       const vOut = i === clips.length - 1 ? "[vx]" : `[vx${i}]`;
       const aOut = i === clips.length - 1 ? "[ax]" : `[ax${i}]`;
       filterParts.push(
-        `${v}[${i}:v]xfade=transition=fade:duration=${fade}:offset=${(offsets[i - 1] ?? 0).toFixed(3)}${vOut}`
+        `${v}[${videoInputs[i]}:v]xfade=transition=fade:duration=${fade}:offset=${(offsets[i - 1] ?? 0).toFixed(3)}${vOut}`
       );
-      filterParts.push(`${a}[${i}:a]acrossfade=d=${fade}${aOut}`);
+      filterParts.push(`${a}[${audioInputs[i]}:a]acrossfade=d=${fade}${aOut}`);
       v = vOut;
       a = aOut;
     }
     videoLabel = "[vx]";
     audioLabel = "[ax]";
   } else {
-    const segments = clips.map((_, i) => `[${i}:v][${i}:a]`).join("");
+    const segments = clips
+      .map((_, i) => `[${videoInputs[i]}:v][${audioInputs[i]}:a]`)
+      .join("");
     filterParts.push(`${segments}concat=n=${clips.length}:v=1:a=1[vx][ax]`);
     videoLabel = "[vx]";
     audioLabel = "[ax]";
@@ -258,7 +299,7 @@ export function buildStitchPlan(
   filterParts.push(
     `${audioLabel}volume=${options.sfxGainDb ?? 0}dB,aformat=channel_layouts=stereo:sample_rates=44100[base_a]`
   );
-  const mix = audioMixArgs(options, clips.length, totalDuration);
+  const mix = audioMixArgs(options, inputCount, totalDuration);
   filterParts.push(...mix.filterParts);
 
   return {

@@ -1,10 +1,12 @@
 # The Last Watch
 
-The complete example film: 13 shots, about 1 minute 50 seconds with title cards.
+The complete example film: 12 shots, about 1 minute 42 seconds with title cards,
+in stark black-and-white and an exact 1.10:1 almost-square frame.
 
-On his final night at a remote lighthouse, a veteran keeper shuts out the young
-relief sent to replace him. When the lamp drive fails during a storm, their old
-and new methods must work together before a boat reaches the reef.
+On his final night at a remote lighthouse, a veteran keeper ignores the worn
+drive link found by the relief sent to replace him. When it breaks under load,
+he must surrender the service key that lets her established emergency motor
+restore the beam before a boat loses the safe channel.
 
 The story is fictional and deliberately anonymous. It contains no real people,
 families, companies, places, or dates.
@@ -41,26 +43,32 @@ Then climb the cost ladder:
 # Free: validate every request and see the full price.
 vs generate films/lighthouse/shots.json --dry-run
 
-# Cents: generate the 13 literal opening frames.
+# Cents: generate the 12 literal 2200x2000 opening frames.
 vs stills films/lighthouse/stills.json
 
 # Free: watch the whole edit from held stills.
 vs animatic films/lighthouse/shots.json
 
-# About $7.78: test motion at 480p with audio off.
+# Conservative $7.19 ceiling estimate: test motion at 480p with audio off.
 vs generate films/lighthouse/shots.json --draft --max-cost 8
 vs review films/lighthouse/shots.json --draft
+vs stitch films/lighthouse/shots.json --draft --xfade 0.4
 
-# About $17.30: generate only the approved final clips.
+# Conservative $15.97 ceiling estimate: generate only approved final clips.
 vs generate films/lighthouse/shots.json --max-cost 18
 
 # Free: assemble the selected revisions.
 vs stitch films/lighthouse/shots.json --xfade 0.4
 ```
 
-Those prices are estimates for 13 eight-second clips. The CLI recalculates them
-from the exact model, duration, resolution, and token formula before charging.
-Use your own lower `--max-cost` if you want the run to stop earlier.
+Those prices are estimates for 12 eight-second clips. `adaptive` framing is
+conservatively priced as 16:9 even though the 1.10:1 frame has fewer pixels, so
+the real total should be lower. The CLI recalculates before charging. Use your
+own lower `--max-cost` if you want the run to stop earlier.
+
+Seedance may quantize an adaptive near-square request to a square output. Keep
+the compositions centred, then conform the assembled delivery to exact 11:10;
+the completed cheap pass uses a 638×580 centre crop.
 
 ## Nothing gets overwritten
 
@@ -69,7 +77,7 @@ Every paid take is permanent and sortable:
 ```text
 output/
   clips/
-    s01-final-arrival/
+    s01-last-arrival/
       v001.mp4
       v002.mp4
   renders/
@@ -84,7 +92,7 @@ output/
 
 ```bash
 vs generate films/lighthouse/shots.json \
-  --shot s06-drive-breaks --force --max-cost 2
+  --shot s05-pride-breaks-drive --force --max-cost 2
 ```
 
 The new take becomes selected only after it downloads successfully. If it
@@ -99,7 +107,7 @@ vs status films/lighthouse/shots.json
 Roll back instantly:
 
 ```bash
-vs use films/lighthouse/shots.json s06-drive-breaks v001
+vs use films/lighthouse/shots.json s05-pride-breaks-drive v001
 ```
 
 Stitches, animatics, upscales, and share exports also receive the next `vNNN`
@@ -120,21 +128,29 @@ while the final is still incomplete.
 
 ## Why this example holds together
 
-**One final image drives the film.** The old brass key and the relief’s modern
+**One final image drives the film.** The old iron key and the relief’s modern
 meter share a ledge while the inherited beam reaches an unknown boat. Every
 earlier prop and action prepares that image.
 
-**The two characters have opposite gifts.** He knows the tower by sound and
-touch. She measures and improvises. Each method fails alone before they combine
-in the climax.
+**One protagonist makes one costly choice.** The keeper wants to finish alone.
+He ignores a worn link, so his flaw causes the failure; the climax forces him
+to choose between guarding the key and guarding the light.
 
-**The storm pays for its screen time.** The counterweight shudders before the
-chain breaks. The boat appears before it needs rescue. The service motor is
-shown before it moves the lens. The key changes hands in frame.
+**Every solution is paid for.** The worn link and spare appear before the
+break. The motor case arrives in s01 and is shelved in s02 before returning in
+s08. The boat's engine and steering always work; the restored beam reveals safe
+water rather than magically repairing the vessel.
 
-**Every generation is independently anchored.** Each shot has one same-id
-`first_frame` still and matching seed. There are no chains, so all 13 shots can
-run concurrently and a retake never invalidates its neighbours.
+**The frame carries pressure.** Exact 2200×2000 keyframes drive Seedance's
+adaptive ratio, while vertical tower, stair, chain, and bodies make the
+almost-square composition feel claustrophobic. Orthochromatic monochrome,
+crushed shadows, halation, grain, and gate weave define the look without
+copying another film's shots or characters.
+
+**Every generation is independently anchored.** Each shot has one dedicated
+`first_frame` still and matching seed. Privacy-safe variants keep versioned
+filenames. There are no chains, so all 12 shots can run concurrently and a
+retake never invalidates its neighbours.
 
 **Text and score stay in post.** The video model produces only image, motion,
 ambience, and effects. Title cards are rendered by `vs stitch`; music and

@@ -3,13 +3,13 @@
     "title": "The Last Watch",
     "outputDir": "./output",
     "defaults": {
-      "ratio": "16:9",
+      "ratio": "1:1",
       "duration": 8,
       "resolution": "720p",
       "generateAudio": true,
       "watermark": false
     },
-    "promptPreamble": "Photorealistic cinematic silent short set at an unnamed lighthouse. Consistent characters: THE KEEPER is a lean weathered man in his late sixties with grey stubble, navy wool coat, faded red scarf and black boots; THE RELIEF is a woman in her early thirties with cropped dark curls, mustard-yellow oilskin, dark teal sweater and brown canvas tool roll. Tactile whitewashed stone, brass and steel machinery, real rain and sea spray, cold steel-blue exteriors against warm amber lamp light, restrained film grain. Natural realtime motion, precise physical action, no slow motion. Diegetic sound only. No readable labels, flags, brands, dialogue, subtitles, watermark or on-screen lettering."
+    "promptPreamble": "Photorealistic expressionist maritime cinema in stark black-and-white, composed for an exact almost-square 1.10:1 frame inherited from the first-frame keyframe. Orthochromatic tonal response renders skin pale, sky chalky, wool and wet rock nearly black. Hard practical light, deep crushed shadows, silver halation, coarse 35mm grain, slight gate weave, salt haze, real spray and condensation. Consistent characters: THE KEEPER is a lean weathered man in his late sixties with grey stubble, near-black wool coat, thick dark scarf and black boots; THE RELIEF is a woman in her early thirties with cropped dark curls, pale slick oilskin, black sweater and brown canvas tool roll. Claustrophobic, severe, human, and grounded. Realtime speed, brisk natural motion, precise physical action. Diegetic sound only. Keep every frame subtitle-free and free of flags, brands, dialogue, logos, watermarks, readable labels, and on-screen lettering."
   },
   "cards": [
     {
@@ -28,170 +28,169 @@
   ],
   "shots": [
     {
-      "id": "s01-final-arrival",
-      "prompt": "The opening frame matches the provided keyframe: a remote white lighthouse and cottage on a treeless headland at steel-blue dusk, lamp room dark, warm cottage window below.\nShot 1: wide aerial pushes toward the tower as wind drives the long grass in waves; the lighthouse holds the right third and the path enters lower left; <hard coastal wind, distant surf>.\nShot 2: cut inside the cottage to a close side view; THE KEEPER presses a small dark suitcase shut and snaps both latches, then looks through the wet window toward the tower; <two metal latch clicks, window frame rattling>.\nShot 3: cut to a long-lens exterior down the path; THE RELIEF walks uphill into the gust carrying her brown tool roll, small against the tower; the keeper watches from the window above; <boots on wet gravel, coat fabric cracking in wind>.",
-      "seed": 8101,
+      "id": "s01-last-arrival",
+      "prompt": "The opening frame matches the provided keyframe: a remote white lighthouse rises through a pearl-grey dusk, its lamp dark, while a wet path and cottage compress beneath it in the exact 1.10:1 frame.\nShot 1: wide exterior pushes toward the vertical tower as wind lashes long grass sideways; THE RELIEF climbs the lower path carrying her brown tool roll and a distinct compact dark motor case; <hard coastal wind, distant surf, boots on gravel>.\nShot 2: cut inside the cottage to a hard-lit hand close-up; THE KEEPER presses a small dark suitcase shut and snaps both latches; <two metal latch clicks, window frame rattling>.\nShot 3: cut to a long-lens close through wet glass; he sees the motor case first, then lifts his eyes to the relief approaching below; <coat cloth under wind, rain ticking glass>.",
+      "ratio": "adaptive",
+      "seed": 8201,
       "transition": 0.4,
       "references": [
         {
           "type": "image",
-          "url": "./stills/s01-final-arrival.png",
+          "url": "./stills-v2/s01-last-arrival.png",
           "role": "first_frame"
         }
       ]
     },
     {
-      "id": "s02-threshold",
-      "prompt": "The opening frame matches the provided keyframe: THE KEEPER and THE RELIEF face each other across the open iron tower door, rain behind her, warm entrance light behind him.\nShot 1: medium lateral track as she steps inside and offers her right hand; he studies it for one beat, then swings the heavy door shut against the gale; <wet boots, iron hinge groan, heavy door slam, wind dropping to a muffled roar>.\nShot 2: cut to a tight insert on the table; she reaches toward a ring of keys but his hand closes first around the large brass winding key and lifts it away; <keys scraping across wood, one bright brass chime>.\nShot 3: cut to a static two-shot divided by the spiral stair; he sets two enamel mugs far apart, points upward, and starts climbing while she picks up her tool roll and follows; <mug on wood, first iron footfalls>.",
-      "seed": 8102,
+      "id": "s02-refusal",
+      "prompt": "The opening frame matches the provided keyframe: THE KEEPER and THE RELIEF face each other across the open iron door in a cramped vertical two-shot, her dark motor case hanging at her side.\nShot 1: close wide-angle track as she offers her right hand; he takes the motor case instead, sets it against the stone wall and slams the door against the gale; <case on stone, iron hinge groan, door slam, wind muffling>.\nShot 2: cut to a tight table insert; she reaches toward the large dark iron service key, but his hand closes around it first and clips it to his belt; <keys scraping wood, one metal chime>.\nShot 3: cut to a locked two-shot split by the spiral stair; he sets two enamel mugs far apart and climbs while she looks once at the shelved case, then follows; <ceramic on wood, first iron footfalls>.",
+      "ratio": "adaptive",
+      "seed": 8202,
       "transition": 0.4,
       "references": [
         {
           "type": "image",
-          "url": "./stills/s02-threshold.png",
+          "url": "./stills-v2/s02-refusal.png",
           "role": "first_frame"
         }
       ]
     },
     {
-      "id": "s03-two-methods",
-      "prompt": "The opening frame matches the provided keyframe: both keepers stand in the cramped machinery room with the hanging counterweight and clockwork drive dividing them.\nShot 1: slow medium track right; THE KEEPER fits the brass key into the winding socket, hauls the counterweight upward and leans close to hear the gear rhythm; he occupies left frame, THE RELIEF watches from right; <chain lifting, steady clockwork tick, his measured breath>.\nShot 2: cut to a macro; she touches the grey meter probes to the drive housing, its unlabeled needle kicks as the counterweight gives a visible shudder; her precise hands fill frame; <two probe clicks, electrical buzz, chain knock>.\nShot 3: cut to a locked two-shot; he calmly moves her meter aside, closes the steel access panel and pockets the brass key; she looks from the panel to the still-trembling chain; <meter set on stone, panel latch snapping shut>.",
-      "seed": 8103,
+      "id": "s03-worn-link",
+      "prompt": "The opening frame matches the provided keyframe: in the machinery room, a vertical guarded weight chain divides THE KEEPER from THE RELIEF; his hands are empty and her grey vibration meter is ready.\nShot 1: low vertical track as he draws the large dark iron service key from inside his coat, fits it and winds the counterweight upward before leaning close to the gear rhythm; <chain lifting, even clockwork tick, his measured breath>.\nShot 2: cut to macro; she clamps the meter to the housing, its blank needle kicks, and she stops one visibly thinned chain link between gloved fingers; <clamp click, harsh vibration buzz, chain knock>.\nShot 3: cut to a locked confrontation; she holds a clean spare link beside the worn one, but he returns the spare to her roll, pockets the key and winds the weight one turn higher; <fresh link chime, ratchet clacking, strained metal knock>.",
+      "ratio": "adaptive",
+      "seed": 8203,
       "transition": 0.3,
       "references": [
         {
           "type": "image",
-          "url": "./stills/s03-two-methods.png",
+          "url": "./stills-v2/s03-worn-link-privacy-v2.png",
           "role": "first_frame"
         }
       ]
     },
     {
-      "id": "s04-warning",
-      "prompt": "The opening frame matches the provided keyframe: a small radio room under the lamp, both keepers lit by a flashing red warning lamp, rain coursing down the sea window.\nShot 1: tight push on the old radio and barometer; static bursts as the red lamp flashes and the barometer needle drops sharply, with no readable markings; <radio static, three alarm bell strikes, rain hammering glass>.\nShot 2: whip pan to THE RELIEF crossing to the window; THE KEEPER arrives beside her and wipes condensation with his sleeve; their faces hold on the same point offshore; <boots on boards, sleeve across wet glass, low wind moan>.\nShot 3: cut through the window to a compressed telephoto exterior; one small work boat rises between dark swells, then disappears into a wall of fog while the tower above remains unlit; <distant diesel engine, one low horn, surf building>.",
-      "seed": 8104,
+      "id": "s04-boat-approaches",
+      "prompt": "The opening frame matches the provided keyframe: a hard-lit radio room above a fogging sea window, both keepers small beneath it as storm rain erases the horizon.\nShot 1: tight push on the old radio and barometer; static detonates and the blank barometer needle drops; <radio static, warning bell, rain hammering glass>.\nShot 2: whip pan as THE RELIEF wipes condensation from the high window; THE KEEPER reaches her side and both see a small work boat still driving through the last visible channel; <sleeve on wet glass, steady distant diesel, one low horn>.\nShot 3: cut to compressed sea geography; the boat's wake points between black open water and white reef before fog closes over both, then the keeper turns and climbs toward the dark lamp; <surf building, iron stair footfalls>.",
+      "ratio": "adaptive",
+      "seed": 8204,
       "transition": 0.4,
       "references": [
         {
           "type": "image",
-          "url": "./stills/s04-warning.png",
+          "url": "./stills-v2/s04-boat-approaches.png",
           "role": "first_frame"
         }
       ]
     },
     {
-      "id": "s05-first-light",
-      "prompt": "The opening frame matches the provided keyframe: inside the lamp room, THE KEEPER stands at the great dark Fresnel lens with the brass key and ignition lever, THE RELIEF held behind him near the drive housing.\nShot 1: locked medium; he opens the fuel valve and strikes the igniter twice with exact practiced movements, never looking away from the burner; <gas hiss rising, two flint cracks>.\nShot 2: cut to a macro on the mantle; it catches in a clean amber flare and the cut glass fills with white-gold light; <soft ignition thump, glass ringing>.\nShot 3: cut to a wide circling with the lens; the clockwork engages and hard bars of light begin sweeping across both faces and the wet windows; he watches the beam proudly while she watches a small vibration in the drive below; <deep gears turning, wind against gallery glass>.",
-      "seed": 8105,
-      "transition": 0.3,
+      "id": "s05-pride-breaks-drive",
+      "prompt": "The opening frame matches the provided keyframe: inside the dark lamp room, THE KEEPER fills the foreground at the completely unlit Fresnel lens while THE RELIEF and her meter are trapped behind its vertical iron frame.\nShot 1: hard-lit close wide; he strikes the igniter and the lamp catches, then drives the dark iron key home and engages the clockwork as her meter needle hammers; <flint crack, ignition thump, gears rising, vibration buzz>.\nShot 2: hard cut to macro inside the guard; the established worn link stretches under load, parts cleanly and lashes into its steel guard while both keepers remain safely clear; the lamp dies at the exact instant of the snap; <chain strain, sharp steel snap, gears grinding down>.\nShot 3: hard cut outside to a tower profile in complete darkness; the lighthouse remains black with absolutely no glow and no beam while lightning only silhouettes cloud far offshore; <alarm bell, storm wind, surf exploding below>.",
+      "ratio": "adaptive",
+      "seed": 8205,
+      "transition": 0.15,
       "references": [
         {
           "type": "image",
-          "url": "./stills/s05-first-light.png",
+          "url": "./stills-v2/s05-pride-breaks-drive-privacy-v3.png",
           "role": "first_frame"
         }
       ]
     },
     {
-      "id": "s06-drive-breaks",
-      "prompt": "The opening frame matches the provided keyframe: low angle in the machinery room, the clockwork chain and flywheel moving fast above both keepers as storm light pulses through the narrow window.\nShot 1: low tracking close beside the spinning flywheel; lightning blasts the window white and both keepers look up as the mechanism bucks; <near thunder crack, metal frame shuddering>.\nShot 2: hard cut to macro; one worn chain link parts, the chain whips safely into its guard and the flywheel grinds to a stop; no one is near the moving chain; <chain snap, violent steel rattle, gear teeth grinding down>.\nShot 3: hard cut outside to an extreme wide over the cliff; the lighthouse beam stops mid-sweep and remains frozen against the inland rock while the sea falls dark behind it; <alarm bell ringing inside, storm wind, surf exploding below>.",
-      "seed": 8106,
-      "transition": 0.1,
-      "references": [
-        {
-          "type": "image",
-          "url": "./stills/s06-drive-breaks.png",
-          "role": "first_frame"
-        }
-      ]
-    },
-    {
-      "id": "s07-boat-in-dark",
-      "prompt": "The opening frame matches the provided keyframe: sea-level wide of the anonymous work boat in heavy black swell, weak wheelhouse lights left of frame, breaking reef water emerging ahead right, no lighthouse beam.\nShot 1: the camera rides a trough beside the hull as the boat drops off a crest and slams down, bow being pushed toward the white reef; <hull impact, diesel engine labouring, wind tearing spray>.\nShot 2: cut through streaming wheelhouse glass; an anonymous skipper searches the dark horizon, spins the wheel and sees no response as the compass face remains unreadable; <wheel chain running, rain on glass, engine revving unevenly>.\nShot 3: cut to a wide stern view; the skipper flashes a weak handheld signal lamp twice toward the unseen lighthouse while reef foam grows across the right half of frame; <two signal clicks, one horn blast, surf becoming louder>.",
-      "seed": 8107,
+      "id": "s06-reef-in-dark",
+      "prompt": "The opening frame matches the provided keyframe: sea-level almost-square geography places the working boat below, white reef above right and black open water obscured to the left, with no lighthouse beam.\nShot 1: camera rides beside the stern; the propeller churns strongly and the rudder swings as the hull drops into a trough; <steady diesel, propeller wash, hull impact>.\nShot 2: cut through streaming wheelhouse glass; the anonymous skipper turns the responsive wheel away from one breaker, then sees another white wall appear through fog on the new heading; <wheel chain running, rain on glass, engine holding speed>.\nShot 3: cut to a compressed stern wide; the skipper flashes a handheld signal twice toward the dark tower while reef foam closes on two sides; <two signal clicks, one horn blast, surf becoming louder>.",
+      "ratio": "adaptive",
+      "seed": 8306,
       "transition": 0.2,
       "references": [
         {
           "type": "image",
-          "url": "./stills/s07-boat-in-dark.png",
+          "url": "./stills-v2/s06-reef-in-dark.png",
           "role": "first_frame"
         }
       ]
     },
     {
-      "id": "s08-force-fails",
-      "prompt": "The opening frame matches the provided keyframe: THE KEEPER kneels at the stopped manual clutch, brass winding key in his right hand, THE RELIEF close behind, storm-lit machinery around them.\nShot 1: over his shoulder, pushing in; he jams the brass key into the manual socket and throws his weight against it while she points to the seized clutch; <key scraping into steel, strained gear creak, his breath>.\nShot 2: cut to a tight hand close-up; the clutch kicks backward, the key tears across his left palm and drops, a small clean cut appearing without gore; <metal kick, key clattering on stone>.\nShot 3: cut low and wide; he loses balance and she catches him under both shoulders before he strikes the floor, then wraps his injured left palm in cloth while he stares at the motionless wheel; <boots sliding, cloth tearing, alarm bell continuing>.",
-      "seed": 8108,
+      "id": "s07-hand-crank-fails",
+      "prompt": "The opening frame matches the provided keyframe: low in the cramped machinery room, THE KEEPER kneels at the manual hand-crank with the broken guarded chain overhead and THE RELIEF close behind.\nShot 1: over his shoulder, pushing in; he jams the dark iron service key into the hand-crank and throws his weight against the jammed train while she points to the broken chain; <key scraping steel, strained gear creak, his breath>.\nShot 2: cut to a tight hand close-up; the crank kicks backward, the key cuts across his left palm without gore and rings onto stone; <metal kick, key clattering, muffled boat horn>.\nShot 3: cut low and wide; he loses balance, she catches him under both shoulders, wraps his palm and returns the key to his belt while he stares at the frozen wheel; <boots sliding, cloth tearing, alarm bell continuing>.",
+      "ratio": "adaptive",
+      "seed": 8207,
       "transition": 0.2,
       "references": [
         {
           "type": "image",
-          "url": "./stills/s08-force-fails.png",
+          "url": "./stills-v2/s07-hand-crank-fails-privacy-v2.png",
           "role": "first_frame"
         }
       ]
     },
     {
-      "id": "s09-relief-acts",
-      "prompt": "The opening frame matches the provided keyframe: THE RELIEF kneels at the open drive panel with her grey meter and tool roll, THE KEEPER seated behind holding his wrapped left palm, flywheel stopped.\nShot 1: precise lateral track; without waiting, she opens the panel fully, follows a cable with one meter probe and finds a live auxiliary circuit; <panel bolts turning, probe clicks, a clean electrical tone>.\nShot 2: cut to macro on her hands; she removes a small cover to expose the manual clutch shaft, then spins the free shaft once with her fingers; <cover releasing, shaft clicking freely>.\nShot 3: cut overhead; she unrolls her tools and sets a compact unbranded service motor beside the flywheel, aligning its coupling; she looks up to him, and he looks from her motor to the brass key on the floor; <tool roll opening, motor set down, storm muffled by stone>.",
-      "seed": 8109,
+      "id": "s08-motor-needs-key",
+      "prompt": "The opening frame matches the provided keyframe: THE RELIEF hauls the same compact dark motor case up the tight spiral stair while THE KEEPER waits above with his left palm wrapped and the dark iron key on his belt.\nShot 1: fast upward tilt with her climb; she drops the case beside the stopped drive, snaps both latches and lifts out the compact service motor; <boots striking iron, case thump, two latch clicks>.\nShot 2: cut overhead; she bolts the motor to the service shaft and switches it on, but the lens remains locked to the broken weight train; <bolts turning, electric motor whine, locked gear chatter>.\nShot 3: cut to a hard-lit close; a dark iron clutch cover refuses to open, so she stops the motor, turns to the keeper and extends her empty hand toward the key on his belt; <motor falling silent, locked metal knock, second distant horn>.",
+      "ratio": "adaptive",
+      "seed": 8208,
       "transition": 0.2,
       "references": [
         {
           "type": "image",
-          "url": "./stills/s09-relief-acts.png",
+          "url": "./stills-v2/s08-motor-needs-key-privacy-v3.png",
           "role": "first_frame"
         }
       ]
     },
     {
-      "id": "s10-beam-returns",
-      "prompt": "The opening frame matches the provided keyframe: close two-shot over exposed gears as THE KEEPER offers the brass winding key across to THE RELIEF, his left palm wrapped, her service motor ready beside the flywheel.\nShot 1: locked close; she accepts the key with both hands, their eyes meet, then he points the key toward the hidden clutch release; <key ring chiming once, alarm bell stopping>.\nShot 2: cut low along the drive; he braces the clutch open with his good hand while she locks the motor coupling onto the shaft and turns it on, their hands moving in one rhythm; <clutch clack, electric motor rising, gears catching cleanly>.\nShot 3: crane upward through the stairwell into the lamp room; the Fresnel lens begins turning again and the amber beam moves off the cliff, sweeps through rain and crosses their faces below; <steady mechanical turn, glass resonance, wind>.",
-      "seed": 8110,
-      "transition": 0.3,
+      "id": "s09-trust-turns-light",
+      "prompt": "The opening frame matches the provided keyframe: close two-shot over the exposed service shaft, THE RELIEF holds one open palm between them, THE KEEPER grips the dark iron key, and the motor is already mounted.\nShot 1: completely locked hand close; after the second horn he looks from the frozen beam to her palm, unclips the key and places it there; <muffled horn, belt clip, one metal chime>.\nShot 2: cut low along the drive; he points out the concealed release, she unlocks the clutch while he holds the broken weight train clear, then she couples the motor; <key turning, clutch clack, coupling lock>.\nShot 3: crane upward through the stairwell as she starts the motor; the flywheel and Fresnel lens turn, and pale bars travel across both faces for the first time; <motor rising, gears catching cleanly, glass resonance, storm wind>.",
+      "ratio": "adaptive",
+      "seed": 8209,
+      "transition": 0.25,
       "references": [
         {
           "type": "image",
-          "url": "./stills/s10-beam-returns.png",
+          "url": "./stills-v2/s09-trust-turns-light-privacy-v2.png",
           "role": "first_frame"
         }
       ]
     },
     {
-      "id": "s11-course-corrected",
-      "prompt": "The opening frame matches the provided keyframe: high wide over storm water as the restored lighthouse beam reaches the work boat, with breaking reef directly behind its starboard side.\nShot 1: descend toward the wheelhouse as the beam catches it and holds for one bright sweep; the boat pitches but the safe open-water side becomes visible; <wind, engine strain, signal horn answering once>.\nShot 2: cut tight through wet glass; the anonymous skipper turns the wheel hand over hand and the bow swings decisively away from the reef; <wheel chain racing, engine note climbing>.\nShot 3: cut to a stern pullback; the boat clears the last white breaker and its wake straightens toward open black water, reef falling behind left while the distant beam completes another circle; <engine settling, hull cutting clean water, surf receding>.",
-      "seed": 8111,
+      "id": "s10-safe-water",
+      "prompt": "The opening frame matches the provided keyframe: a high almost-square sea wide joins distant lighthouse, working boat and black open channel with one pale beam while white reef breaks on the opposite side.\nShot 1: descend toward the wheelhouse as the restored beam completes one sweep, revealing the clean open-water side beyond the last breaker; <wind, steady diesel, one answering horn>.\nShot 2: cut tight through wet glass; the anonymous skipper turns the working wheel hand over hand and the bow responds immediately toward the revealed channel; <wheel chain racing, engine note climbing>.\nShot 3: cut to a stern pullback; the boat clears the last white breaker under its own power, its wake straightens into black deep water and the reef falls behind as the beam circles again; <hull cutting clean water, surf receding>.",
+      "ratio": "adaptive",
+      "seed": 8210,
       "transition": 0.4,
       "references": [
         {
           "type": "image",
-          "url": "./stills/s11-course-corrected.png",
+          "url": "./stills-v2/s10-safe-water.png",
           "role": "first_frame"
         }
       ]
     },
     {
-      "id": "s12-the-handover",
-      "prompt": "The opening frame matches the provided keyframe: pale dawn in the tower entrance, two enamel mugs together beside a closed logbook with no readable text, THE KEEPER raising the brass winding key above the table, THE RELIEF opposite.\nShot 1: locked still-life close; his bandaged left hand rests beside the logbook while his good right hand sets the key down, and her hand enters to take it; <ceramic mug set down, brass key touching wood>.\nShot 2: cut to a medium at the open door; he lifts his dark suitcase and steps into clear wet air while she remains inside gripping the key; their coats are rain-darkened; <door hinge, gulls returning, light wind>.\nShot 3: cut to a long exterior from down the path; he walks away, pauses at the bend and looks back once; she stands small in the lighthouse doorway, then closes it firmly; <boots on gravel, distant surf, door closing without a slam>.",
-      "seed": 8112,
+      "id": "s11-duty-handed-over",
+      "prompt": "The opening frame matches the provided keyframe: at silver dawn, two enamel mugs touch beside a blank closed logbook, THE KEEPER's bandaged hand and dark iron service key on one side, THE RELIEF opposite.\nShot 1: locked still-life close; his good hand pushes the key across worn wood and her hand closes around it beside the joined mugs; <ceramic set down, iron sliding on wood>.\nShot 2: cut to a hard white doorway medium; he lifts his dark suitcase and steps into wet clear air while she remains inside holding the key; <door hinge, gulls returning, light wind>.\nShot 3: cut to a long exterior compressed under the tower; he walks down the path, pauses at the bend and looks back once at the lens still turning on the emergency motor; <boots on gravel, distant surf, steady mechanism>.",
+      "ratio": "adaptive",
+      "seed": 8211,
       "transition": 0.6,
       "references": [
         {
           "type": "image",
-          "url": "./stills/s12-the-handover.png",
+          "url": "./stills-v2/s11-duty-handed-over-privacy-v2.png",
           "role": "first_frame"
         }
       ]
     },
     {
-      "id": "s13-next-watch",
-      "prompt": "The opening frame matches the provided keyframe: clear indigo at the next dusk inside the lamp room, THE RELIEF alone, brass winding key and grey meter sharing the foreground ledge, lamp dark behind her.\nShot 1: tight hand close; she fits the brass key, winds the drive, then stops with one hand on the housing and listens to the clockwork rhythm exactly as the keeper did; <chain lifting, even clockwork tick, soft wind>.\nShot 2: cut to a calm medium profile; satisfied, she starts the lamp and warm bars of light begin travelling across her face, key and meter remaining together in foreground; <ignition thump, gears settling into rhythm>.\nShot 3: cut outside to a wide aerial pulling away; the lighthouse beam completes a full sweep over a quiet dark sea and reaches one very distant anonymous vessel, the relief small behind the lamp-room glass; <steady wind, gentle surf, deep mechanical turn>.",
-      "seed": 8113,
+      "id": "s12-next-watch",
+      "prompt": "The opening frame matches the provided keyframe: at the next ink dusk, THE RELIEF stands in the windowless machinery room behind a repaired clockwork drive with one clean chain link visible, while the dark iron key and grey meter share the narrow foreground ledge.\nShot 1: macro on the repaired link moving through the guard; she clamps the meter to the housing, sees its blank needle settle evenly and removes the probe; <even clockwork, meter clamp click, chain running cleanly>.\nShot 2: cut upstairs into the single dark lamp room; in a hard-lit medium profile she winds with the dark iron key, stops with one hand on the housing, listens to the rhythm exactly once and starts the lamp; <ratchet, exact tick, ignition thump>.\nShot 3: cut outside to an almost-square aerial pulling away; the pale beam carves a full plane through salt haze and reaches a very distant anonymous vessel, the relief small behind the glass; <steady wind, gentle surf, deep mechanical turn>.",
+      "ratio": "adaptive",
+      "seed": 8212,
       "transition": 0.8,
       "references": [
         {
           "type": "image",
-          "url": "./stills/s13-next-watch.png",
+          "url": "./stills-v2/s12-next-watch-privacy-v2.png",
           "role": "first_frame"
         }
       ]

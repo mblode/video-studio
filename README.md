@@ -33,9 +33,10 @@ vs doctor
 
 ## Try it
 
-[`films/lighthouse/`](films/lighthouse/) is a complete 13-shot fictional short
+[`films/lighthouse/`](films/lighthouse/) is a complete 12-shot fictional short
 with a treatment, style bible, beat sheet, screenplay, shot list, keyframes, and
-generation-ready JSON. Run it top to bottom.
+generation-ready JSON. It uses stark black-and-white 1.10:1 keyframes. Run it
+top to bottom.
 
 ```bash
 vs generate films/lighthouse/shots.json --dry-run   # free: check it, price it
