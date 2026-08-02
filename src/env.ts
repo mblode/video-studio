@@ -67,3 +67,9 @@ export function requireGeminiApiKey(): string {
 export function geminiBaseUrl(): string {
   return process.env.GEMINI_BASE_URL ?? DEFAULT_GEMINI_BASE_URL;
 }
+
+/** Re-export ElevenLabs key helpers so doctor/env share one surface. */
+export {
+  requireElevenLabsApiKey,
+  requireElevenLabsVoiceId,
+} from "./elevenlabs.js";

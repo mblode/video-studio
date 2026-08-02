@@ -61,13 +61,13 @@ export const DEFAULT_FPS = 24;
 
 /**
  * Coarse duration bounds used for schema validation before a model is known.
- * CONFIRMED for Seedance 2.0 (4-15s, or -1 for auto). Per-model duration
- * support lives in src/models.ts: a future model with a wider range is a
- * registry entry, not an edit here, so keep these as the outer envelope.
+ * Outer envelope admits Seedance 2.5 (4-30s). Per-model duration support lives
+ * in src/models.ts and is enforced by `validateShotAgainstModel` at generate
+ * time (2.0 stays 4-15s).
  */
 export const DURATION_MIN = 4;
-/** 15s requires the Pro tier; the API is the authority. */
-export const DURATION_MAX = 15;
+/** Widest known Seedance max (2.5). Per-model caps are enforced at generate. */
+export const DURATION_MAX = 30;
 /** Pass -1 to let the model choose the clip length. */
 export const DURATION_AUTO = -1;
 /** Fallback clip length when neither the shot nor the film sets one. */
@@ -121,12 +121,11 @@ export const REFERENCE_ROLES = [
 export type KnownReferenceRole = (typeof REFERENCE_ROLES)[number];
 
 /**
- * Open on purpose. The five known roles still autocomplete and typo-check
- * inside object literals, but the type does not close the set, because new
- * Seedance releases keep adding roles (2.5 announces 3D-blockout and
- * green-screen-plate inputs) that map to nothing in this codebase yet. The
- * wire is a string; the model, not us, is the authority on which roles exist.
- * Validation of what we accept in shots.json stays a zod enum in src/shots.ts.
+ * Open on purpose for TypeScript call sites. Autocomplete covers the five
+ * KnownReferenceRole values this CLI builds payloads for. shots.json still
+ * validates against a closed zod enum in src/shots.ts — do not invent product
+ * demo roles (clay, green-screen, etc.) as wire `role` strings until ModelArk
+ * documents them.
  */
 // `string & {}` is the open-enum idiom: it keeps the literal autocomplete that
 // a bare `| string` would collapse. Deliberate, hence the suppression.
@@ -172,7 +171,11 @@ export interface Shot {
   /** Output filename, defaults to `${id}.mp4`. */
   output?: string;
   seed?: number;
-  /** Crossfade INTO this shot from the previous timeline item, in seconds (0.05 = hard cut). Overrides --xfade. */
+  /**
+   * Crossfade INTO this shot from the previous timeline item, in seconds
+   * (schema min 0.05). Omit and use `vs stitch --xfade 0` for a true hard cut.
+   * Overrides `--xfade` when set.
+   */
   transition?: number;
 }
 

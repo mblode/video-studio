@@ -45,7 +45,8 @@ Keep it to what is true of every frame. A detail belonging to one location goes
 in a palette block.
 
 The demo film's whole style block is its `film.promptPreamble` in
-`films/lighthouse/shots.json`, which is a good length reference.
+`films/lighthouse/shots.json` — a density reference for shared look language,
+not a template for clip duration.
 
 ## PALETTE blocks
 

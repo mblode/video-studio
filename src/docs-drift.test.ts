@@ -106,23 +106,52 @@ function globalFlags(program: Command): Set<string> {
   return flags;
 }
 
-/** Why this invocation would fail if a reader pasted it, or undefined. */
-function problemWith(program: Command, invocation: string): string | undefined {
-  const tokens = invocation.split(/\s+/u);
-  const [, name] = tokens;
-  if (!name || PLACEHOLDER.test(name) || name === "help") {
-    return;
-  }
-  const command = program.commands.find(
+function findCommand(parent: Command, name: string): Command | undefined {
+  return parent.commands.find(
     (candidate) =>
       candidate.name() === name || candidate.aliases().includes(name)
   );
-  if (!command) {
-    const known = program.commands.map((c) => c.name()).join(", ");
-    return `unknown command "${name}" (vs has: ${known})`;
+}
+
+/**
+ * Why this invocation would fail if a reader pasted it, or undefined.
+ * Walks nested Commander subcommands (`vs narrate assemble --placement …`).
+ */
+function problemWith(program: Command, invocation: string): string | undefined {
+  const tokens = invocation.split(/\s+/u).filter(Boolean);
+  if (tokens[0] !== "vs") {
+    return;
   }
-  const accepted = longFlags(command).union(globalFlags(program));
-  for (const token of tokens.slice(2)) {
+  let current: Command = program;
+  const path: string[] = [];
+  let index = 1;
+  while (index < tokens.length) {
+    const token = tokens[index] ?? "";
+    if (token.startsWith("-") || PLACEHOLDER.test(token)) {
+      break;
+    }
+    if (token === "help") {
+      return;
+    }
+    const next = findCommand(current, token);
+    if (!next) {
+      if (path.length === 0) {
+        const known = program.commands.map((c) => c.name()).join(", ");
+        return `unknown command "${token}" (vs has: ${known})`;
+      }
+      // Positional arg under the resolved command (e.g. a file path).
+      break;
+    }
+    current = next;
+    path.push(token);
+    index += 1;
+  }
+  if (path.length === 0) {
+    return;
+  }
+  const label = `vs ${path.join(" ")}`;
+  const accepted = longFlags(current).union(globalFlags(program));
+  for (const token of tokens.slice(index)) {
     if (!token.startsWith("--") || token === "--") {
       continue;
     }
@@ -130,7 +159,7 @@ function problemWith(program: Command, invocation: string): string | undefined {
     const flag = rawFlag.replace(/[.,;:)\]]+$/u, "");
     if (!accepted.has(flag)) {
       const known = [...accepted].toSorted().join(" ");
-      return `unknown flag "${flag}" on "vs ${name}" (accepts: ${known})`;
+      return `unknown flag "${flag}" on "${label}" (accepts: ${known})`;
     }
   }
 }
@@ -198,6 +227,19 @@ describe("documented commands match the CLI", () => {
     expect(problems[0]).toContain("fake.md:4");
     expect(problems[0]).toContain('unknown flag "--max-spend"');
     expect(problems[1]).toContain('unknown command "animate"');
+  });
+
+  it("resolves nested subcommand flags", () => {
+    const markdown = [
+      "```bash",
+      "vs narrate assemble films/x/shots.json --placement narration/placement.tsv --fade-shot s13",
+      "vs narrate assemble films/x/shots.json --no-such-flag",
+      "```",
+    ].join("\n");
+    const problems = driftProblems(program, "fake.md", markdown);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('unknown flag "--no-such-flag"');
+    expect(problems[0]).toContain("vs narrate assemble");
   });
 
   it("ignores prose that merely says vs", () => {

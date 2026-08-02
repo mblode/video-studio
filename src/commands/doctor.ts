@@ -131,12 +131,32 @@ function keyChecks(): DoctorCheck[] {
         },
     process.env.GEMINI_API_KEY
       ? {
-          label: "GEMINI_API_KEY set (Nano Banana / Gemini stills)",
+          label: "GEMINI_API_KEY set (Nano Banana stills / Lyria score)",
           status: "ok",
         }
       : {
-          detail: "only needed for stills with a gemini-* model",
+          detail: "needed for gemini-* stills and `vs score`",
           label: "GEMINI_API_KEY not set",
+          status: "skip",
+        },
+    process.env.ELEVENLABS_API_KEY || process.env.XI_API_KEY
+      ? {
+          label: "ELEVENLABS_API_KEY set (vs narrate)",
+          status: "ok",
+        }
+      : {
+          detail: "only needed for `vs narrate`",
+          label: "ELEVENLABS_API_KEY not set",
+          status: "skip",
+        },
+    process.env.ELEVENLABS_VOICE_ID
+      ? {
+          label: "ELEVENLABS_VOICE_ID set",
+          status: "ok",
+        }
+      : {
+          detail: "pass --voice to `vs narrate` if unset",
+          label: "ELEVENLABS_VOICE_ID not set",
           status: "skip",
         },
   ];

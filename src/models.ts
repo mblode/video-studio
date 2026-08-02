@@ -79,7 +79,32 @@ export const MODEL_IDS = {
   seedance20: "dreamina-seedance-2-0-260128",
   seedance20Fast: "dreamina-seedance-2-0-fast-260128",
   seedance20Mini: "dreamina-seedance-2-0-mini-260615",
+  /** Published on ModelArk console; API/Playground still marked coming soon. */
+  seedance25: "dreamina-seedance-2-5-260628",
 } as const;
+
+/** Seedance 2.5 console rate (USD / 1M tokens) without video input. */
+const SEEDANCE_25_USD_PER_MTOKEN = 10.7;
+
+/** CONFIRMED on the 2.5 console card: 4-30s. Auto (-1) is unconfirmed. */
+const SEEDANCE_25_DURATIONS: DurationSupport = {
+  auto: false,
+  kind: "range",
+  max: 30,
+  min: 4,
+};
+
+/** Product/console ceiling for 2.5 multimodal refs. */
+const SEEDANCE_25_REFERENCE_SLOTS: ReferenceSlots = {
+  first_frame: 1,
+  last_frame: 1,
+  reference_audio: 10,
+  reference_image: 30,
+  reference_video: 10,
+};
+
+/** Console card: 1 concurrent task, 60 RPM. */
+const SEEDANCE_25_LIMITS: RateLimits = { concurrency: 1, rpm: 60 };
 
 /**
  * USD per 1M output tokens. The docs quote $3.5-$7.7 for Seedance 2.0 without
@@ -111,18 +136,17 @@ const SEEDANCE_DURATIONS: DurationSupport = {
 };
 
 /**
- * Seedance's published reference roles. The count for the frame roles is
- * CONFIRMED (one opening frame, one closing frame, and frame mode cannot mix
- * with reference_* roles, which src/shots.ts enforces). The reference_* counts
- * are this project's soft cap: the docs publish no per-role maximum, but
- * quality degrades past ~5 references in total.
+ * Seedance 2.0 platform ceilings per role (hard errors in validateShotAgainstModel).
+ * Soft quality guidance (~5 total refs) lives in lintShotsFile, not here.
+ * Frame roles: one opening / one closing; frame mode cannot mix with
+ * reference_* (enforced in src/shots.ts).
  */
 const SEEDANCE_REFERENCE_SLOTS: ReferenceSlots = {
   first_frame: 1,
   last_frame: 1,
-  reference_audio: 1,
-  reference_image: 4,
-  reference_video: 1,
+  reference_audio: 3,
+  reference_image: 9,
+  reference_video: 3,
 };
 
 type RegistryEntry = Omit<ModelCapabilities, "family" | "id" | "known">;
@@ -227,6 +251,27 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
     limits: INDIVIDUAL_LIMITS,
     notes: "480p/720p only. Pricing not published; quoted at the fast rate.",
     referenceSlots: SEEDANCE_REFERENCE_SLOTS,
+    resolutions: ["480p", "720p"],
+  },
+  "seedance-2-5": {
+    aspectRatios: ASPECT_RATIOS,
+    audio: "optional",
+    billing: {
+      kind: "tokens",
+      // Quote the without-video ceiling so estimates never undersell. With
+      // video input the console lists 6.4 USD/M.
+      usdPerMTokenByResolution: {
+        "480p": SEEDANCE_25_USD_PER_MTOKEN,
+        "720p": SEEDANCE_25_USD_PER_MTOKEN,
+      },
+    },
+    confidence: "inferred",
+    durations: SEEDANCE_25_DURATIONS,
+    fps: DEFAULT_FPS,
+    limits: SEEDANCE_25_LIMITS,
+    notes:
+      "Console id + rates published; API/Playground marked coming soon (docs 1520757). 480p/720p only. Do not set as film.model default until a live create-task succeeds.",
+    referenceSlots: SEEDANCE_25_REFERENCE_SLOTS,
     resolutions: ["480p", "720p"],
   },
 };
@@ -413,8 +458,8 @@ function referenceProblems(
  * Pure capability check of a shot against its model. Returns problems, never
  * throws, and returns NOTHING for an unrecognised model: the alternative is
  * refusing to generate because this file has not been updated yet. The
- * hardcoded 4-15s assumption in src/types.ts is a schema-level envelope; this
- * is where a model with a different range gets to say so.
+ * hardcoded 4-30s envelope in src/types.ts is a schema-level ceiling; per-model
+ * caps (e.g. 2.0's 4-15s, 2.5's 4-30s) are enforced here.
  */
 export function validateShotAgainstModel(
   modelId: string | undefined,

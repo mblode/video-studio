@@ -5,8 +5,8 @@ JSON. Everything upstream decides WHAT happens; the shot list decides how each
 beat is framed, paced, and staged so the cut reads emotionally.
 
 This file covers the craft of the document. For how an entry becomes the
-`shots.json` prompt string (the `Shot N:` beat form, reference roles, anchoring
-mechanics), see `../../seedance/references/seedance-prompting.md` and
+`shots.json` prompt string (timestamp plan or `Shot N:` beat carriers, reference
+roles, anchoring mechanics), see `../../seedance/references/seedance-prompting.md` and
 `../../seedance/references/film-pipeline.md`. Do not restate that here.
 
 ## Contents
@@ -29,8 +29,8 @@ One entry per generation, in film order:
   continuity at a glance.
 - **Refs:** which stills the shot uses and in what role. This mirrors the
   beat-sheet decision; seedance owns what the roles mean.
-- **Beats:** three or four, each one a distinct camera setup and a distinct
-  verb, written as prose.
+- **Beats:** as many as the story needs, each one a distinct camera setup and a
+  distinct verb, written as prose.
 - **Camera:** the move for each beat, named in real cinematography terms.
 - **Audio:** diegetic sound effects and ambience only.
 - **Continuity:** the bookkeeping a future you needs. What must not appear,
@@ -94,13 +94,14 @@ different stories.
 
 ## Beats
 
-Three or four per generation, one clear action each. Do not cram thirty seconds
-of story into a six-second clip; if a beat needs more room, it is another
-generation. Each beat opens on its own camera setup, which is what produces an
-internal cut rather than one stretched gesture.
+Beat count follows the story, not a house number. Each beat is one clear action.
+Do not cram thirty seconds of story into a six-second clip; if a beat needs more
+room, it is another generation. Each beat opens on its own camera setup, which is
+what produces an internal cut rather than one stretched gesture.
 
-The exact syntax the beats compile into is seedance's; here the discipline is
-pacing.
+The exact syntax the beats compile into is seedance's: a timestamp plan or
+`Shot N:` form (see `../../seedance/references/seedance-prompting.md`). Here the
+discipline is pacing.
 
 ## Audio line discipline
 

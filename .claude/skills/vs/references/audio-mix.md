@@ -8,8 +8,37 @@ comes out is mastered to streaming loudness.
 **A plain `vs stitch` with no `--music` and no `--narration` is an SFX-only
 cut, and it will sound empty.** Per-shot prompts only ever ask the model for
 sound effects and ambience. The score and the voiceover are a post decision, by
-design, and they have to be passed on the command line every time. Re-stitch
-with both whenever any shot is regenerated.
+design. Re-stitch with both whenever any shot is regenerated.
+
+## Happy path
+
+```bash
+# 1. Instrumental bed (Lyria 3 Pro via GEMINI_API_KEY)
+vs score "Warm cinematic underscore, sparse piano and strings" \
+  --shots films/<slug>/shots.json
+
+# 2. Per-line VO from narration/lines.tsv (NN<TAB>text)
+vs narrate films/<slug>/narration/lines.tsv --voice <elevenlabs-voice-id>
+
+# 3. Place lines on the stitch timeline (line<TAB>shotId<TAB>offset)
+vs narrate assemble films/<slug>/shots.json \
+  --placement narration/placement.tsv \
+  --xfade 0.4 \
+  --fade-shot <closing-shot-id>
+
+# 4. Mix — --xfade must match assemble
+vs stitch films/<slug>/shots.json \
+  --xfade 0.4 \
+  --music films/<slug>/score-v001.mp3 \
+  --narration films/<slug>/narration.mp3
+```
+
+Use the same `--xfade` (and the same per-shot / per-card `transition`
+overrides) for `vs narrate assemble` and `vs stitch`. Both default to `0`
+(hard cuts / lossless concat when nothing else forces a re-encode).
+
+Bring-your-own files still work: any path to `--music` / `--narration` is fine.
+VO-forward cuts often want `--music-gain -18`; the CLI default remains `-12`.
 
 ## The chain
 
@@ -53,8 +82,8 @@ this prevents.
 | `--narration-gain`  | `0`     | Voice level before `loudnorm`                   |
 | `--sfx-gain`        | `0`     | Clip audio level (ignored by `--latest`)        |
 
-Raise `--music-gain` toward `-8` for a louder bed, lower it toward `-16` for a
-quieter one. Leave the mastering targets alone: they are the point of the
+Raise `--music-gain` toward `-8` for a louder bed, lower it toward `-18` for a
+VO-forward cut. Leave the mastering targets alone: they are the point of the
 chain, not a preference.
 
 `vs animatic` uses the same shape with `--music-gain` defaulting to `-18`,

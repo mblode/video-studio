@@ -94,11 +94,14 @@ Generated with `vs generate`. One shot is one paid task.
 ```
 
 **Per-shot fields.** `id` (required, `[a-z0-9_-]`, unique), `prompt`
-(required), `duration` (optional, 4 to 15 or `-1` for auto), `ratio`,
+(required), `duration` (optional, 4–30 schema envelope, or `-1` for auto;
+Seedance 2.0 still caps at 15 at generate time; 2.5 allows up to 30), `ratio`,
 `resolution` (only emitted when set), `cameraFixed` (bool, sends
 `camera_fixed`), `references`, `continueFrom` (an earlier shot id), `output`
 (filename, defaults `${id}.mp4`, must stay inside the film dir), `seed` (int),
-`transition` (0.05 to 2, the crossfade **into** this shot; 0.05 is a hard cut).
+`transition` (0.05 to 2, the crossfade **into** this shot). Omit it and use
+`--xfade 0` on stitch/assemble for a true hard cut; 0.05 is the minimum ffmpeg
+fade, not a cut.
 Downloaded takes default to `output/clips/<id>/vNNN.mp4`. A custom `output`
 value is preserved inside that shot's numbered revision directory.
 
@@ -129,6 +132,12 @@ A `references[]` entry has `type` (`image`, `video`, `audio`), `url`, and
 that shot's last frame with ffmpeg (cached in `frames/`) and submits it as this
 shot's `first_frame`.
 
+**Product ceilings (Seedance 2.5, Seed blog 2026-07-31):** 30 images, 10 video,
+10 audio per generation. The schema accepts only the wire roles above — no
+clay, green-screen, or region-edit roles until ModelArk documents them. Lint
+warns above **~12 references total** on 2.5 (~5 on 2.0); `continueFrom` counts
+as one.
+
 ## Hard rules (enforced)
 
 1. **Frame mode XOR reference mode.** A shot with `continueFrom`, a
@@ -146,7 +155,8 @@ shot's `first_frame`.
    resolved relative to the JSON file, and must stay inside the film directory
    (no `..`, no absolute paths). They are inlined as data URLs at submit.
 8. **`first_frame`/`last_frame` must be images.**
-9. **Duration** is an integer 4 to 15, or `-1`. 15s needs the Pro tier.
+9. **Duration** is an integer 4–30 (schema), or `-1`. Seedance 2.0 still
+   enforces 4–15 at generate; 2.5 allows up to 30.
 10. **Unknown keys are rejected**, everywhere. `cameraFixxed` is an error, not
     a silent no-op.
 
@@ -158,7 +168,7 @@ shot's `first_frame`.
 | ------------------------------------- | ---------------------------------------------------------------------------- |
 | No image reference on a shot          | Anchor every shot to a literal keyframe. Tighter, cheaper, far fewer glitches |
 | No `seed`                             | A draft and its final must share a seed or the final re-rolls the composition |
-| More than 5 references                | Quality degrades. `continueFrom` counts as one                               |
+| Too many references                   | Soft warn (~5 on 2.0, ~12 on 2.5). Product ceiling on 2.5 is 30/10/10; quality drops well before that. `continueFrom` counts as one |
 | Prompt over 400 words                 | Counting `promptPreamble`. Move shared style up, or split the shot           |
 | More than 2 slow-motion terms         | Seedance renders soft vocabulary literally. Use brisk verbs                  |
 | `cameraFixed` with an image reference | Rejected in image-to-video mode. Lock the camera in the prompt instead        |
@@ -174,12 +184,13 @@ shot's `first_frame`.
 - **Resolution:** `480p`, `720p`, `1080p`, `4k`. Generate at 720p and upscale
   for delivery; the reasoning and the 4K rate-limit trap are in
   `../../vs/references/models.md`.
-- **Duration:** integer 4 to 15, or `-1`.
+- **Duration:** integer 4–30 (schema), or `-1`. Seedance 2.0 still refuses
+  >15s at generate; 2.5 allows up to 30.
 - **Transition:** 0.05 to 2 seconds.
 
 Per-model support is narrower than these wire enums (the `fast` and `mini`
-models are 480p/720p only). `src/models.ts` is the authority and reports a
-mismatch as a warning, never a refusal.
+models are 480p/720p only; 2.5 is 480p/720p only). `src/models.ts` is the
+authority; `validateShotAgainstModel` refuses documented mismatches at generate.
 
 ## Validate
 

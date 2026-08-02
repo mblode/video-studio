@@ -23,6 +23,7 @@ import {
   saveManifest,
   upsertEntry,
 } from "../manifest.js";
+import { modelRateLimits, validateShotAgainstModel } from "../models.js";
 import type { Pass } from "../paths.js";
 import {
   buildTaskPayload,
@@ -216,6 +217,66 @@ function estimateRun(
   overrides?: PayloadOverrides
 ): CostEstimate {
   return estimateClips(shots.map((shot) => clipSpec(shot, file, overrides)));
+}
+
+/**
+ * Enforce per-model capability checks (duration, resolution, refs, …) that the
+ * schema envelope cannot express. Errors refuse the run; warnings print.
+ */
+function assertShotsCapable(
+  shots: Shot[],
+  file: ShotsFile,
+  overrides?: PayloadOverrides
+): void {
+  const errors: string[] = [];
+  for (const shot of shots) {
+    const modelId = overrides?.model ?? file.film.model ?? DEFAULT_VIDEO_MODEL;
+    const duration =
+      shot.duration ?? file.film.defaults?.duration ?? DEFAULT_DURATION;
+    const resolution = effectiveResolution(shot, file, overrides);
+    const problems = validateShotAgainstModel(modelId, {
+      duration,
+      generateAudio:
+        overrides?.generateAudio ?? file.film.defaults?.generateAudio,
+      ratio: shot.ratio ?? file.film.defaults?.ratio,
+      references: shot.references,
+      resolution,
+    });
+    for (const problem of problems) {
+      const message = `${shot.id}: ${problem.message}`;
+      if (problem.severity === "error") {
+        errors.push(message);
+      } else {
+        warn(message);
+      }
+    }
+  }
+  if (errors.length > 0) {
+    throw new VsError(
+      "invalid_input",
+      `shot capabilities do not match the model:\n  ${errors.join("\n  ")}`,
+      {
+        hint: "lower duration/resolution to what the model supports, or set film.model to a model that accepts these values",
+      }
+    );
+  }
+}
+
+/** Cap run concurrency by the tightest model/resolution limit among the shots. */
+function effectiveConcurrency(
+  requested: number,
+  shots: Shot[],
+  file: ShotsFile,
+  overrides?: PayloadOverrides
+): number {
+  let max = Math.max(1, requested);
+  for (const shot of shots) {
+    const modelId = overrides?.model ?? file.film.model ?? DEFAULT_VIDEO_MODEL;
+    const resolution = effectiveResolution(shot, file, overrides);
+    const allowed = modelRateLimits(modelId, resolution).concurrency;
+    max = Math.min(max, allowed);
+  }
+  return max;
 }
 
 /**
@@ -467,6 +528,7 @@ export async function runGenerate(
   for (const warning of lintShotsFile(file)) {
     warn(warning);
   }
+  assertShotsCapable(shots, file, overrides);
 
   if (options.dryRun) {
     // The ceiling is checked here too, so `--dry-run --max-cost` is a free
@@ -533,7 +595,18 @@ export async function runGenerate(
     }
   }
 
-  const limit = pLimit(options.concurrency);
+  const concurrency = effectiveConcurrency(
+    options.concurrency,
+    pending,
+    file,
+    overrides
+  );
+  if (concurrency < options.concurrency) {
+    note(
+      `capping concurrency at ${concurrency} for this model's rate limits (requested ${options.concurrency})`
+    );
+  }
+  const limit = pLimit(concurrency);
   const deps = chainDependencies(pending);
   const doneSignals = new Map(pending.map((shot) => [shot.id, deferred()]));
 

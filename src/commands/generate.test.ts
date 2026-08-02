@@ -256,6 +256,40 @@ describe("runGenerate", () => {
     expect((failure as Error & { hint?: string }).hint).toContain("a, b");
   });
 
+  it("refuses a 24s shot on Seedance 2.0 even though the schema allows 30", async () => {
+    const shotsPath = await scaffold([{ duration: 24, id: "a", prompt: "p" }]);
+    const failure = await runGenerate(shotsPath, opts({ dryRun: true }), {
+      client: fakeClient(),
+    }).catch((error: unknown) => error);
+
+    expect((failure as Error & { code?: string }).code).toBe("invalid_input");
+    expect(String(failure)).toMatch(/duration 24s/u);
+  });
+
+  it("accepts a 24s shot on Seedance 2.5 in dry-run", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vs-gen-"));
+    const shotsPath = join(dir, "shots.json");
+    const model = "dreamina-seedance-2-5-260628";
+    await writeFile(
+      shotsPath,
+      JSON.stringify({
+        film: { model, title: "T" },
+        shots: [{ duration: 24, id: "a", prompt: "p" }],
+      })
+    );
+    await runGenerate(shotsPath, opts({ dryRun: true }), {
+      client: fakeClient(),
+    });
+
+    const payload = reported.payloads.at(-1) as {
+      dryRun?: boolean;
+      payloads?: { payload: { duration: number; model: string } }[];
+    };
+    expect(payload.dryRun).toBe(true);
+    expect(payload.payloads?.[0]?.payload.duration).toBe(24);
+    expect(payload.payloads?.[0]?.payload.model).toBe(model);
+  });
+
   it("records the resolution actually sent, not a guessed default", async () => {
     const shotsPath = await scaffold([
       { id: "unset", prompt: "p" },

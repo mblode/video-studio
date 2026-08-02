@@ -87,8 +87,9 @@ baked-in one.
 ## Beats to shots.json
 
 Each generation in the beat sheet becomes one shot. Its prompt is the beats
-written in the `Shot N:` form (see `seedance-prompting.md`), preceded by a
-single line saying the opening frame matches the keyframe. Set `references`
+written as a timestamp plan or in `Shot N:` form (both are valid; see
+`seedance-prompting.md`), preceded by a single line saying the opening frame
+matches the keyframe. Set `references`
 (keyframe) or `continueFrom` (chain) per the beat sheet, then `duration`,
 `seed`, and `transition`.
 
@@ -98,8 +99,9 @@ without re-rolling the composition.
 
 ## Narration and titles
 
-Narration lines from the beat sheet are recorded separately and mixed at
-`vs stitch --narration`; they never appear in a shot prompt. Title and era text
+Narration lines from the beat sheet never appear in a shot prompt. Generate
+them with `vs narrate` from a `lines.tsv`, place them on the cut with
+`vs narrate assemble`, then mix at `vs stitch --narration`. Title and era text
 becomes `cards` entries placed `after` the relevant shot id.
 
 Cards consume real runtime, so the stitched film is always longer than the

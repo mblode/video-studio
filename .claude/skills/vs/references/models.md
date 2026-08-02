@@ -29,6 +29,7 @@ Confirmed on BytePlus ModelArk:
 | Seedance 2.0     | `dreamina-seedance-2-0-260128`    | The default. 480p to 4K                        |
 | Seedance 2.0 fast | `dreamina-seedance-2-0-fast-260128` | 480p/720p only. About 27% cheaper per token |
 | Seedance 2.0 mini | `dreamina-seedance-2-0-mini-260615` | 480p/720p only. Pricing not published       |
+| Seedance 2.5     | `dreamina-seedance-2-5-260628`    | Opt-in. 4–30s, 480p/720p, $10.7/M. API soon  |
 
 The same three ship on Volcengine with a `doubao-` prefix. Pre-2.0 releases
 (`seedance-1-0-pro-250528`, `seedance-1-5-pro-251215`) are in the registry with
@@ -82,11 +83,20 @@ queues, so plan the wall-clock time accordingly.
 
 ## Reference limits
 
-Platform ceiling per generation: **9 images, 3 videos, 3 audio**.
+Limits are model-specific. `src/models.ts` is the authority.
 
-`src/models.ts` sets a tighter advisory slot table (4 images, 1 video, 1 audio)
-and `lintShotsFile` warns above 5 references total, because quality degrades
-well before the platform ceiling. Both are warnings, not errors.
+**Seedance 2.0 (default).** Platform / registry hard ceiling per generation:
+**9 images, 3 videos, 3 audio** (`validateShotAgainstModel` errors above that).
+`lintShotsFile` soft-warns above **~5 references total** — quality degrades
+well before the ceiling.
+
+**Seedance 2.5.** Product/console ceiling (Seed blog, 2026-07-31): **30 images,
+10 video, 10 audio** per generation. `lintShotsFile` warns above **~12
+references total** — still well below the ceiling, but higher than 2.0 because
+2.5 demos routinely bind more media. API access is **coming soon** on ModelArk;
+keep the CLI default on 2.0 until create-task succeeds.
+
+Both checks are warnings, not errors.
 
 Frame mode and reference mode are mutually exclusive, which the schema does
 enforce. See `../../seedance/references/shots-schema.md`.
@@ -144,7 +154,20 @@ calibration was 22,446,900 tokens over 101 calls.
 
 ## Seedance 2.5
 
-Announced but, as of 2026-07-24, absent from the ModelArk model list and the
-pricing table. There is no id and no rate to quote, so do not invent either.
-When it lands, it is a new entry in the `src/models.ts` registry and nothing
-else has to change.
+| Field | Value |
+| --- | --- |
+| Id | `dreamina-seedance-2-5-260628` |
+| Duration | 4–30s (auto `-1` unconfirmed) |
+| Resolutions | 480p, 720p only |
+| Refs (product) | up to 30 images / 10 video / 10 audio |
+| Rate (no video in) | **$10.7 / M tokens** |
+| Rate (with video in) | $6.4 / M tokens |
+| Limits | **1 concurrent**, 60 RPM |
+| Confidence | `inferred` — console card + rates published (Seed blog 2026-07-31); ModelArk API still “coming soon” |
+
+Opt in with `film.model: "dreamina-seedance-2-5-260628"`. Do **not** make it the
+CLI default until a live create-task succeeds. Schema duration envelope is 4–30;
+`validateShotAgainstModel` still caps 2.0 films at 15s. Clay / green-screen /
+region edit are prompt conventions only — no new wire roles until ModelArk
+documents them. **Multi-round extend** for films >30s is product-only; out of
+CLI scope until the API ships.

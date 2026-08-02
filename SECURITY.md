@@ -13,10 +13,10 @@ within about a week.
 about where keys live and what ends up on disk.
 
 **Keys are read from the environment only.** `ARK_API_KEY` and the optional
-`GEMINI_API_KEY` are loaded from a `.env` file or the process environment. They
-are never written to a manifest, a log line, or an error message. `.env` is
-gitignored. `.env.example` holds names with empty values and is the canonical
-list of what the tool reads.
+`GEMINI_API_KEY`, `ELEVENLABS_API_KEY`, and `ELEVENLABS_VOICE_ID` are loaded
+from a `.env` file or the process environment. They are never written to a
+manifest, a log line, or an error message. `.env` is gitignored. `.env.example`
+holds names with empty values and is the canonical list of what the tool reads.
 
 **Manifests are designed to be committed, and are scrubbed for that.** Each film
 keeps a `tasks.json` recording task ids, parameters, and status so a generation

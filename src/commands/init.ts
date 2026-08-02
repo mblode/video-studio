@@ -171,9 +171,11 @@ vs doctor                          # confirm setup before any paid call
 vs stills ${slug}/stills.json      # 1. generate reference stills (Seedream)
 vs animatic ${slug}/shots.json     # 2. story reel from the stills, $0 of video
 vs generate ${slug}/shots.json     # 3. submit, poll, download clips (Seedance)
-vs status ${slug}/shots.json --refresh   # check in on running tasks
-vs download ${slug}/shots.json     # (re)download any clips not yet on disk
-vs stitch ${slug}/shots.json --xfade 0.4 # 4. assemble the film
+vs score "…instrumental bed…" --shots ${slug}/shots.json
+vs narrate ${slug}/narration/lines.tsv
+vs narrate assemble ${slug}/shots.json --placement narration/placement.tsv --xfade 0.4
+vs stitch ${slug}/shots.json --xfade 0.4 \\
+  --music ${slug}/score-v001.mp3 --narration ${slug}/narration.mp3
 \`\`\`
 
 Scripting it (no prompts): add \`--yes\` to \`vs generate\`; every command exits

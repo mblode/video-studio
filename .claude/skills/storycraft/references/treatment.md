@@ -73,7 +73,7 @@ Open with a single intro line stating RUNTIME and GENERATION COUNT, then write
 the acts or beats in order. The intro line is your honest scope statement.
 
 ```
-A short film in thirteen generations (~1:50). No dialogue. Wind, sea, radio,
+A short film in twelve generations (~1:42). No dialogue. Wind, sea, radio,
 and machinery carry it; any score is mixed in post.
 ```
 

@@ -189,6 +189,14 @@ export class GeminiClient {
     return Buffer.from(image.data, "base64");
   }
 
+  /**
+   * Raw `generateContent` for non-image modalities (e.g. Lyria music). Retries
+   * follow the same 429/5xx policy as `generateImage`.
+   */
+  async generateContent(model: string, body: unknown): Promise<unknown> {
+    return await this.request(model, body);
+  }
+
   /** Retries 429/5xx/network with backoff; other 4xx fail immediately. */
   private async request(model: string, body: unknown): Promise<unknown> {
     const url = `${this.base}/models/${encodeURIComponent(model)}:generateContent`;

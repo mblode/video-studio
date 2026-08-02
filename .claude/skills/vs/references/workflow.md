@@ -6,7 +6,7 @@ cheaply before the next one spends. Skipping rungs is how a film gets
 regenerated three times.
 
 `films/lighthouse/README.md` walks this with real numbers for the complete
-13-shot showcase.
+12-shot showcase.
 
 ## The ladder
 
@@ -27,8 +27,17 @@ node dist/cli.js animatic films/<slug>/shots.json              # -> output/anima
 node dist/cli.js generate films/<slug>/shots.json --draft
 node dist/cli.js review   films/<slug>/shots.json --draft      # -> review-draft/index.md
 node dist/cli.js generate films/<slug>/shots.json --max-cost 5
-node dist/cli.js stitch   films/<slug>/shots.json --xfade 0.4 --music score.mp3 --narration vo.mp3
+node dist/cli.js score    "instrumental bed prompt" --shots films/<slug>/shots.json
+node dist/cli.js narrate  films/<slug>/lines.tsv
+node dist/cli.js narrate  assemble films/<slug>/shots.json --xfade 0.4
+node dist/cli.js stitch   films/<slug>/shots.json --xfade 0.4 --music score-v001.mp3 --narration narration.mp3
 ```
+
+After generation, the full happy path adds post audio: `vs score` for the bed,
+`vs narrate` from `lines.tsv`, `vs narrate assemble --xfade …` to place lines on
+the cut, then `vs stitch --xfade … --music … --narration …` with the **same**
+`--xfade` (and the same per-shot `transition` overrides). A plain stitch is
+SFX-only.
 
 Commands run as `node dist/cli.js <cmd>` from the repo root, or as `vs` after
 `npm link`. Run `npm run build` first if `dist/` is stale.

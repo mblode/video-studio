@@ -1,6 +1,6 @@
 ---
 name: vs
-description: Runs the video-studio `vs` CLI that turns a shot list into AI-generated video clips via BytePlus Seedance 2.0, with reference stills from Seedream or Nano Banana. Covers every command (init, doctor, stills, generate, status, use, download, animatic, review, stitch, upscale, share), immutable clip revisions, the draft-to-final cost ladder, the audio mix, and model ids and rate limits. Use when the user wants to "run vs", "generate the film", "generate stills", "make the animatic", "stitch the cut", "check task status", "roll back a take", "share the film", "upscale for delivery", "do a draft pass", "the mix sounds wrong", "which model should I use", or asks what a vs command or flag does. For authoring the shots.json/stills.json content itself, use seedance.
+description: Runs the video-studio `vs` CLI that turns a shot list into AI-generated video clips via BytePlus Seedance 2.x, with reference stills from Seedream or Nano Banana, Lyria score beds, and ElevenLabs narration. Covers every command (init, doctor, stills, generate, score, narrate, status, use, download, animatic, review, stitch, upscale, share), immutable clip revisions, the draft-to-final cost ladder, the audio mix, and model ids and rate limits. Use when the user wants to "run vs", "generate the film", "generate stills", "make the animatic", "stitch the cut", "score the film", "narrate", "check task status", "roll back a take", "share the film", "upscale for delivery", "do a draft pass", "the mix sounds wrong", "which model should I use", or asks what a vs command or flag does. For authoring the shots.json/stills.json content itself, use seedance.
 ---
 
 # vs
@@ -28,6 +28,9 @@ spend, and `--dry-run` costs nothing.
 | `vs doctor [task-id]`          | Check Node, `.env`, keys, ffmpeg, card tools; with an id, the endpoint shape |
 | `vs stills <stills-file>`      | Generate reference stills into `stills/`                                |
 | `vs generate <shots-file>`     | Submit, poll, download immutable clips to `output/clips/<shot>/vNNN.mp4` |
+| `vs score <prompt>`            | Lyria 3 Pro instrumental bed → `score-vNNN.mp3` at the film root        |
+| `vs narrate <lines.tsv>`       | ElevenLabs per-line VO → `line-NN.mp3` (`NN\\ttext` TSV)                 |
+| `vs narrate assemble <shots>`  | Place lines on the stitch timeline → `narration.mp3`. `--xfade` must match stitch |
 | `vs status [shots-file-or-task-id]` | Show the manifest, or fetch one task from the API                  |
 | `vs use <shots-file> <shot> <version>` | Select or roll back a downloaded clip revision                |
 | `vs download [shots-file]`     | Fetch succeeded clips not yet on disk                                   |
@@ -54,8 +57,10 @@ commands.
 ## The things that bite
 
 - **A plain `vs stitch` with no `--music`/`--narration` is an SFX-only cut and
-  will sound empty.** Per-shot prompts only ask for sound effects. Pass both
-  tracks for anything shareable and re-stitch after regenerating a shot.
+  will sound empty.** Per-shot prompts only ask for sound effects. Happy path:
+  `vs score` → `vs narrate` → `vs narrate assemble --xfade …` →
+  `vs stitch --xfade … --music score-vNNN.mp3 --narration narration.mp3` (same
+  `--xfade` on both). Re-stitch after regenerating a shot.
 - **720p is the generation target, not 1080p.** Generate at 720p, then
   `vs upscale --shot <final-edit ids>` for delivery, which is free.
 - **Non-interactive runs need `--yes`**, or the command fails fast rather than
@@ -74,8 +79,9 @@ commands.
 ## Requirements
 
 `ARK_API_KEY` in `.env` for video (Seedance) and Seedream stills;
-`GEMINI_API_KEY` only if a stills file uses a `gemini-*` model. See
-`.env.example`.
+`GEMINI_API_KEY` for Nano Banana stills and `vs score` (Lyria);
+`ELEVENLABS_API_KEY` (+ `ELEVENLABS_VOICE_ID` or `--voice`) for `vs narrate`.
+See `.env.example`.
 
 ## Related skills
 

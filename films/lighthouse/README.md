@@ -1,7 +1,10 @@
 # The Last Watch
 
-The complete example film: 12 shots, about 1 minute 42 seconds with title cards,
-in stark black-and-white and an exact 1.10:1 almost-square frame.
+The complete **public** example film: 12 shots, about 1 minute 42 seconds with
+title cards, in stark black-and-white and an exact 1.10:1 almost-square frame.
+Authored for Seedance **2.0** with short multi-beat prompts. Use it as a
+schema and pipeline demo, not as a fixed shot-length or beat-count template for
+Seedance 2.5 (story units pick duration within the model envelope).
 
 On his final night at a remote lighthouse, a veteran keeper ignores the worn
 drive link found by the relief sent to replace him. When it breaks under load,
@@ -159,12 +162,14 @@ narration are mixed there too.
 ## Add sound
 
 A plain stitch contains wind, sea, machinery, and boat audio but no score or
-voiceover. Add your own tracks:
+voiceover. Generate beds with `vs score` / `vs narrate`, or pass your own files:
 
 ```bash
+vs score "Sparse coastal underscore, low strings" --shots films/lighthouse/shots.json
+# optional: vs narrate … / vs narrate assemble …
 vs stitch films/lighthouse/shots.json \
   --xfade 0.4 \
-  --music score.mp3 \
+  --music films/lighthouse/score-v001.mp3 \
   --narration narration.mp3
 ```
 

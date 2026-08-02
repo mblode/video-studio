@@ -15,6 +15,13 @@ async function writeShotsFile(content: unknown): Promise<string> {
 
 const validShot = { id: "shot-01", prompt: "a quiet street" };
 
+const makeImageRefs = (count: number) =>
+  Array.from({ length: count }, (_, i) => ({
+    role: "reference_image" as const,
+    type: "image" as const,
+    url: `./s${i}.png`,
+  }));
+
 describe("loadShotsFile", () => {
   it("accepts a minimal valid file", async () => {
     const path = await writeShotsFile({
@@ -25,12 +32,21 @@ describe("loadShotsFile", () => {
     expect(file.shots).toHaveLength(1);
   });
 
-  it("rejects duration outside 4-15", async () => {
+  it("rejects duration outside the 4-30 schema envelope", async () => {
     const path = await writeShotsFile({
       film: { title: "T" },
-      shots: [{ ...validShot, duration: 16 }],
+      shots: [{ ...validShot, duration: 31 }],
     });
-    await expect(loadShotsFile(path)).rejects.toThrow(/duration|15/u);
+    await expect(loadShotsFile(path)).rejects.toThrow(/duration|30/u);
+  });
+
+  it("accepts duration 24 inside the schema envelope (model caps apply at generate)", async () => {
+    const path = await writeShotsFile({
+      film: { title: "T" },
+      shots: [{ ...validShot, duration: 24 }],
+    });
+    const file = await loadShotsFile(path);
+    expect(file.shots[0]?.duration).toBe(24);
   });
 
   it("rejects duplicate shot ids", async () => {
@@ -171,16 +187,17 @@ describe("v2 validation", () => {
     );
   });
 
-  it("accepts duration -1 and 15, rejects 0 and 16", async () => {
+  it("accepts duration -1, 15, and 30; rejects 0 and 31", async () => {
     const ok = await writeShotsFile({
       film: { title: "T" },
       shots: [
         { duration: -1, id: "a", prompt: "p" },
         { duration: 15, id: "b", prompt: "p" },
+        { duration: 30, id: "c", prompt: "p" },
       ],
     });
     await expect(loadShotsFile(ok)).resolves.toBeDefined();
-    for (const duration of [0, 16]) {
+    for (const duration of [0, 31]) {
       const bad = await writeShotsFile({
         film: { title: "T" },
         shots: [{ duration, id: "a", prompt: "p" }],
@@ -208,7 +225,7 @@ describe("v2 validation", () => {
     await expect(loadShotsFile(ok)).resolves.toBeDefined();
   });
 
-  it("lintShotsFile warns on >5 refs and deep chains", async () => {
+  it("lintShotsFile warns on >5 refs for Seedance 2.0 (default model)", async () => {
     const { lintShotsFile } = await import("./shots.js");
     const refs = Array.from({ length: 6 }, (_, i) => ({
       role: "reference_image" as const,
@@ -228,6 +245,68 @@ describe("v2 validation", () => {
     expect(warnings.some((w) => w.includes("6 references"))).toBe(true);
     expect(warnings.some((w) => w.includes("chain depth 4"))).toBe(true);
     expect(warnings.filter((w) => w.includes("continueFrom"))).toHaveLength(4);
+  });
+
+  it("lintShotsFile uses a ~12 ref soft cap on Seedance 2.5", async () => {
+    const { lintShotsFile } = await import("./shots.js");
+    const film25 = { model: "dreamina-seedance-2-5-260628", title: "T" };
+    const ok = lintShotsFile({
+      film: film25,
+      shots: [{ id: "a", prompt: "p", references: makeImageRefs(6), seed: 1 }],
+    });
+    expect(ok.some((w) => w.includes("references"))).toBe(false);
+    const heavy = lintShotsFile({
+      film: film25,
+      shots: [{ id: "b", prompt: "p", references: makeImageRefs(13), seed: 1 }],
+    });
+    expect(heavy.some((w) => w.includes("13 references"))).toBe(true);
+    expect(heavy.some((w) => w.includes("~12"))).toBe(true);
+  });
+
+  it("lintShotsFile warns when a long shot lacks a beat carrier", async () => {
+    const { lintShotsFile } = await import("./shots.js");
+    const bare = lintShotsFile({
+      film: { title: "T" },
+      shots: [
+        {
+          duration: 24,
+          id: "long",
+          prompt: "She walks toward the tower in the wind.",
+          references: makeImageRefs(1),
+          seed: 1,
+        },
+      ],
+    });
+    expect(bare.some((w) => w.includes("no beat carrier"))).toBe(true);
+
+    const stamped = lintShotsFile({
+      film: { title: "T" },
+      shots: [
+        {
+          duration: 24,
+          id: "ok",
+          prompt:
+            "0–8s: she climbs the path. 9–16s: the key turns. 17–24s: the door opens.",
+          references: makeImageRefs(1),
+          seed: 1,
+        },
+      ],
+    });
+    expect(stamped.some((w) => w.includes("no beat carrier"))).toBe(false);
+
+    const short = lintShotsFile({
+      film: { title: "T" },
+      shots: [
+        {
+          duration: 6,
+          id: "brief",
+          prompt: "A latch clicks shut.",
+          references: makeImageRefs(1),
+          seed: 1,
+        },
+      ],
+    });
+    expect(short.some((w) => w.includes("no beat carrier"))).toBe(false);
   });
 
   it("lintShotsFile warns on continueFrom and on a missing image anchor", async () => {

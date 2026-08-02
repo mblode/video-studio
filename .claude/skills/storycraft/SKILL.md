@@ -14,7 +14,12 @@ Read `references/story-principles.md` first for any story question. Then write t
 
 ## The pipeline
 
-These films are short (30 seconds to 3 minutes, roughly 5 to 15 generations of 4 to 15s each), and every generation costs money, so the story must be proven on paper before any spend. The documents are a cost ladder of their own: cheap decisions lock before expensive ones. The references below use `films/lighthouse/` as the worked example throughout.
+These films are short (about 30 seconds to a few minutes). Generation count and
+per-clip duration follow the story and the model envelope (Seedance 2.0: up to
+15s; 2.5: up to 30s with optional extend) — do not force a fixed shot length.
+Every generation costs money, so the story must be proven on paper before any
+spend. The documents are a cost ladder of their own: cheap decisions lock
+before expensive ones. Public example: `films/lighthouse/`.
 
 ```text
 Storycraft progress:

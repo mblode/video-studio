@@ -55,8 +55,21 @@ Run `npm run verify` (lint, typecheck, tests) before a commit. Narrower tiers:
   poster frame. Keep any shareable cut opening on a non-black frame.
 - **A plain `vs stitch` with no `--music`/`--narration` is an SFX-only cut and
   will sound empty.** Per-shot prompts only ever ask for SFX and ambience; the
-  score and voiceover are mixed at stitch time. Re-stitch with both whenever a
+  score and voiceover are mixed at stitch time (`vs score` / `vs narrate` /
+  `vs narrate assemble`, then pass the files). Re-stitch with both whenever a
   shot is regenerated.
+- **`vs narrate assemble --xfade` must match `vs stitch --xfade`.** Both default
+  to `0`; if you crossfade the cut, use the same value (and per-shot
+  `transition` overrides) on assemble so narration lands on the right timeline.
+- **Seedance 2.5 is opt-in.** Set `film.model` to `dreamina-seedance-2-5-260628`
+  explicitly; the CLI default stays on 2.0 until the API is live. See
+  `references/models.md` in the vs skill.
+- **`vs narrate assemble --xfade` must match `vs stitch --xfade`.** Both default
+  to `0`; if you crossfade the cut, use the same value (and per-shot
+  `transition` overrides) on assemble so narration lands on the right timeline.
+- **Seedance 2.5 is opt-in.** Set `film.model` to `dreamina-seedance-2-5-260628`
+  explicitly; the CLI default stays on 2.0 until the API is live. See
+  `references/models.md` in the vs skill.
 - **Title cards are macOS-only.** This machine's ffmpeg lacks `drawtext`, so
   cards are rasterised through `qlmanage` and `sips`. `--font` fails loudly for
   a family that is not installed, because qlmanage substitutes a default face

@@ -6,14 +6,17 @@ import { runDoctor } from "./commands/doctor.js";
 import { runDownload } from "./commands/download.js";
 import { runGenerate } from "./commands/generate.js";
 import { runInit } from "./commands/init.js";
+import { runNarrate, runNarrateAssemble } from "./commands/narrate.js";
 import { setJsonMode, setVerbose } from "./commands/output.js";
 import { runReview } from "./commands/review.js";
+import { runScore } from "./commands/score.js";
 import { runShare } from "./commands/share.js";
 import { runStatus } from "./commands/status.js";
 import { runStills } from "./commands/stills.js";
 import { runStitch } from "./commands/stitch.js";
 import { runUpscale } from "./commands/upscale.js";
 import { runUse } from "./commands/use.js";
+import { ELEVEN_V3_MODEL } from "./elevenlabs.js";
 
 // Title cards are rasterised by family name, so the default has to be a face
 // every machine already has. Pass --font to use your own (it must be installed;
@@ -54,7 +57,7 @@ export function buildProgram(): Command {
   program
     .name("vs")
     .description(
-      "CLI that turns a shot list into AI-generated video clips via BytePlus ModelArk Seedance 2.0"
+      "CLI that turns a shot list into AI-generated video clips via BytePlus ModelArk Seedance 2.x"
     )
     .version(packageInfo().version);
 
@@ -348,6 +351,130 @@ export function buildProgram(): Command {
         dryRun: options.dryRun,
         frames: Number(options.frames),
         output: options.output,
+      });
+    });
+
+  program
+    .command("score")
+    .description(
+      "Generate a continuous instrumental score bed via Google Lyria 3 Pro (GEMINI_API_KEY)"
+    )
+    .argument("<prompt>", "score prompt (instrumental cinematic bed)")
+    .option(
+      "--shots <file>",
+      "shots.json used to estimate program length and place score-vNNN.mp3 at the film root"
+    )
+    .option(
+      "--duration <seconds>",
+      "target bed length in seconds (overrides the shots.json estimate)"
+    )
+    .option(
+      "--clip",
+      "use Lyria 3 Clip (~30s, cheaper) to iterate the prompt",
+      false
+    )
+    .option(
+      "--output <file>",
+      "exact output file, relative to the cwd (default score-vNNN.mp3 at the film root)"
+    )
+    .option(
+      "--dry-run",
+      "print the Lyria request without calling the API",
+      false
+    )
+    .action(async (prompt: string, options) => {
+      await runScore({
+        clip: options.clip,
+        dryRun: options.dryRun,
+        duration: options.duration ? Number(options.duration) : undefined,
+        output: options.output,
+        prompt,
+        shots: options.shots,
+      });
+    });
+
+  const narrate = program
+    .command("narrate")
+    .description(
+      "Generate ElevenLabs narration from a TSV (NN\\ttext) or --text-file scratch VO"
+    )
+    .argument("[lines-file]", "path to lines.tsv (omit with --text-file)")
+    .option(
+      "--text-file <path>",
+      "monolith scratch VO from a plain text file (ignores lines TSV)"
+    )
+    .option("--voice <id>", "ElevenLabs voice id (or set ELEVENLABS_VOICE_ID)")
+    .option("--model <id>", "ElevenLabs model id", ELEVEN_V3_MODEL)
+    .option(
+      "--output <path>",
+      "output dir for line-NN.mp3, or scratch mp3 path with --text-file"
+    )
+    .option("--force", "regenerate lines that already exist on disk", false)
+    .option(
+      "--dry-run",
+      "print the TTS requests without calling the API",
+      false
+    )
+    .action(async (linesFile: string | undefined, options) => {
+      await runNarrate(linesFile, {
+        dryRun: options.dryRun,
+        force: options.force,
+        model: options.model,
+        outputDir: options.textFile ? undefined : options.output,
+        outputFile: options.textFile ? options.output : undefined,
+        textFile: options.textFile,
+        voice: options.voice,
+      });
+    });
+
+  narrate
+    .command("assemble")
+    .description(
+      "Lay line-NN.mp3 files onto the stitch timeline into narration.mp3"
+    )
+    .argument("<shots-file>", "path to shots.json")
+    .option(
+      "--placement <file>",
+      "placement TSV (line\\tshotId\\toffset), relative to the film dir",
+      "narration/placement.tsv"
+    )
+    .option(
+      "--output <file>",
+      "exact output file, relative to the cwd (default narration.mp3 at the film root)"
+    )
+    .option(
+      "--fade-shot <id>",
+      "fail if the last line overlaps this shot's end fade"
+    )
+    .option(
+      "--fade-lead <seconds>",
+      "seconds before fade-shot end that must stay clear",
+      "1.5"
+    )
+    .option(
+      "--draft",
+      "probe draft clips (output-draft / tasks.draft.json)",
+      false
+    )
+    .option(
+      "--xfade <seconds>",
+      "default crossfade INTO each segment when transition is unset (must match vs stitch --xfade)",
+      "0"
+    )
+    .option(
+      "--dry-run",
+      "print the timeline and ffmpeg plan without writing audio",
+      false
+    )
+    .action(async (shotsFile: string, options) => {
+      await runNarrateAssemble(shotsFile, {
+        draft: options.draft,
+        dryRun: options.dryRun,
+        fadeLead: Number(options.fadeLead),
+        fadeShot: options.fadeShot,
+        output: options.output,
+        placement: options.placement,
+        xfade: Number(options.xfade),
       });
     });
 

@@ -43,7 +43,7 @@ vs generate films/lighthouse/shots.json --dry-run   # free: check it, price it
 vs stills   films/lighthouse/stills.json            # cents: the reference images
 vs animatic films/lighthouse/shots.json             # $0: watch the whole edit
 vs generate films/lighthouse/shots.json --max-cost 18
-vs stitch   films/lighthouse/shots.json --xfade 0.4
+vs stitch   films/lighthouse/shots.json --xfade 0.4   # SFX-only cut; add --music / --narration after score + narrate assemble
 ```
 
 ## Your own film
@@ -67,6 +67,9 @@ git; your films stay on your machine.
 | `vs stills` | Generate the reference images |
 | `vs animatic` | Cut the whole film from stills, no video spend |
 | `vs generate` | Generate the clips |
+| `vs score` | Lyria instrumental bed (`score-vNNN.mp3`) |
+| `vs narrate` | ElevenLabs per-line VO from a TSV |
+| `vs narrate assemble` | Place lines on the cut → `narration.mp3` |
 | `vs status` | See what has finished |
 | `vs use` | Select or roll back a shot revision |
 | `vs download` | Fetch clips you already generated |
@@ -85,8 +88,9 @@ switches the selected take without deleting anything. `vs status` shows the
 latest, selected, and available revisions.
 
 Two things worth knowing. `vs stitch` on its own gives you a cut with sound
-effects but no music or voiceover, so pass `--music` and `--narration` for
-anything you plan to show people. And title cards only render on macOS.
+effects but no music or voiceover — generate those with `vs score` and
+`vs narrate` / `vs narrate assemble`, then pass `--music` and `--narration`.
+And title cards only render on macOS.
 
 ## Using it with an AI coding agent
 

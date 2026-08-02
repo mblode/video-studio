@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { VsError } from "./errors.js";
 import { isGeminiModel } from "./gemini.js";
+import { lookupModel, MODEL_IDS } from "./models.js";
 import { isLocalPathSafe } from "./paths.js";
 import {
   ASPECT_RATIOS,
@@ -26,12 +27,51 @@ function isUnsafeLocalReference(url: string): boolean {
 
 const ID_PATTERN = /^[a-z0-9_-]+$/iu;
 
-const MAX_REFERENCES = 5;
+/** Soft quality warn for Seedance 2.0-era models (platform allows more). */
+const MAX_REFERENCES_DEFAULT = 5;
+/** Soft quality warn for 2.5: still well below the 30/10/10 ceiling. */
+const MAX_REFERENCES_SEEDANCE_25 = 12;
+
+function softReferenceLimit(modelId: string | undefined): number {
+  const { family } = lookupModel(modelId);
+  return family.startsWith("seedance-2-5")
+    ? MAX_REFERENCES_SEEDANCE_25
+    : MAX_REFERENCES_DEFAULT;
+}
 const MAX_CHAIN_DEPTH = 3;
-// Multi-beat timed-segment shots (3-4 [0:00-0:0N] beats per 10-15s generation)
+// Multi-beat timed-segment shots (several [0:00-0:0N] beats in one generation)
 // legitimately need more words than a single-action shot; warn only past ~400 so
 // real bloat (overstacked, model-diluting prompts) is still flagged.
 const MAX_PROMPT_WORDS = 400;
+/** Longer clips without a beat carrier tend to stretch one verb into slow-mo. */
+const LONG_SHOT_BEAT_SECONDS = 12;
+const HAS_SHOT_BEAT = /Shot\s+\d+\s*:/iu;
+const HAS_TIMESTAMP_RANGE = /\d+\s*[–-]\s*\d+\s*s\b/iu;
+const HAS_TIMECODE_BRACKET = /\[\d+:\d+/u;
+
+function lacksBeatCarrier(prompt: string): boolean {
+  return (
+    !HAS_SHOT_BEAT.test(prompt) &&
+    !HAS_TIMESTAMP_RANGE.test(prompt) &&
+    !HAS_TIMECODE_BRACKET.test(prompt)
+  );
+}
+
+function longShotMissingBeats(
+  shotId: string,
+  duration: number | undefined,
+  prompt: string
+): string | undefined {
+  if (
+    typeof duration !== "number" ||
+    duration < LONG_SHOT_BEAT_SECONDS ||
+    duration === -1 ||
+    !lacksBeatCarrier(prompt)
+  ) {
+    return;
+  }
+  return `${shotId}: ${duration}s prompt has no beat carrier — add a timestamp plan or Shot N: lines so Seedance does not stretch one action; beat count follows the story`;
+}
 // A still is one composition, not a timed sequence, so its budget is far
 // tighter: past this the image models start averaging the description away.
 const MAX_STILL_PROMPT_WORDS = 200;
@@ -299,6 +339,74 @@ function chainDepth(shot: Shot, byId: Map<string, Shot>): number {
   return depth;
 }
 
+function lintOneShot(
+  shot: Shot,
+  file: ShotsFile,
+  byId: Map<string, Shot>,
+  maxRefs: number
+): string[] {
+  const warnings: string[] = [];
+  const refCount =
+    (shot.references?.length ?? 0) + (shot.continueFrom === undefined ? 0 : 1);
+  if (refCount > maxRefs) {
+    warnings.push(
+      `${shot.id}: ${refCount} references — quality degrades above ~${maxRefs} for this model; trim to the essentials`
+    );
+  }
+  if (shot.seed === undefined) {
+    warnings.push(
+      `${shot.id}: no seed — set one so a draft and its final (and any retake) stay reproducible instead of re-rolling a new composition each run`
+    );
+  }
+  const preamble = file.film.promptPreamble;
+  const words = wordCount(
+    preamble ? `${preamble} ${shot.prompt}` : shot.prompt
+  );
+  if (words > MAX_PROMPT_WORDS) {
+    warnings.push(
+      `${shot.id}: prompt is ${words} words (incl. promptPreamble) — even a multi-beat shot degrades past ~${MAX_PROMPT_WORDS}; move shared style into film.promptPreamble, trim to the timed beats, or split the shot`
+    );
+  }
+  const slowTerms = slowMotionTermCount(shot.prompt);
+  if (slowTerms > MAX_SLOW_TERMS) {
+    warnings.push(
+      `${shot.id}: ${slowTerms} slow/soft motion terms — Seedance renders these as slow-motion; use realtime, brisk, energetic motion verbs instead`
+    );
+  }
+  const beatWarn = longShotMissingBeats(
+    shot.id,
+    shot.duration ?? file.film.defaults?.duration,
+    shot.prompt
+  );
+  if (beatWarn) {
+    warnings.push(beatWarn);
+  }
+  const hasImageRef = (shot.references ?? []).some(
+    (ref) => ref.type === "image"
+  );
+  if (shot.cameraFixed && (hasImageRef || shot.continueFrom !== undefined)) {
+    warnings.push(
+      `${shot.id}: cameraFixed with an image reference — Seedance rejects camera_fixed in image-to-video (first_frame/reference) mode; drop it and lock the camera in the prompt instead`
+    );
+  }
+  if (shot.continueFrom !== undefined) {
+    warnings.push(
+      `${shot.id}: continueFrom chains onto ${shot.continueFrom}'s last frame — prefer a literal keyframe (first_frame); chaining serializes generation and cascades retakes when an upstream shot changes`
+    );
+  } else if (!hasImageRef) {
+    warnings.push(
+      `${shot.id}: no image reference — anchor the shot to a literal keyframe (first_frame or reference_image); video generates tighter, cheaper, and less glitchy with an image to follow`
+    );
+  }
+  const depth = chainDepth(shot, byId);
+  if (depth > MAX_CHAIN_DEPTH) {
+    warnings.push(
+      `${shot.id}: chain depth ${depth} — re-anchor from reference stills every ${MAX_CHAIN_DEPTH} shots to stop drift accumulating`
+    );
+  }
+  return warnings;
+}
+
 /**
  * Non-fatal best-practice checks, printed as warnings by `vs generate`:
  * Seedance degrades with >5 references; every shot should be anchored to a
@@ -307,62 +415,9 @@ function chainDepth(shot: Shot, byId: Map<string, Shot>): number {
  * drift — prefer a literal keyframe per shot.
  */
 export function lintShotsFile(file: ShotsFile): string[] {
-  const warnings: string[] = [];
   const byId = new Map(file.shots.map((shot) => [shot.id, shot]));
-  for (const shot of file.shots) {
-    const refCount =
-      (shot.references?.length ?? 0) +
-      (shot.continueFrom === undefined ? 0 : 1);
-    if (refCount > MAX_REFERENCES) {
-      warnings.push(
-        `${shot.id}: ${refCount} references — Seedance degrades above ${MAX_REFERENCES}; trim to the essentials`
-      );
-    }
-    if (shot.seed === undefined) {
-      warnings.push(
-        `${shot.id}: no seed — set one so a draft and its final (and any retake) stay reproducible instead of re-rolling a new composition each run`
-      );
-    }
-    const preamble = file.film.promptPreamble;
-    const words = wordCount(
-      preamble ? `${preamble} ${shot.prompt}` : shot.prompt
-    );
-    if (words > MAX_PROMPT_WORDS) {
-      warnings.push(
-        `${shot.id}: prompt is ${words} words (incl. promptPreamble) — even a multi-beat shot degrades past ~${MAX_PROMPT_WORDS}; move shared style into film.promptPreamble, trim to the timed beats, or split the shot`
-      );
-    }
-    const slowTerms = slowMotionTermCount(shot.prompt);
-    if (slowTerms > MAX_SLOW_TERMS) {
-      warnings.push(
-        `${shot.id}: ${slowTerms} slow/soft motion terms — Seedance renders these as slow-motion; use realtime, brisk, energetic motion verbs instead`
-      );
-    }
-    const hasImageRef = (shot.references ?? []).some(
-      (ref) => ref.type === "image"
-    );
-    if (shot.cameraFixed && (hasImageRef || shot.continueFrom !== undefined)) {
-      warnings.push(
-        `${shot.id}: cameraFixed with an image reference — Seedance rejects camera_fixed in image-to-video (first_frame/reference) mode; drop it and lock the camera in the prompt instead`
-      );
-    }
-    if (shot.continueFrom !== undefined) {
-      warnings.push(
-        `${shot.id}: continueFrom chains onto ${shot.continueFrom}'s last frame — prefer a literal keyframe (first_frame); chaining serializes generation and cascades retakes when an upstream shot changes`
-      );
-    } else if (!hasImageRef) {
-      warnings.push(
-        `${shot.id}: no image reference — anchor the shot to a literal keyframe (first_frame or reference_image); video generates tighter, cheaper, and less glitchy with an image to follow`
-      );
-    }
-    const depth = chainDepth(shot, byId);
-    if (depth > MAX_CHAIN_DEPTH) {
-      warnings.push(
-        `${shot.id}: chain depth ${depth} — re-anchor from reference stills every ${MAX_CHAIN_DEPTH} shots to stop drift accumulating`
-      );
-    }
-  }
-  return warnings;
+  const maxRefs = softReferenceLimit(file.film.model ?? MODEL_IDS.seedance20);
+  return file.shots.flatMap((shot) => lintOneShot(shot, file, byId, maxRefs));
 }
 
 /**

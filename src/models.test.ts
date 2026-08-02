@@ -133,9 +133,9 @@ describe("validateShotAgainstModel", () => {
 
   it("flags a reference role the model does not publish", () => {
     const problems = validateShotAgainstModel(standard, {
-      references: [{ role: "green_screen_plate" }],
+      references: [{ role: "not_a_real_wire_role" }],
     });
-    expect(problems[0]?.message).toContain("green_screen_plate");
+    expect(problems[0]?.message).toContain("not_a_real_wire_role");
   });
 
   it("says nothing about an unknown model: the API is the authority", () => {
@@ -155,6 +155,39 @@ describe("validateShotAgainstModel", () => {
     });
     expect(problems).toMatchObject([
       { field: "resolution", severity: "warning" },
+    ]);
+  });
+
+  it("publishes Seedance 2.5 reference slot ceilings", () => {
+    expect(lookupModel("dreamina-seedance-2-5-260628").referenceSlots).toEqual({
+      first_frame: 1,
+      last_frame: 1,
+      reference_audio: 10,
+      reference_image: 30,
+      reference_video: 10,
+    });
+  });
+
+  it("resolves Seedance 2.5 with 4-30s, 720p ceiling, and concurrency 1", () => {
+    const model = lookupModel("dreamina-seedance-2-5-260628");
+    expect(model.known).toBe(true);
+    expect(model.family).toBe("seedance-2-5");
+    expect(model.confidence).toBe("inferred");
+    expect(model.durations).toMatchObject({ auto: false, max: 30, min: 4 });
+    expect(model.resolutions).toEqual(["480p", "720p"]);
+    expect(modelRateLimits(model.id, "720p")).toEqual({
+      concurrency: 1,
+      rpm: 60,
+    });
+    expect(usdPerMToken(model, "720p")).toBe(10.7);
+    expect(
+      validateShotAgainstModel(model.id, { duration: 24, resolution: "720p" })
+    ).toEqual([]);
+    expect(
+      validateShotAgainstModel(model.id, { resolution: "1080p" })
+    ).toMatchObject([{ field: "resolution", severity: "warning" }]);
+    expect(validateShotAgainstModel(model.id, { duration: -1 })).toMatchObject([
+      { field: "duration", severity: "warning" },
     ]);
   });
 });

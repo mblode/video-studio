@@ -39,10 +39,17 @@ Run it on the draft pass before approving shots for the final.
 ## `vs stitch`: the cut
 
 ```bash
-node dist/cli.js stitch films/<slug>/shots.json --xfade 0.4 --music score.mp3 --narration vo.mp3
+vs score "Cinematic underscore…" --shots films/<slug>/shots.json
+vs narrate films/<slug>/narration/lines.tsv
+vs narrate assemble films/<slug>/shots.json --placement narration/placement.tsv --xfade 0.4
+vs stitch films/<slug>/shots.json --xfade 0.4 \
+  --music films/<slug>/score-v001.mp3 \
+  --narration films/<slug>/narration.mp3
 ```
 
-Assembles clips and title cards into one film. Per-shot `transition` overrides
+Assembles clips and title cards into one film. Use the same `--xfade` on
+`vs narrate assemble` and `vs stitch` so narration lands on the same timeline
+(both default to `0`). Per-shot `transition` overrides
 `--xfade` for the cut **into** that shot. `--grade` applies a subtle filmic
 grade.
 
@@ -53,7 +60,7 @@ not polish: concatenating mismatched streams produces a file that plays wrong
 rather than an error.
 
 Always pass `--music` and `--narration` for anything shareable, and re-stitch
-after regenerating any shot. The reasoning and the full filter chain are in
+after regenerating any shot. Score/narrate details and the filter chain are in
 `audio-mix.md`.
 
 ### `--latest`: always a watchable reel
