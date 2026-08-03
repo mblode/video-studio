@@ -44,6 +44,28 @@ function legacyRevision(entry: ManifestEntry): ManifestRevision | undefined {
 }
 
 /** Read v1 manifests without moving or renaming their existing clips. */
+/**
+ * Drop every result URL for a clip that is already on disk.
+ *
+ * A result URL is presigned: it expires ~24h after generation and carries the
+ * provider's access key id in its query string. `upsertEntry` never stores one
+ * for a downloaded clip, but manifests written by older versions did, and
+ * `legacyRevision` copied them forward on migration. Manifests are committed on
+ * purpose so a generation resumes anywhere, so a stale URL is a credential in
+ * someone's git history. Healing on read means the next command that touches an
+ * old manifest cleans it, without anyone having to know to look.
+ */
+function dropDownloadedUrls(entry: ManifestEntry): void {
+  if (entry.outputPath) {
+    entry.videoUrl = undefined;
+  }
+  for (const revision of entry.versions ?? []) {
+    if (revision.outputPath) {
+      revision.videoUrl = undefined;
+    }
+  }
+}
+
 function migrateManifest(raw: LegacyManifest): Manifest {
   const entries = raw.entries ?? {};
   for (const entry of Object.values(entries)) {
@@ -61,6 +83,7 @@ function migrateManifest(raw: LegacyManifest): Manifest {
           (revision) => revision.outputPath === entry.outputPath
         )?.version ?? Math.max(entry.attempts, 1);
     }
+    dropDownloadedUrls(entry);
   }
   return {
     entries,

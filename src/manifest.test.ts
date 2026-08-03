@@ -4,7 +4,13 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { isComplete, isInFlight, upsertEntry } from "./manifest.js";
+import {
+  isComplete,
+  isInFlight,
+  loadManifest,
+  saveManifest,
+  upsertEntry,
+} from "./manifest.js";
 import type { Manifest, ManifestEntry } from "./types.js";
 
 function emptyManifest(): Manifest {
@@ -25,7 +31,6 @@ function entry(overrides: Partial<ManifestEntry>): ManifestEntry {
 
 describe("saveManifest", () => {
   it("serializes concurrent saves to the same manifest", async () => {
-    const { loadManifest, saveManifest } = await import("./manifest.js");
     const dir = await mkdtemp(join(tmpdir(), "vs-manifest-race-"));
     const shotsPath = join(dir, "shots.json");
     const manifest = emptyManifest();
@@ -198,5 +203,72 @@ describe("resume logic", () => {
     });
 
     expect(JSON.stringify(manifest)).not.toContain("credential-marker");
+  });
+});
+
+describe("stale result URLs are healed on read", () => {
+  const PRESIGNED =
+    "https://x.example/clip.mp4?X-Tos-Credential=AKLTsecret&X-Tos-Signature=deadbeef";
+
+  it("drops a v1 manifest's URL for a clip already on disk", async () => {
+    // Manifests are committed on purpose, and older versions stored the
+    // presigned URL next to a downloaded clip, so it became a credential in
+    // git history. Reading one must clean it.
+    const dir = await mkdtemp(join(tmpdir(), "vs-heal-"));
+    const shotsFile = join(dir, "shots.json");
+    await writeFile(
+      join(dir, "tasks.json"),
+      JSON.stringify({
+        entries: {
+          a: {
+            attempts: 1,
+            outputPath: "output/a.mp4",
+            shotId: "a",
+            status: "downloaded",
+            submittedAt: "2026-06-16T08:02:42Z",
+            taskId: "t1",
+            updatedAt: "2026-06-16T08:02:42Z",
+            videoUrl: PRESIGNED,
+          },
+        },
+        shotsFile: "shots.json",
+        version: 1,
+      })
+    );
+
+    const manifest = await loadManifest(shotsFile);
+
+    expect(JSON.stringify(manifest)).not.toContain("X-Tos-Credential");
+    expect(manifest.entries.a?.videoUrl).toBeUndefined();
+    // the migration still produced a usable revision
+    expect(manifest.entries.a?.selectedVersion).toBe(1);
+    expect(manifest.entries.a?.outputPath).toBe("output/a.mp4");
+  });
+
+  it("keeps the URL while the clip is not yet downloaded", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vs-keep-"));
+    await writeFile(
+      join(dir, "tasks.json"),
+      JSON.stringify({
+        entries: {
+          a: {
+            attempts: 1,
+            shotId: "a",
+            status: "succeeded",
+            submittedAt: "2026-06-16T08:02:42Z",
+            taskId: "t1",
+            updatedAt: "2026-06-16T08:02:42Z",
+            videoUrl: PRESIGNED,
+          },
+        },
+        shotsFile: "shots.json",
+        version: 1,
+      })
+    );
+
+    const manifest = await loadManifest(join(dir, "shots.json"));
+
+    // `vs download` needs it: the clip exists remotely and not on disk.
+    expect(manifest.entries.a?.videoUrl).toBe(PRESIGNED);
   });
 });
