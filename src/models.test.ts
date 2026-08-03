@@ -191,3 +191,55 @@ describe("validateShotAgainstModel", () => {
     ]);
   });
 });
+
+describe("Seedance 2.5 dual billing rate", () => {
+  const model = lookupModel("dreamina-seedance-2-5-260628");
+
+  it("quotes the without-video rate by default", () => {
+    expect(usdPerMToken(model, "720p")).toBe(10.7);
+  });
+
+  it("quotes the cheaper rate only when video input is bound", () => {
+    expect(usdPerMToken(model, "720p", { videoInput: true })).toBe(6.4);
+  });
+
+  it("leaves models with no with-video table on their single rate", () => {
+    const model20 = lookupModel("dreamina-seedance-2-0-260128");
+    expect(usdPerMToken(model20, "720p", { videoInput: true })).toBe(
+      usdPerMToken(model20, "720p")
+    );
+  });
+});
+
+const partialRateModel = (): ModelCapabilities => ({
+  ...lookupModel("dreamina-seedance-2-5-260628"),
+  billing: {
+    kind: "tokens",
+    usdPerMTokenByResolution: { "1080p": 20, "480p": 10 },
+    usdPerMTokenWithVideoInput: { "480p": 6.4 },
+  },
+});
+
+describe("with-video rate falls through per resolution", () => {
+  it("uses the base rate for a resolution the with-video table omits", () => {
+    // Selecting the whole with-video table first would quote 6.4 for 1080p.
+    expect(
+      usdPerMToken(partialRateModel(), "1080p", { videoInput: true })
+    ).toBe(20);
+    expect(usdPerMToken(partialRateModel(), "480p", { videoInput: true })).toBe(
+      6.4
+    );
+  });
+
+  it("falls back to the model's dearest base rate, not the global one", () => {
+    const empty: ModelCapabilities = {
+      ...partialRateModel(),
+      billing: {
+        kind: "tokens",
+        usdPerMTokenByResolution: { "480p": 10 },
+        usdPerMTokenWithVideoInput: {},
+      },
+    };
+    expect(usdPerMToken(empty, "720p", { videoInput: true })).toBe(10);
+  });
+});

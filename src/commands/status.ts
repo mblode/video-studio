@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 import {
@@ -10,6 +11,7 @@ import {
   upsertEntry,
 } from "../manifest.js";
 import type { Pass } from "../paths.js";
+import { filmFileNotFound } from "../shots.js";
 import { createArkClient } from "./context.js";
 import { color, emit, line, note } from "./output.js";
 
@@ -40,6 +42,13 @@ export async function runStatus(
   }
 
   const shotsFile = positional ?? options.shots;
+  // `status` is the read-only command an agent checks before it spends, and a
+  // missing manifest reads as "nothing generated yet". Without this, a mistyped
+  // film reads exactly the same way — a clean, empty, exit-0 answer about a film
+  // that does not exist — and the hint then points `vs generate` at the typo.
+  if (!existsSync(shotsFile)) {
+    throw filmFileNotFound(shotsFile);
+  }
   const pass: Pass = options.draft ? "draft" : "final";
   const manifest = await loadManifest(shotsFile, pass);
   const manifestDir = dirname(resolve(shotsFile));

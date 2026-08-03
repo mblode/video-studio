@@ -11,12 +11,10 @@ import {
 } from "../env.js";
 import { VsError } from "../errors.js";
 import { GeminiClient } from "../gemini.js";
-import { passSuffix } from "../paths.js";
+import { passSuffix, resolveOutput } from "../paths.js";
 import type { Pass } from "../paths.js";
 import { loadShotsFile, loadStillsFile } from "../shots.js";
 import type { ShotsFile, StillsFile } from "../types.js";
-
-export { safeJoin } from "../paths.js";
 
 /** Load `.env` and build an authenticated Ark client — the one place the key is read. */
 export function createArkClient(): ArkClient {
@@ -56,20 +54,6 @@ export function packageInfo(): PackageInfo {
     }
     dir = parent;
   }
-}
-
-/**
- * `--output` is ALWAYS resolved against the current working directory: it is
- * an operator-supplied path, so it means what it would mean to `cp`. Paths that
- * come from the film itself (`film.outputDir`, `shot.output`) stay relative to
- * the film directory. Whether the value names a file or a directory is per
- * command and stated in `--output`'s help text.
- */
-export function resolveOutput(
-  output: string | undefined,
-  fallback: string
-): string {
-  return output ? resolve(process.cwd(), output) : fallback;
 }
 
 /**

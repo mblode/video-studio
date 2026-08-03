@@ -37,7 +37,6 @@ export {
   renderCardPng,
   wrapCardText,
 } from "./cards.js";
-export { chainDependencies, resolveChainFrame } from "./chain.js";
 export {
   checkCostCeiling,
   clipTokens,
@@ -82,7 +81,6 @@ export {
   assertFfmpeg,
   escapeDrawtext,
   frameAtArgs,
-  lastFrameArgs,
   probeClip,
   runFfmpeg,
   summarizeFfmpegStderr,
@@ -129,17 +127,25 @@ export type {
   RateLimits,
   ShotCapabilityInput,
 } from "./models.js";
-export { isLocalPathSafe, passSuffix, safeJoin } from "./paths.js";
+export {
+  isLocalPathSafe,
+  passSuffix,
+  resolveOutput,
+  safeJoin,
+} from "./paths.js";
 export type { Pass } from "./paths.js";
 export {
   buildTaskPayload,
   DEFAULT_VIDEO_MODEL,
   DRAFT_VIDEO_MODEL,
+  effectiveShotParams,
   hashPayload,
+  referenceCountsByType,
+  referenceOrdinals,
   renderPayload,
   resolveReferenceUrl,
 } from "./payload.js";
-export type { PayloadOverrides } from "./payload.js";
+export type { EffectiveShotParams, PayloadOverrides } from "./payload.js";
 export { createModelLimiter, MockVideoProvider } from "./provider.js";
 export type {
   ModelLimiter,

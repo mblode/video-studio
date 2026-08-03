@@ -17,25 +17,65 @@ import { runStitch } from "./commands/stitch.js";
 import { runUpscale } from "./commands/upscale.js";
 import { runUse } from "./commands/use.js";
 import { ELEVEN_V3_MODEL } from "./elevenlabs.js";
+import { VsError } from "./errors.js";
 
 // Title cards are rasterised by family name, so the default has to be a face
 // every machine already has. Pass --font to use your own (it must be installed;
 // `vs` checks and fails rather than letting qlmanage fall back silently).
 const DEFAULT_FONT = "Helvetica";
 
+interface NumberArgumentOptions {
+  /** Reject fractions (counts, pixels, kbps). */
+  integer?: boolean;
+  max?: number;
+  min?: number;
+}
+
 /**
- * `--max-cost` is a spend guard, so an unparseable value must fail loudly.
- * `Number("5 dollars")` is NaN and NaN compares false against every ceiling,
- * which would silently turn the guard off on the one run that needed it.
+ * Every other numeric flag goes through this, because an unchecked
+ * `Number("10s")` is NaN and NaN fails silently rather than loudly: it collapses
+ * `--poll-interval` into a 1ms hot loop against the rate limit, disables
+ * `--timeout` outright (`Date.now() > NaN` is never true, so the run never gives
+ * up), and reaches `pLimit` as a bare TypeError with no code. Reject the value
+ * at the boundary instead, naming the flag and what actually arrived.
+ *
+ * `VsError` rather than commander's `InvalidArgumentError` so `--json` callers
+ * get `"code": "invalid_input"` to branch on.
  */
-function usdArgument(value: string): number {
-  const usd = Number(value);
-  if (!Number.isFinite(usd) || usd <= 0) {
-    throw new InvalidArgumentError(
-      "expected a positive amount in US dollars, e.g. --max-cost 5 or --max-cost 12.50"
-    );
-  }
-  return usd;
+function numberArgument(
+  flag: string,
+  options: NumberArgumentOptions = {}
+): (value: string) => number {
+  const { integer = false, max, min } = options;
+  const bounds = [
+    min === undefined ? undefined : `at least ${min}`,
+    max === undefined ? undefined : `at most ${max}`,
+  ]
+    .filter(Boolean)
+    .join(" and ");
+  const expected = `expected ${integer ? "a whole number" : "a number"}${
+    bounds ? ` ${bounds}` : ""
+  }`;
+  return (value: string): number => {
+    const parsed = Number(value);
+    const outOfRange =
+      (min !== undefined && parsed < min) ||
+      (max !== undefined && parsed > max);
+    if (
+      !Number.isFinite(parsed) ||
+      (integer && !Number.isInteger(parsed)) ||
+      outOfRange
+    ) {
+      throw new VsError(
+        "invalid_input",
+        `${flag} got "${value}": ${expected}`,
+        {
+          hint: "pass a bare number: the unit is implied by the flag, so drop any suffix (s, m, MB, dB)",
+        }
+      );
+    }
+    return parsed;
+  };
 }
 
 function versionArgument(value: string): number {
@@ -69,7 +109,11 @@ export function buildProgram(): Command {
     .argument("<dir>", "film directory to create, e.g. films/my-film")
     .option("--title <title>", "film title (skips the prompt)")
     .option("--ratio <ratio>", "default aspect ratio")
-    .option("--duration <seconds>", "default shot duration")
+    .option(
+      "--duration <seconds>",
+      "default shot duration",
+      numberArgument("--duration", { integer: true })
+    )
     .option(
       "--preamble <text>",
       "film.promptPreamble: the style block prepended to every shot prompt"
@@ -92,7 +136,12 @@ export function buildProgram(): Command {
     .description("Submit shots, poll to completion, and download the clips")
     .argument("<shots-file>", "path to shots.json")
     .option("--shot <id...>", "only generate these shot ids")
-    .option("--concurrency <n>", "max in-flight tasks", "3")
+    .option(
+      "--concurrency <n>",
+      "max in-flight tasks",
+      numberArgument("--concurrency", { integer: true, min: 1 }),
+      3
+    )
     .option(
       "--draft",
       "cheap 480p, audio-off pass into tasks.draft.json / output-draft/ (uses film.draftModel if set)",
@@ -109,12 +158,22 @@ export function buildProgram(): Command {
       "submit a new numbered revision for shots that already succeeded",
       false
     )
-    .option("--poll-interval <seconds>", "poll interval", "10")
-    .option("--timeout <minutes>", "per-task poll timeout", "20")
+    .option(
+      "--poll-interval <seconds>",
+      "poll interval",
+      numberArgument("--poll-interval", { min: 1 }),
+      10
+    )
+    .option(
+      "--timeout <minutes>",
+      "per-task poll timeout",
+      numberArgument("--timeout", { min: 1 }),
+      20
+    )
     .option(
       "--max-cost <usd>",
       "refuse the run if the estimate exceeds this many USD (enforced under --yes and --dry-run too)",
-      usdArgument
+      numberArgument("--max-cost", { min: 0.01 })
     )
     .option(
       "--yes",
@@ -144,7 +203,12 @@ export function buildProgram(): Command {
     )
     .argument("<stills-file>", "path to stills.json")
     .option("--still <id...>", "only generate these still ids")
-    .option("--concurrency <n>", "max in-flight requests", "2")
+    .option(
+      "--concurrency <n>",
+      "max in-flight requests",
+      numberArgument("--concurrency", { integer: true, min: 1 }),
+      2
+    )
     .option(
       "--dry-run",
       "print request payloads without calling the API",
@@ -207,15 +271,31 @@ export function buildProgram(): Command {
       "--output <file>",
       "exact output file, relative to the cwd (default <outputDir>/renders/final/vNNN.mp4)"
     )
-    .option("--xfade <seconds>", "crossfade duration between clips", "0")
+    .option(
+      "--xfade <seconds>",
+      "crossfade duration between clips",
+      numberArgument("--xfade", { min: 0 }),
+      0
+    )
     .option("--music <file>", "continuous music bed mixed under clip audio")
-    .option("--music-gain <dB>", "music level in dB", "-12")
+    .option(
+      "--music-gain <dB>",
+      "music level in dB",
+      numberArgument("--music-gain"),
+      -12
+    )
     .option("--narration <file>", "narration track mixed at full level")
-    .option("--narration-gain <dB>", "narration level in dB", "0")
+    .option(
+      "--narration-gain <dB>",
+      "narration level in dB",
+      numberArgument("--narration-gain"),
+      0
+    )
     .option(
       "--sfx-gain <dB>",
       "clip SFX level in dB (ignored by --latest)",
-      "0"
+      numberArgument("--sfx-gain"),
+      0
     )
     .option("--font <family>", "font family for title cards", DEFAULT_FONT)
     .option("--grade", "apply a subtle filmic grade", false)
@@ -257,9 +337,24 @@ export function buildProgram(): Command {
       "--output <file>",
       "exact output file, relative to the cwd (default exports/<name>-whatsapp/vNNN.mp4)"
     )
-    .option("--max-mb <n>", "hard size ceiling in MB", "49")
-    .option("--height <n>", "cap output height (only downscales)", "720")
-    .option("--audio-kbps <n>", "audio bitrate in kbps", "160")
+    .option(
+      "--max-mb <n>",
+      "hard size ceiling in MB",
+      numberArgument("--max-mb", { min: 1 }),
+      49
+    )
+    .option(
+      "--height <n>",
+      "cap output height (only downscales)",
+      numberArgument("--height", { integer: true, min: 1 }),
+      720
+    )
+    .option(
+      "--audio-kbps <n>",
+      "audio bitrate in kbps",
+      numberArgument("--audio-kbps", { integer: true, min: 1 }),
+      160
+    )
     .option("--dry-run", "print ffmpeg commands without running them", false)
     .action(async (video: string, options) => {
       await runShare(video, {
@@ -281,8 +376,18 @@ export function buildProgram(): Command {
       "--shot <id...>",
       "only upscale these shot ids (the final-edit shots)"
     )
-    .option("--height <n>", "target height in pixels", "1080")
-    .option("--crf <n>", "x264 quality (lower = higher quality)", "18")
+    .option(
+      "--height <n>",
+      "target height in pixels",
+      numberArgument("--height", { integer: true, min: 1 }),
+      1080
+    )
+    .option(
+      "--crf <n>",
+      "x264 quality (lower = higher quality)",
+      numberArgument("--crf", { integer: true, max: 51, min: 0 }),
+      18
+    )
     .option("--draft", "upscale the draft pass instead of the final", false)
     .option(
       "--output <dir>",
@@ -311,9 +416,19 @@ export function buildProgram(): Command {
       "exact output file, relative to the cwd (default <outputDir>/animatics/vNNN.mp4)"
     )
     .option("--music <file>", "temp music bed mixed under the reel")
-    .option("--music-gain <dB>", "music level in dB", "-18")
+    .option(
+      "--music-gain <dB>",
+      "music level in dB",
+      numberArgument("--music-gain"),
+      -18
+    )
     .option("--narration <file>", "scratch narration mixed at full level")
-    .option("--narration-gain <dB>", "narration level in dB", "0")
+    .option(
+      "--narration-gain <dB>",
+      "narration level in dB",
+      numberArgument("--narration-gain"),
+      0
+    )
     .option("--font <family>", "font family for slates/cards", DEFAULT_FONT)
     .option("--draft", "write into the draft output dir (output-draft/)", false)
     .option("--dry-run", "print ffmpeg commands without running them", false)
@@ -334,7 +449,12 @@ export function buildProgram(): Command {
     .command("review")
     .description("Extract frames from downloaded clips into a contact sheet")
     .argument("<shots-file>", "path to shots.json")
-    .option("--frames <n>", "frames per clip", "3")
+    .option(
+      "--frames <n>",
+      "frames per clip",
+      numberArgument("--frames", { integer: true, min: 1 }),
+      3
+    )
     .option(
       "--draft",
       "review the draft pass (output-draft/ → review-draft/)",
@@ -366,7 +486,8 @@ export function buildProgram(): Command {
     )
     .option(
       "--duration <seconds>",
-      "target bed length in seconds (overrides the shots.json estimate)"
+      "target bed length in seconds (overrides the shots.json estimate)",
+      numberArgument("--duration", { min: 1 })
     )
     .option(
       "--clip",
@@ -449,7 +570,8 @@ export function buildProgram(): Command {
     .option(
       "--fade-lead <seconds>",
       "seconds before fade-shot end that must stay clear",
-      "1.5"
+      numberArgument("--fade-lead", { min: 0 }),
+      1.5
     )
     .option(
       "--draft",
@@ -459,7 +581,8 @@ export function buildProgram(): Command {
     .option(
       "--xfade <seconds>",
       "default crossfade INTO each segment when transition is unset (must match vs stitch --xfade)",
-      "0"
+      numberArgument("--xfade", { min: 0 }),
+      0
     )
     .option(
       "--dry-run",

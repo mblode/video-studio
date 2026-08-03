@@ -15,20 +15,25 @@ Read `references/story-principles.md` first for any story question. Then write t
 ## The pipeline
 
 These films are short (about 30 seconds to a few minutes). Generation count and
-per-clip duration follow the story and the model envelope (Seedance 2.0: up to
-15s; 2.5: up to 30s with optional extend) — do not force a fixed shot length.
+per-clip duration follow the story and the model envelope: **Seedance 2.5
+renders up to 30s in a single pass**, Seedance 2.0 up to 15s. That changes what
+a generation *is*. At 8s a generation is a BEAT. At 30s it is an ACT holding
+five to seven internal beats that the model cuts between, so a two-minute film
+is four generations rather than fifteen. Do not force a fixed shot length.
 Every generation costs money, so the story must be proven on paper before any
 spend. The documents are a cost ladder of their own: cheap decisions lock
-before expensive ones. Public example: `films/lighthouse/`.
+before expensive ones. Public example: `films/lighthouse/` (a 2.0 film, 12
+generations at 8s).
 
 ```text
 Storycraft progress:
 - [ ] Design the FINAL image first, then the throughline it proves (Pixar rule 7)
 - [ ] Logline (who wants what, what is in the way) + why you must tell THIS story
+- [ ] Central dramatic argument: one declarative sentence someone could disagree with
 - [ ] Pick a structure (the Story Spine is usually enough for a short)
 - [ ] treatment.md   (the story in present-tense prose)
 - [ ] style-bible.md (look, tone, character/prop blocks, secrets)
-- [ ] beat-sheet.md  (one row per generation, audited)
+- [ ] beat-sheet.md  (one row per generation: a beat on 2.0, an act on 2.5)
 - [ ] screenplay.md  (optional: read the story whole)
 - [ ] shot-list.md   (per-shot staging spec)
 - [ ] Hand to seedance to assemble the JSON
@@ -43,7 +48,7 @@ Design the ending before the middle. Stack the documents so each one commits som
 | Any story question (structure, character, theme, stakes, getting unstuck)        | `references/story-principles.md` |
 | The treatment: logline, throughline, final image, narration voice                | `references/treatment.md`        |
 | The style bible: STYLE / PALETTE / CHARACTER / PROP blocks, north stars, secrets | `references/style-bible.md`      |
-| The beat sheet: one row per generation, pacing budget, audits                    | `references/beat-sheet.md`       |
+| The beat sheet: one row per generation (act or beat), pacing budget, audits      | `references/beat-sheet.md`       |
 | The screenplay: scene headings, action, V.O., Fountain format                    | `references/screenplay.md`       |
 | The shot list: per-shot timed segments, camera, staging as story                 | `references/shot-list.md`        |
 
@@ -65,6 +70,7 @@ Common story failures, framed from Pixar's rules:
 | File                             | Read when                                                                                             |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `references/story-principles.md` | Any story question. Pixar's 22 rules, structure frameworks, character, theme, stakes, studio practice |
+| `references/theme-and-structure.md` | Deciding the theme, or a structure will not hold. Theme as an argument, the dialectic, why each beat happens, acts as arguments |
 | `references/treatment.md`        | Writing the treatment. Logline, throughline, final-image-first, voice                                 |
 | `references/style-bible.md`      | Writing the style bible. Block craft, palette as emotion, north stars, secrets as story devices       |
 | `references/beat-sheet.md`       | Writing the beat sheet. Structure to rows, pacing budget, the audit patterns                          |

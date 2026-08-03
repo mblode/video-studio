@@ -129,24 +129,6 @@ export async function probeClip(path: string): Promise<ClipProbe> {
   };
 }
 
-/** Extract the final frame of a video (seeks 0.5s before EOF). */
-export function lastFrameArgs(input: string, output: string): string[] {
-  return [
-    "-y",
-    "-sseof",
-    "-0.5",
-    "-i",
-    input,
-    "-frames:v",
-    "1",
-    "-update",
-    "1",
-    "-q:v",
-    "2",
-    output,
-  ];
-}
-
 /** Extract one frame at an absolute timestamp. */
 export function frameAtArgs(
   input: string,

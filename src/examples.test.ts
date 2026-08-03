@@ -12,8 +12,11 @@ import {
 
 const repoRoot = join(import.meta.dirname, "..");
 
+// One example film, two cuts: lighthouse on 2.0 (the complete pipeline) and
+// the same story restructured as 30s acts on 2.5. Both are the first thing a
+// new user or agent copies, so both meet the bar the CLI enforces.
 const SHOTS_FILES = [
-  "examples/shots.json",
+  "examples/shots-2-5.json",
   "films/lighthouse/shots.json",
 ] as const;
 

@@ -6,8 +6,10 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ArkClient, PollOptions } from "../ark.js";
+import { clipTokens } from "../cost.js";
 import { loadManifest } from "../manifest.js";
-import type { ArkTask, ManifestEntry } from "../types.js";
+import { DEFAULT_RESOLUTION } from "../types.js";
+import type { ArkTask, CreateTaskRequest, ManifestEntry } from "../types.js";
 import type { GenerateOptions } from "./generate.js";
 import { runGenerate } from "./generate.js";
 import type * as OutputModule from "./output.js";
@@ -130,6 +132,23 @@ async function scaffold(
       JSON.stringify({ entries, shotsFile: shotsPath, version: 1 })
     );
   }
+  return shotsPath;
+}
+
+/** One shot on the film defaults, one overriding them, and no resolution anywhere. */
+async function scaffoldMixed(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "vs-gen-"));
+  const shotsPath = join(dir, "shots.json");
+  await writeFile(
+    shotsPath,
+    JSON.stringify({
+      film: { defaults: { duration: 10, ratio: "9:16" }, title: "T" },
+      shots: [
+        { id: "inherits", prompt: "p" },
+        { duration: 6, id: "overrides", prompt: "p", ratio: "1:1" },
+      ],
+    })
+  );
   return shotsPath;
 }
 
@@ -391,6 +410,73 @@ describe("runGenerate", () => {
 });
 
 /**
+ * The estimate and the request are two readings of one ladder. They agreed for
+ * a long time only because three literals happened to match, so pin them to
+ * each other: re-derive the tokens from the payload that would actually be
+ * submitted and demand the quoted number back.
+ */
+describe("the quote and the request", () => {
+  beforeEach(() => {
+    reported.payloads.length = 0;
+  });
+
+  function dryRunReport(): {
+    payloads: CreateTaskRequest[];
+    quotedTokens: number;
+    wireTokens: number;
+  } {
+    const run = reported.payloads.at(-1) as {
+      estimate?: { tokens: number };
+      payloads?: { payload: CreateTaskRequest }[];
+    };
+    const payloads = (run.payloads ?? []).map((item) => item.payload);
+    return {
+      payloads,
+      quotedTokens: run.estimate?.tokens ?? 0,
+      wireTokens: payloads.reduce(
+        (total, payload) =>
+          total +
+          clipTokens({
+            duration: payload.duration,
+            modelId: payload.model,
+            ratio: payload.ratio,
+            // An omitted resolution is not an unpriced one: the clip still
+            // renders at the API's default, so that is what it bills at.
+            resolution: payload.resolution ?? DEFAULT_RESOLUTION,
+          }),
+        0
+      ),
+    };
+  }
+
+  it("prices exactly the payload it would submit", async () => {
+    const shotsPath = await scaffoldMixed();
+    await runGenerate(shotsPath, opts({ dryRun: true }), {
+      client: fakeClient(),
+    });
+
+    const { payloads, quotedTokens, wireTokens } = dryRunReport();
+    expect(payloads[0]?.duration).toBe(10);
+    expect(payloads[1]?.ratio).toBe("1:1");
+    expect(payloads[0]?.resolution).toBeUndefined();
+    expect(wireTokens).toBeGreaterThan(0);
+    expect(quotedTokens).toBe(wireTokens);
+  });
+
+  it("prices the draft overrides, not the authored values", async () => {
+    const shotsPath = await scaffoldMixed();
+    await runGenerate(shotsPath, opts({ draft: true, dryRun: true }), {
+      client: fakeClient(),
+    });
+
+    const { payloads, quotedTokens, wireTokens } = dryRunReport();
+    expect(payloads[0]?.resolution).toBe("480p");
+    expect(wireTokens).toBeGreaterThan(0);
+    expect(quotedTokens).toBe(wireTokens);
+  });
+});
+
+/**
  * `--yes` is how an agent or a CI job runs `vs generate`, so a ceiling that
  * `--yes` waived would be a ceiling that never fires on the runs that need it.
  */
@@ -418,6 +504,34 @@ describe("runGenerate --max-cost", () => {
     expect(failure.code).toBe("cost_ceiling");
     expect(failure.message).toContain("--max-cost");
     expect(failure.hint).toContain("--max-cost");
+    expect(client.createTask).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The non-interactive hint is the one line an unattended caller is guaranteed
+   * to read, so it must not point at `--yes` alone: that skips the confirm and,
+   * with no ceiling behind it, nothing is left between a typo and the bill.
+   */
+  it("names --max-cost as well as --yes when there is nobody to answer the prompt", async () => {
+    const shotsPath = await scaffold([{ id: "a", prompt: "p" }]);
+    const client = fakeClient();
+    // Pin the non-interactive branch rather than depending on the runner's stdin.
+    vi.stubEnv("CI", "1");
+    const failure = (await runGenerate(shotsPath, opts({ yes: false }), {
+      client,
+    })
+      .catch((error: unknown) => error)
+      .finally(() => {
+        vi.unstubAllEnvs();
+      })) as Error & {
+      code?: string;
+      hint?: string;
+    };
+
+    expect(failure.code).toBe("not_interactive");
+    expect(failure.hint).toContain("--yes --max-cost");
+    // and the estimate for THIS run, so the ceiling is a number you can paste
+    expect(failure.hint).toMatch(/estimated at \$\d+\.\d\d/u);
     expect(client.createTask).not.toHaveBeenCalled();
   });
 

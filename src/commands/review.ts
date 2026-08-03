@@ -4,11 +4,11 @@ import { basename, join, resolve } from "node:path";
 import { assertFfmpeg, frameAtArgs, probeClip, runFfmpeg } from "../ffmpeg.js";
 import { isComplete, loadManifest, selectedRevision } from "../manifest.js";
 import type { Pass } from "../paths.js";
-import { passSuffix } from "../paths.js";
+import { passSuffix, resolveOutput } from "../paths.js";
 import { frameTimestamps, probeWarnings, renderIndexMd } from "../review.js";
 import type { ReviewRow } from "../review.js";
 import { lintShotsFile } from "../shots.js";
-import { resolveFilm, resolveOutput } from "./context.js";
+import { resolveFilm } from "./context.js";
 import { emit, heading, line, note, ok, warn } from "./output.js";
 
 export interface ReviewOptions {

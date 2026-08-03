@@ -4,10 +4,11 @@ import { dirname, resolve } from "node:path";
 
 import { z } from "zod";
 
-import { VsError } from "./errors.js";
+import { fileReadError, VsError } from "./errors.js";
 import { isGeminiModel } from "./gemini.js";
-import { lookupModel, MODEL_IDS } from "./models.js";
+import { lookupModel, MODEL_IDS, validateShotAgainstModel } from "./models.js";
 import { isLocalPathSafe } from "./paths.js";
+import { referenceCountsByType } from "./payload.js";
 import {
   ASPECT_RATIOS,
   DURATION_AUTO,
@@ -15,7 +16,7 @@ import {
   DURATION_MIN,
   RESOLUTIONS,
 } from "./types.js";
-import type { Shot, ShotsFile, StillsFile } from "./types.js";
+import type { Shot, ShotReference, ShotsFile, StillsFile } from "./types.js";
 
 const UNSAFE_LOCAL_PATH =
   "must stay within the film directory (no `..` or absolute paths)";
@@ -29,20 +30,39 @@ const ID_PATTERN = /^[a-z0-9_-]+$/iu;
 
 /** Soft quality warn for Seedance 2.0-era models (platform allows more). */
 const MAX_REFERENCES_DEFAULT = 5;
-/** Soft quality warn for 2.5: still well below the 30/10/10 ceiling. */
-const MAX_REFERENCES_SEEDANCE_25 = 12;
+/**
+ * Soft quality warn for 2.5. An 8-14 reference ordinal pack is the design
+ * idiom, so 12 warned on healthy work; 16 leaves headroom and is still barely
+ * half the 30-image product ceiling. The ceiling is not a target.
+ */
+const MAX_REFERENCES_SEEDANCE_25 = 16;
+
+function isSeedance25(modelId: string | undefined): boolean {
+  return lookupModel(modelId).family.startsWith("seedance-2-5");
+}
 
 function softReferenceLimit(modelId: string | undefined): number {
-  const { family } = lookupModel(modelId);
-  return family.startsWith("seedance-2-5")
+  return isSeedance25(modelId)
     ? MAX_REFERENCES_SEEDANCE_25
     : MAX_REFERENCES_DEFAULT;
 }
-const MAX_CHAIN_DEPTH = 3;
 // Multi-beat timed-segment shots (several [0:00-0:0N] beats in one generation)
 // legitimately need more words than a single-action shot; warn only past ~400 so
 // real bloat (overstacked, model-diluting prompts) is still flagged.
 const MAX_PROMPT_WORDS = 400;
+/**
+ * A 30s Seedance 2.5 act carries roughly twice the beats of a 15s shot AND an
+ * ordinal binding block naming each reference's single job, so 400 words warns
+ * on healthy work. Measured acts land at 380-430 plus preamble; 700 still
+ * catches real bloat. Do NOT compress ordinal bindings to fit a cap.
+ */
+const MAX_PROMPT_WORDS_SEEDANCE_25 = 700;
+
+function promptWordLimit(modelId: string | undefined): number {
+  return isSeedance25(modelId)
+    ? MAX_PROMPT_WORDS_SEEDANCE_25
+    : MAX_PROMPT_WORDS;
+}
 /** Longer clips without a beat carrier tend to stretch one verb into slow-mo. */
 const LONG_SHOT_BEAT_SECONDS = 12;
 const HAS_SHOT_BEAT = /Shot\s+\d+\s*:/iu;
@@ -72,6 +92,38 @@ function longShotMissingBeats(
   }
   return `${shotId}: ${duration}s prompt has no beat carrier — add a timestamp plan or Shot N: lines so Seedance does not stretch one action; beat count follows the story`;
 }
+/**
+ * Past this, `Shot N:` is not enough on 2.5: it orders the beats but says
+ * nothing about rhythm, so the model invents the pacing between them and the
+ * gaps stretch. A timestamp plan pins the turns to the clock.
+ */
+const TIMESTAMP_PLAN_SECONDS = 20;
+
+function lacksTimestampPlan(prompt: string): boolean {
+  return !(
+    HAS_TIMESTAMP_RANGE.test(prompt) || HAS_TIMECODE_BRACKET.test(prompt)
+  );
+}
+
+/** Ordinals a prompt binds per media type: `@Image 3`, `<Image_3>`, `@Video 1`. */
+const ORDINAL_PATTERN =
+  /(?:@|<)\s*(?<kind>image|video|audio)[\s_]*(?<index>\d+)/giu;
+
+function boundOrdinals(prompt: string): Map<ShotReference["type"], number> {
+  const highest = new Map<ShotReference["type"], number>();
+  for (const match of prompt.matchAll(ORDINAL_PATTERN)) {
+    // ORDINAL_PATTERN only matches these three, so the narrowing is sound.
+    const kind = (
+      match.groups?.kind ?? ""
+    ).toLowerCase() as ShotReference["type"];
+    const n = Number(match.groups?.index);
+    if (Number.isFinite(n) && n > (highest.get(kind) ?? 0)) {
+      highest.set(kind, n);
+    }
+  }
+  return highest;
+}
+
 // A still is one composition, not a timed sequence, so its budget is far
 // tighter: past this the image models start averaging the description away.
 const MAX_STILL_PROMPT_WORDS = 200;
@@ -142,16 +194,13 @@ const referenceSchema = z
     url: z.string().min(1),
   })
   .superRefine((ref, ctx) => {
-    if (ref.type !== "image" && !ref.url.startsWith("https://")) {
+    // Whether a LOCAL video/audio path is allowed at all is model-dependent
+    // (2.5 only), so that lives in the file schema where `film.model` is
+    // visible. Path containment is not model-dependent and belongs here.
+    if (isUnsafeLocalReference(ref.url)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `${ref.type} references must be https URLs in v1 (local paths are supported for images only)`,
-      });
-    }
-    if (ref.type === "image" && isUnsafeLocalReference(ref.url)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `image reference "${ref.url}" ${UNSAFE_LOCAL_PATH}`,
+        message: `${ref.type} reference "${ref.url}" ${UNSAFE_LOCAL_PATH}`,
       });
     }
     if (FRAME_ROLES.has(ref.role) && ref.type !== "image") {
@@ -165,7 +214,6 @@ const referenceSchema = z
 const shotSchema = z
   .strictObject({
     cameraFixed: z.boolean().optional(),
-    continueFrom: z.string().optional(),
     duration: durationSchema.optional(),
     id: z
       .string()
@@ -180,42 +228,13 @@ const shotSchema = z
   })
   .superRefine((shot, ctx) => {
     const refs = shot.references ?? [];
-    const frameRefs = refs.filter((ref) => FRAME_ROLES.has(ref.role));
-    const referenceRefs = refs.filter((ref) => !FRAME_ROLES.has(ref.role));
-    const hasImplicitFirstFrame = shot.continueFrom !== undefined;
-    const firstFrames =
-      refs.filter((ref) => ref.role === "first_frame").length +
-      (hasImplicitFirstFrame ? 1 : 0);
-
-    if (firstFrames > 1) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: hasImplicitFirstFrame
-          ? "continueFrom already supplies the first_frame — remove the explicit first_frame reference"
-          : "at most one first_frame reference per shot",
-      });
-    }
-    if (refs.filter((ref) => ref.role === "last_frame").length > 1) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "at most one last_frame reference per shot",
-      });
-    }
-    if (
-      (frameRefs.length > 0 || hasImplicitFirstFrame) &&
-      referenceRefs.length > 0
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          "first_frame/last_frame (including continueFrom) cannot be mixed with reference_* roles in one shot — Seedance's frame mode and omni-reference mode are mutually exclusive",
-      });
-    }
-    if (shot.continueFrom === shot.id) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `shot ${shot.id} cannot continue from itself`,
-      });
+    for (const role of ["first_frame", "last_frame"] as const) {
+      if (refs.filter((ref) => ref.role === role).length > 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `at most one ${role} reference per shot`,
+        });
+      }
     }
     if (shot.output !== undefined && !isLocalPathSafe(shot.output)) {
       ctx.addIssue({
@@ -257,17 +276,36 @@ const shotsFileSchema = z
   })
   .superRefine((file, ctx) => {
     const seenIds = new Set<string>();
-    for (const shot of file.shots) {
+    // Two rules below depend on the model, which only this schema can see.
+    // Seedance 2.5 combines frame and reference modes (its own R2V demos bind a
+    // scene reference alongside per-subject ones) and accepts local video and
+    // audio paths. Seedance 2.0 does neither.
+    const is25 = isSeedance25(file.film.model ?? MODEL_IDS.seedance20);
+    for (const [index, shot] of file.shots.entries()) {
       if (seenIds.has(shot.id)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `duplicate shot id: ${shot.id}`,
         });
       }
-      if (shot.continueFrom !== undefined && !seenIds.has(shot.continueFrom)) {
+      const refs = shot.references ?? [];
+      for (const ref of refs) {
+        if (ref.type !== "image" && !ref.url.startsWith("https://") && !is25) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `shot ${shot.id}: ${ref.type} references must be https URLs on this model (local paths are supported for images, and for video/audio on Seedance 2.5). Upload the clip and paste its URL.`,
+          });
+        }
+      }
+      if (
+        !is25 &&
+        refs.some((ref) => FRAME_ROLES.has(ref.role)) &&
+        refs.some((ref) => !FRAME_ROLES.has(ref.role))
+      ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `shot ${shot.id} continueFrom "${shot.continueFrom}" must name an EARLIER shot in the file`,
+          message: `shot ${shot.id}: first_frame/last_frame cannot be mixed with reference_* roles on this model. Seedance 2.0's frame mode and omni-reference mode are mutually exclusive; Seedance 2.5 allows both.`,
+          path: ["shots", index, "references"],
         });
       }
       seenIds.add(shot.id);
@@ -329,25 +367,99 @@ const stillsFileSchema = z
     }
   });
 
-function chainDepth(shot: Shot, byId: Map<string, Shot>): number {
-  let depth = 0;
-  let current: Shot | undefined = shot;
-  while (current?.continueFrom !== undefined && depth <= MAX_CHAIN_DEPTH + 1) {
-    depth += 1;
-    current = byId.get(current.continueFrom);
+/**
+ * The 2.5 ordinal idiom is the cheapest thing to get wrong and the dearest to
+ * discover: a mis-bound `@Image 3` spends the whole 30s generation and reads as
+ * a model failure rather than an authoring one. See `referenceOrdinals` in
+ * src/payload.ts for the contract these checks enforce.
+ */
+function lintOrdinalBinding(
+  shot: Shot,
+  file: ShotsFile,
+  modelId: string
+): string[] {
+  const warnings: string[] = [];
+  const refs = shot.references ?? [];
+  const is25 = isSeedance25(modelId);
+  const counts = referenceCountsByType(refs);
+  const bound = boundOrdinals(shot.prompt);
+
+  for (const [kind, highest] of bound) {
+    const available = counts[kind];
+    if (highest > available) {
+      warnings.push(
+        `${shot.id}: prompt binds ${kind} ordinal ${highest} but the shot carries only ${available} ${kind} reference(s) — ordinals count per media type in authored order, so the binding points at nothing`
+      );
+    }
   }
-  return depth;
+
+  const duration = shot.duration ?? file.film.defaults?.duration;
+  if (
+    is25 &&
+    typeof duration === "number" &&
+    duration >= TIMESTAMP_PLAN_SECONDS &&
+    lacksTimestampPlan(shot.prompt)
+  ) {
+    warnings.push(
+      `${shot.id}: ${duration}s on Seedance 2.5 with no timestamp plan — use 0-6s: / 7-13s: ranges (or [0:00-0:06]) so the turns are pinned to the clock; Shot N: alone orders the beats but leaves the model to invent the pacing between them`
+    );
+  }
+
+  if (is25 && refs.length >= 2 && bound.size === 0) {
+    warnings.push(
+      `${shot.id}: ${refs.length} references but the prompt never binds one by ordinal — name each reference's single job ("use @Image 1 for her face, @Image 2 for the room") or the model averages them together`
+    );
+  }
+
+  const frameRef = refs.find((ref) => FRAME_ROLES.has(ref.role));
+  const mixedMode =
+    is25 && frameRef && refs.some((ref) => !FRAME_ROLES.has(ref.role));
+  if (mixedMode && refs[0] !== frameRef) {
+    warnings.push(
+      `${shot.id}: the ${frameRef.role} is not the first reference — a frame role is an image on the wire and consumes an image ordinal, so put it first and start the packs at @Image 2, or the ordinals shift under you`
+    );
+  }
+  return warnings;
+}
+
+/**
+ * `vs generate --draft` validates against `film.draftModel`, not `film.model`,
+ * so a 30s Seedance 2.5 film with a 2.0-fast draft model is REFUSED at generate
+ * (2.0-fast is documented at 4-15s, and a documented mismatch is a hard error).
+ * That trap is invisible until you spend the run, so surface it at --dry-run.
+ */
+function lintDraftModelEnvelope(file: ShotsFile): string[] {
+  const { draftModel } = file.film;
+  if (draftModel === undefined) {
+    return [];
+  }
+  const offenders = new Set<string>();
+  for (const shot of file.shots) {
+    const problems = validateShotAgainstModel(draftModel, {
+      duration: shot.duration ?? file.film.defaults?.duration,
+    });
+    for (const problem of problems) {
+      if (problem.severity === "error") {
+        offenders.add(`${shot.id} (${problem.message})`);
+      }
+    }
+  }
+  if (offenders.size === 0) {
+    return [];
+  }
+  return [
+    `film.draftModel "${draftModel}" cannot render every shot, so \`vs generate --draft\` will refuse this film: ${[...offenders].join("; ")}. Unset film.draftModel to draft on the film's own model at 480p.`,
+  ];
 }
 
 function lintOneShot(
   shot: Shot,
   file: ShotsFile,
-  byId: Map<string, Shot>,
+  modelId: string,
   maxRefs: number
 ): string[] {
   const warnings: string[] = [];
-  const refCount =
-    (shot.references?.length ?? 0) + (shot.continueFrom === undefined ? 0 : 1);
+  const refCount = shot.references?.length ?? 0;
   if (refCount > maxRefs) {
     warnings.push(
       `${shot.id}: ${refCount} references — quality degrades above ~${maxRefs} for this model; trim to the essentials`
@@ -362,9 +474,10 @@ function lintOneShot(
   const words = wordCount(
     preamble ? `${preamble} ${shot.prompt}` : shot.prompt
   );
-  if (words > MAX_PROMPT_WORDS) {
+  const wordLimit = promptWordLimit(modelId);
+  if (words > wordLimit) {
     warnings.push(
-      `${shot.id}: prompt is ${words} words (incl. promptPreamble) — even a multi-beat shot degrades past ~${MAX_PROMPT_WORDS}; move shared style into film.promptPreamble, trim to the timed beats, or split the shot`
+      `${shot.id}: prompt is ${words} words (incl. promptPreamble) — even a multi-beat shot degrades past ~${wordLimit}; move shared style into film.promptPreamble, trim to the timed beats, or split the shot`
     );
   }
   const slowTerms = slowMotionTermCount(shot.prompt);
@@ -384,26 +497,17 @@ function lintOneShot(
   const hasImageRef = (shot.references ?? []).some(
     (ref) => ref.type === "image"
   );
-  if (shot.cameraFixed && (hasImageRef || shot.continueFrom !== undefined)) {
+  if (shot.cameraFixed && hasImageRef) {
     warnings.push(
       `${shot.id}: cameraFixed with an image reference — Seedance rejects camera_fixed in image-to-video (first_frame/reference) mode; drop it and lock the camera in the prompt instead`
     );
   }
-  if (shot.continueFrom !== undefined) {
-    warnings.push(
-      `${shot.id}: continueFrom chains onto ${shot.continueFrom}'s last frame — prefer a literal keyframe (first_frame); chaining serializes generation and cascades retakes when an upstream shot changes`
-    );
-  } else if (!hasImageRef) {
+  if (!hasImageRef) {
     warnings.push(
       `${shot.id}: no image reference — anchor the shot to a literal keyframe (first_frame or reference_image); video generates tighter, cheaper, and less glitchy with an image to follow`
     );
   }
-  const depth = chainDepth(shot, byId);
-  if (depth > MAX_CHAIN_DEPTH) {
-    warnings.push(
-      `${shot.id}: chain depth ${depth} — re-anchor from reference stills every ${MAX_CHAIN_DEPTH} shots to stop drift accumulating`
-    );
-  }
+  warnings.push(...lintOrdinalBinding(shot, file, modelId));
   return warnings;
 }
 
@@ -415,9 +519,12 @@ function lintOneShot(
  * drift — prefer a literal keyframe per shot.
  */
 export function lintShotsFile(file: ShotsFile): string[] {
-  const byId = new Map(file.shots.map((shot) => [shot.id, shot]));
-  const maxRefs = softReferenceLimit(file.film.model ?? MODEL_IDS.seedance20);
-  return file.shots.flatMap((shot) => lintOneShot(shot, file, byId, maxRefs));
+  const modelId = file.film.model ?? MODEL_IDS.seedance20;
+  const maxRefs = softReferenceLimit(modelId);
+  return [
+    ...file.shots.flatMap((shot) => lintOneShot(shot, file, modelId, maxRefs)),
+    ...lintDraftModelEnvelope(file),
+  ];
 }
 
 /**
@@ -478,18 +585,29 @@ export function lintStillsFile(
   return warnings;
 }
 
-// Not being able to read the film file is the first error most new users hit,
-// so both failures here name the path and the way out rather than stating a
-// fact and stopping.
+/**
+ * Not being able to read the film file is the first error most new users hit,
+ * so it names the path and the way out rather than stating a fact and stopping.
+ * Shared with the commands that only stat the file (`vs status`), so a typo
+ * reads the same however you arrived at it.
+ */
+export function filmFileNotFound(path: string, cause?: unknown): VsError {
+  return new VsError("file_not_found", `cannot read ${path}`, {
+    cause,
+    hint: `check the path (it is relative to your current directory), or scaffold a new film with \`vs init ${dirname(path)}\``,
+  });
+}
+
 async function loadJson(path: string): Promise<unknown> {
   let raw: string;
   try {
     raw = await readFile(path, "utf-8");
   } catch (error) {
-    throw new VsError("file_not_found", `cannot read ${path}`, {
-      cause: error,
-      hint: `check the path (it is relative to your current directory), or scaffold a new film with \`vs init ${dirname(path)}\``,
-    });
+    // Only a genuinely missing file is `file_not_found`. Reporting EACCES on a
+    // root-owned film, or EISDIR on a path that named a directory, as "cannot
+    // read X; scaffold a new film with `vs init`" sends the reader to fix the
+    // one thing that was never wrong.
+    throw fileReadError(path, error, () => filmFileNotFound(path, error));
   }
   try {
     return JSON.parse(raw);

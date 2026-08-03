@@ -26,7 +26,7 @@ vs narrate assemble films/<slug>/shots.json \
   --xfade 0.4 \
   --fade-shot <closing-shot-id>
 
-# 4. Mix — --xfade must match assemble
+# 4. Mix. --xfade must match assemble
 vs stitch films/<slug>/shots.json \
   --xfade 0.4 \
   --music films/<slug>/score-v001.mp3 \

@@ -5,8 +5,6 @@
 export const VS_ERROR_CODES = [
   /** The target already exists and no --force was given. */
   "already_exists",
-  /** A continueFrom chain points at a shot that cannot be resolved. */
-  "chain_invalid",
   /** The estimated spend for a run exceeds the --max-cost ceiling. */
   "cost_ceiling",
   /** A remote fetch of a generated asset failed. */
@@ -15,6 +13,8 @@ export const VS_ERROR_CODES = [
   "ffmpeg_failed",
   /** A path the operator supplied does not exist on disk. */
   "file_not_found",
+  /** The path exists but could not be read (permissions, or it is a directory). */
+  "file_unreadable",
   /** A shots/stills file failed schema validation or could not be parsed. */
   "invalid_input",
   /** A clip the command needs has not been generated/downloaded yet. */
@@ -162,4 +162,31 @@ export function formatError(error: unknown, verbose = false): FormattedError {
     return { details, hint: apiHint(error), message: error.message };
   }
   return { details, message: String(error) };
+}
+
+/**
+ * Map a failed file read onto the right stable code.
+ *
+ * ENOENT is the operator's path being wrong, and `missing` supplies the
+ * command-specific hint for that. Anything else means the path resolved to
+ * something we could not read, which is a different fix (permissions, or the
+ * path named a directory), so it must not borrow the "check the path" hint.
+ */
+export function fileReadError(
+  path: string,
+  cause: unknown,
+  missing: () => VsError
+): VsError {
+  const { code } = cause as NodeJS.ErrnoException;
+  if (code === "ENOENT") {
+    return missing();
+  }
+  const reason = code === "EISDIR" ? "it is a directory" : "permission denied";
+  return new VsError("file_unreadable", `cannot read ${path}: ${reason}`, {
+    cause,
+    hint:
+      code === "EISDIR"
+        ? "point at the file inside that directory, not the directory itself"
+        : `check the file's permissions (\`ls -l ${path}\`)`,
+  });
 }

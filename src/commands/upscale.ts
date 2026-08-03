@@ -3,10 +3,11 @@ import { dirname, extname, join, resolve } from "node:path";
 
 import { assertFfmpeg, probeClip, runFfmpeg } from "../ffmpeg.js";
 import { isComplete, loadManifest } from "../manifest.js";
+import { resolveOutput } from "../paths.js";
 import type { Pass } from "../paths.js";
 import { buildUpscalePlan } from "../upscale.js";
 import { nextRenderPath } from "../versions.js";
-import { resolveFilm, resolveOutput } from "./context.js";
+import { resolveFilm } from "./context.js";
 import { emit, heading, line, note, ok, warn } from "./output.js";
 
 export interface UpscaleOptions {

@@ -10,8 +10,16 @@ import { styleText } from "node:util";
  * depth (which honours NO_COLOR/FORCE_COLOR/TERM), but it defaults to checking
  * `process.stdout`, so stderr writes have to name their own stream or a
  * redirected log ends up full of escape codes.
+ *
+ * This is the ONLY module that touches `process.stdout`/`process.stderr`, which
+ * is what makes the rule above enforceable rather than aspirational; the lint
+ * config bans both anywhere else. A command that needs to pick a stream at run
+ * time names it (`writeLine("stderr", …)`) instead of reaching for the stream.
  */
 type Format = Parameters<typeof styleText>[0];
+
+/** Named rather than passed in, so callers never hold a stream themselves. */
+type OutStream = "stderr" | "stdout";
 
 let json = !process.stdout.isTTY;
 let verbose = false;
@@ -72,6 +80,27 @@ export function heading(text: string): void {
 /** Data. One line on stdout, verbatim. */
 export function line(text: string): void {
   process.stdout.write(`${text}\n`);
+}
+
+/**
+ * One painted line on a stream the caller picks at run time.
+ *
+ * `vs doctor` is the one command that splits its output by *result* rather than
+ * by kind — failures go to stderr so `vs doctor 2>/dev/null` shows only what
+ * passed — and it must not paint a stderr write with `color()`. Both halves of
+ * that live here so the choice of stream and the choice of painter can never
+ * come apart again.
+ */
+export function writeLine(
+  stream: OutStream,
+  format: Format,
+  text: string
+): void {
+  if (stream === "stderr") {
+    toStderr(format, text);
+    return;
+  }
+  line(color(format, text));
 }
 
 /**

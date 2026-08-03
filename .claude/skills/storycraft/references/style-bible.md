@@ -45,7 +45,7 @@ Keep it to what is true of every frame. A detail belonging to one location goes
 in a palette block.
 
 The demo film's whole style block is its `film.promptPreamble` in
-`films/lighthouse/shots.json` — a density reference for shared look language,
+`films/lighthouse/shots.json`, a density reference for shared look language and
 not a template for clip duration.
 
 ## PALETTE blocks
@@ -131,9 +131,9 @@ afterward. The boat's reef geography in s07 and s11 mirrors exactly**, so the
 corrected course reads without explanation.
 
 Write anchors as flat rules. A single constraint like that governs staging,
-eyelines, and pacing for half the film. When a chained shot inherits a previous
-frame, that frame is ground truth: never write action contradicting what is
-actually on screen.
+eyelines, and pacing for half the film. When a shot opens on a keyframe still,
+that still is ground truth: never write action contradicting what is actually
+on screen.
 
 ## Tone and audio
 

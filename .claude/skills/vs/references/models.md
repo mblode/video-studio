@@ -26,18 +26,21 @@ Confirmed on BytePlus ModelArk:
 
 | Model            | Id                                | Notes                                          |
 | ---------------- | --------------------------------- | ---------------------------------------------- |
-| Seedance 2.0     | `dreamina-seedance-2-0-260128`    | The default. 480p to 4K                        |
-| Seedance 2.0 fast | `dreamina-seedance-2-0-fast-260128` | 480p/720p only. About 27% cheaper per token |
-| Seedance 2.0 mini | `dreamina-seedance-2-0-mini-260615` | 480p/720p only. Pricing not published       |
-| Seedance 2.5     | `dreamina-seedance-2-5-260628`    | Opt-in. 4–30s, 480p/720p, $10.7/M. API soon  |
+| Seedance 2.0     | `dreamina-seedance-2-0-260128`    | The default. 4-15s, 480p to 4K                 |
+| Seedance 2.0 fast | `dreamina-seedance-2-0-fast-260128` | 4-15s, 480p/720p only. About 27% cheaper per token |
+| Seedance 2.0 mini | `dreamina-seedance-2-0-mini-260615` | 4-15s, 480p/720p only. Pricing not published |
+| Seedance 2.5     | `dreamina-seedance-2-5-260628`    | Opt-in. 4-30s, 480p/720p, $10.7/M. **1 concurrent, 60 RPM** |
 
 The same three ship on Volcengine with a `doubao-` prefix. Pre-2.0 releases
 (`seedance-1-0-pro-250528`, `seedance-1-5-pro-251215`) are in the registry with
 `confidence: "inferred"`, so their capability checks report warnings only.
 
-The `fast` variant is the one to set as `film.draftModel`: it stacks a model
-discount on top of the 480p resolution drop. It has to be activated in the
-BytePlus console before the id resolves.
+On a 2.0 film the `fast` variant is the one to set as `film.draftModel`: it
+stacks a model discount on top of the 480p resolution drop. It has to be
+activated in the BytePlus console before the id resolves. **On a 2.5 film,
+leave `film.draftModel` unset.** There is no 2.5-fast, and 2.0-fast tops out at
+15s, so pointing a 30s film at it does not buy a cheap proxy, it buys a refused
+run. See `workflow.md`.
 
 ## Never hardcode a vendor prefix
 
@@ -56,6 +59,12 @@ rung the model does not really climb. `vs init` sets
 `film.defaults.resolution: "720p"` for that reason. Deliver at 1080p by running
 `vs upscale` on the shots that survive the edit, which costs nothing.
 
+This is not a theory. A prior 2.0 run in this repo requested 1080p, was
+**delivered 720p**, and was **billed at the 1080p rate**: 2.25x the tokens for
+the same pixels that came back. Requesting a rung the model does not climb is
+paid for in full. 2.5 makes the same point more bluntly by not listing 1080p at
+all.
+
 `DEFAULT_RESOLUTION` in `src/types.ts` is `1080p` on purpose: it models what
 the API does when `resolution` is omitted, which is what keeps a cost estimate
 for an unconfigured film honest. The field itself is only emitted when
@@ -70,10 +79,11 @@ rate limits below, is why a flat dollars-per-second estimate is wrong by up to
 
 Individual account tier:
 
-| Scope       | RPM | Concurrent tasks |
-| ----------- | --- | ---------------- |
-| Default     | 180 | 3                |
-| **4K**      | 15  | **1**            |
+| Scope             | RPM | Concurrent tasks |
+| ----------------- | --- | ---------------- |
+| Default (2.0)     | 180 | 3                |
+| **4K** (2.0)      | 15  | **1**            |
+| **Seedance 2.5**  | 60  | **1**            |
 
 Enterprise is 600 RPM and 10 concurrent.
 
@@ -81,19 +91,25 @@ Enterprise is 600 RPM and 10 concurrent.
 **4K film is strictly serial**: passing `--concurrency 3` to a 4K run just
 queues, so plan the wall-clock time accordingly.
 
+The same applies to the whole of 2.5, at every resolution: **a 2.5 run is
+strictly serial regardless of `--concurrency`**. A 30s 720p generation takes 10
+to 15 minutes, so a six-act film is 60 to 90 minutes of sequential submission
+and nothing you pass on the command line shortens it.
+
 ## Reference limits
 
 Limits are model-specific. `src/models.ts` is the authority.
 
 **Seedance 2.0 (default).** Platform / registry hard ceiling per generation:
 **9 images, 3 videos, 3 audio** (`validateShotAgainstModel` errors above that).
-`lintShotsFile` soft-warns above **~5 references total** — quality degrades
+`lintShotsFile` soft-warns above **~5 references total**, because quality degrades
 well before the ceiling.
 
 **Seedance 2.5.** Product/console ceiling (Seed blog, 2026-07-31): **30 images,
-10 video, 10 audio** per generation. `lintShotsFile` warns above **~12
-references total** — still well below the ceiling, but higher than 2.0 because
-2.5 demos routinely bind more media. API access is **coming soon** on ModelArk;
+10 video, 10 audio** per generation, 50 total. `lintShotsFile` soft-warns above
+**~16 references total**, still well below the ceiling but higher than 2.0's
+~5, because a 30s act legitimately binds a pack: characters, plates, and a
+staging still per timestamp span. API access is **coming soon** on ModelArk;
 keep the CLI default on 2.0 until create-task succeeds.
 
 Both checks are warnings, not errors.
@@ -143,9 +159,48 @@ on every Seedance model. Dollar rates per model and resolution live in
 `src/models.ts`; an unlisted combination quotes the dearest known rate, so an
 unpriced pairing over-quotes rather than silently costing nothing.
 
-Conditioned input (a reference still or a chained `first_frame`) is billed
-cheaper than pure text-to-video, so a keyframe-anchored shot is both more
-consistent and cheaper.
+One 30s clip at 16:9 on Seedance 2.5, at the $10.7/M rate:
+
+| Resolution      | Tokens    | USD    |
+| --------------- | --------- | ------ |
+| 480p (864x480)  | 291,600   | $3.12  |
+| 720p (1280x720) | 648,000   | $6.93  |
+| 1080p (1920x1080) | 1,458,000 | $15.60 |
+
+### Longer clips are not cheaper clips
+
+The most useful number in this file. **120 seconds at 720p costs exactly
+2,592,000 tokens whether you spend it as 15 clips of 8s on 2.0 or 4 acts of 30s
+on 2.5.** Identical pixels, identical token count. Only the rate differs:
+
+| Same 120s at 720p | Tokens    | Rate     | USD    | Concurrency | Wall clock |
+| ----------------- | --------- | -------- | ------ | ----------- | ---------- |
+| 2.0, 15 x 8s      | 2,592,000 | $7.7/M   | $19.96 | 3           | baseline   |
+| 2.5, 4 x 30s      | 2,592,000 | $10.7/M  | $27.73 | **1**       | **~4x**    |
+
+So 2.5 is about **39% dearer** for the same runtime and roughly **four times
+the wall clock**, because it runs one task at a time. What you buy for that is
+coherence inside a 30s act and far fewer retakes. You do not buy price, and you
+do not buy speed. Decide on that basis.
+
+### The dual rate
+
+The 2.5 registry entry carries two rates: **$10.7/M without video input** and
+**$6.4/M with video input** (`usdPerMTokenWithVideoInput`). The cheaper rate is
+applied in **reconciliation only, never in the pre-flight estimate**. The
+conditioned input seconds are unknowable for a remote URL, so discounting an
+under-counted token base would under-quote twice over. The repo's rule
+throughout: an over-quote is a surprise, an under-quote is a bill.
+
+It also does **not** make a region edit cheaper. The formula bills
+`(input + output)` seconds, so a 30s edit on a 30s source is 60s of tokens at
+the lower rate, about **20% more** than a fresh 30s pass. Region edit buys
+quality, not savings.
+
+Conditioned input on 2.0 (a `first_frame` keyframe or a reference still) is
+billed cheaper than pure text-to-video, so a keyframe-anchored shot is both more
+consistent and cheaper. A still image has no duration, so it adds no input
+seconds; a reference *video* does.
 
 Real `usage.completion_tokens` is written back to the manifest after every run,
 and `reconcileTokens` flags a run that lands outside a 15% tolerance so the
@@ -154,20 +209,43 @@ calibration was 22,446,900 tokens over 101 calls.
 
 ## Seedance 2.5
 
+The model these docs are written around. A generation is a 30s act, not an 8s
+beat, and every number below follows from that.
+
 | Field | Value |
 | --- | --- |
 | Id | `dreamina-seedance-2-5-260628` |
-| Duration | 4–30s (auto `-1` unconfirmed) |
-| Resolutions | 480p, 720p only |
-| Refs (product) | up to 30 images / 10 video / 10 audio |
+| Duration | 4-30s (auto `-1` unconfirmed) |
+| Resolutions | 480p, 720p |
+| Refs (product ceiling) | 30 images / 10 video / 10 audio, 50 total |
+| Refs (soft warn) | ~16 total |
 | Rate (no video in) | **$10.7 / M tokens** |
-| Rate (with video in) | $6.4 / M tokens |
+| Rate (with video in) | $6.4 / M tokens, reconciliation only |
 | Limits | **1 concurrent**, 60 RPM |
-| Confidence | `inferred` — console card + rates published (Seed blog 2026-07-31); ModelArk API still “coming soon” |
+| Confidence | `inferred`: console card and rates are published (Seed blog 2026-07-31), the ModelArk API is still "coming soon" |
 
 Opt in with `film.model: "dreamina-seedance-2-5-260628"`. Do **not** make it the
-CLI default until a live create-task succeeds. Schema duration envelope is 4–30;
-`validateShotAgainstModel` still caps 2.0 films at 15s. Clay / green-screen /
-region edit are prompt conventions only — no new wire roles until ModelArk
-documents them. **Multi-round extend** for films >30s is product-only; out of
-CLI scope until the API ships.
+CLI default until a live create-task succeeds.
+
+**What `inferred` buys you.** `validateShotAgainstModel` downgrades every
+capability problem on an `inferred` model from error to warning, because
+refusing a shot on a hunch is worse than letting the API arbitrate. The useful
+consequence: requesting 1080p on 2.5 **warns and the request still goes out**.
+The registry lists 480p and 720p because that is what the console card says.
+Launch marketing claims up to 4K and 10-bit; that is unconfirmed and not
+modelled here, so the warning is the CLI saying "the card disagrees with you",
+not "this will fail". Once a live create-task succeeds, flip the entry to
+`documented` and the same mismatch becomes a refusal.
+
+Other 2.5 notes:
+
+- Schema duration envelope is 4-30. `validateShotAgainstModel` still caps 2.0
+  films at 15s, and 2.0 is `documented`, so there the cap is a hard error.
+- Do not set `film.draftModel` on a 2.5 film. Draft on its own model at 480p;
+  `workflow.md` has the ladder and the trap.
+- Frame roles and `reference_*` roles may be mixed on 2.5. On 2.0 they are
+  mutually exclusive, which the schema enforces.
+- Clay, green-screen, and region edit are prompt conventions only. No new wire
+  roles until ModelArk documents them.
+- **Multi-round extend** for films longer than 30s is product-only, and out of
+  CLI scope until the API ships. Cut across an act boundary instead.

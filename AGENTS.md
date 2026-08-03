@@ -48,7 +48,7 @@ Run `npm run verify` (lint, typecheck, tests) before a commit. Narrower tiers:
 - **Generated video is immutable.** Clips live under
   `output/clips/<shot>/vNNN.mp4`; renders and exports also allocate `vNNN`.
   `ManifestEntry.status` describes the latest attempt, while `selectedVersion`
-  is what stitch/review/chain use. A failed retake must never move the
+  is what stitch and review use. A failed retake must never move the
   selection. `vs use` is the rollback path.
 - **The opening title card renders with `fadeIn: false`** so frame 0 is the
   visible card rather than black. Otherwise WhatsApp and friends grab a black
@@ -61,15 +61,23 @@ Run `npm run verify` (lint, typecheck, tests) before a commit. Narrower tiers:
 - **`vs narrate assemble --xfade` must match `vs stitch --xfade`.** Both default
   to `0`; if you crossfade the cut, use the same value (and per-shot
   `transition` overrides) on assemble so narration lands on the right timeline.
-- **Seedance 2.5 is opt-in.** Set `film.model` to `dreamina-seedance-2-5-260628`
-  explicitly; the CLI default stays on 2.0 until the API is live. See
-  `references/models.md` in the vs skill.
-- **`vs narrate assemble --xfade` must match `vs stitch --xfade`.** Both default
-  to `0`; if you crossfade the cut, use the same value (and per-shot
-  `transition` overrides) on assemble so narration lands on the right timeline.
-- **Seedance 2.5 is opt-in.** Set `film.model` to `dreamina-seedance-2-5-260628`
-  explicitly; the CLI default stays on 2.0 until the API is live. See
-  `references/models.md` in the vs skill.
+- **Seedance 2.5 is opt-in, and two things about it bite.** Set `film.model` to
+  `dreamina-seedance-2-5-260628` explicitly; the CLI default stays on 2.0 until
+  the API is live. (1) **Concurrency is 1**, at every resolution, regardless of
+  `--concurrency`. A 30s generation takes 10 to 15 minutes, so a six-act film
+  generates strictly serially over 60 to 90 minutes. (2) **Never set
+  `film.draftModel` on a 2.5 film.** `--draft` validates against `draftModel`,
+  not `model`, and 2.0-fast is documented at 4-15s, so a 30s film hard-fails
+  with `invalid_input` instead of drafting. Unset, `--draft` runs the film's own
+  model at 480p (45% of final). `lintDraftModelEnvelope` catches it at
+  `--dry-run`. See `references/models.md` in the vs skill.
+- **`@Image N` counts per media type, in authored order.** Ordinals are scoped
+  to the media type, not to the `references` array, so `@Image 2` is the second
+  *image*, whatever videos or audio sit between them. A `first_frame` or
+  `last_frame` reference is still an image and **consumes an image ordinal**, so
+  adding a frame role silently shifts every `@Image N` in the prompt by one.
+  `lintOrdinalBinding` warns when a binding points past the end, but a binding
+  that lands on the wrong image is a silent, paid-for miss.
 - **Title cards are macOS-only.** This machine's ffmpeg lacks `drawtext`, so
   cards are rasterised through `qlmanage` and `sips`. `--font` fails loudly for
   a family that is not installed, because qlmanage substitutes a default face

@@ -9,6 +9,9 @@ import {
   buildAssembleFfmpegArgs,
   buildAssembleSegments,
   buildNarrateLineRequests,
+  loadLinesFile,
+  loadPlacementFile,
+  loadScratchText,
   parseLinesTsv,
   parsePlacementTsv,
   placeLines,
@@ -149,5 +152,37 @@ describe("scratchAudioPath", () => {
     expect(scratchAudioPath("/films/demo/vo.txt")).toMatch(
       /narration-scratch\.mp3$/u
     );
+  });
+});
+
+/**
+ * The placement TSV defaults to a path the user has usually not written yet, so
+ * this is the most likely failure of `vs narrate assemble`. A raw ENOENT there
+ * reaches a `--json` caller with no code to branch on and no way out.
+ */
+describe("narration files that are not there", () => {
+  it("reports a missing placement TSV as file_not_found with the format in the hint", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vs-narrate-"));
+    const missing = join(dir, "narration", "placement.tsv");
+    const failure = (await loadPlacementFile(missing).catch(
+      (error: unknown) => error
+    )) as Error & { code?: string; hint?: string };
+
+    expect(failure.code).toBe("file_not_found");
+    expect(failure.message).toContain(missing);
+    expect(failure.hint).toContain("line\\tshotId\\toffset");
+  });
+
+  it("reports a missing lines TSV and a missing --text-file the same way", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vs-narrate-"));
+    for (const failure of await Promise.all([
+      loadLinesFile(join(dir, "lines.tsv")).catch((error: unknown) => error),
+      loadScratchText(join(dir, "vo.txt")).catch((error: unknown) => error),
+    ])) {
+      expect((failure as Error & { code?: string }).code).toBe(
+        "file_not_found"
+      );
+      expect((failure as Error & { hint?: string }).hint).toBeTruthy();
+    }
   });
 });

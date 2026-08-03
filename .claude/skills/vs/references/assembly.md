@@ -15,8 +15,8 @@ with scratch narration and music. Title cards are included, so the reel is a
 complete edit. Zero video spend, which makes it the cheapest place to discover
 that the shot order is wrong.
 
-A shot with no still (chained, or text-only) inherits the previous shot's
-still, or gets a labelled slate. Outputs are immutable:
+A shot with no still of its own (text-only, or a Mode-B pack shot) inherits the
+previous shot's still, or gets a labelled slate. Outputs are immutable:
 `output/animatics/vNNN.mp4`, or the same structure under `output-draft/`.
 
 ## `vs review`: the QA gate
@@ -27,7 +27,8 @@ node dist/cli.js review films/<slug>/shots.json --frames 3
 
 Extracts frames from every downloaded clip into `review/index.md`. It samples
 the **first** frame (0%) and the **last** (~98%) plus mids: the first is your
-identity check against the keyframe, the last is the chain hand-off.
+identity check against the keyframe, the last is what the cut into the next
+shot lands on.
 
 It also probes each clip and flags a mismatch between what was delivered and
 what was requested (duration, aspect, resolution) with a warning marker. An
@@ -92,7 +93,7 @@ any shareable cut opening on a non-black frame.
 ## `vs upscale`: 720p masters to a delivery resolution
 
 ```bash
-node dist/cli.js upscale films/<slug>/shots.json --shot s01-final-arrival s10-beam-returns
+node dist/cli.js upscale films/<slug>/shots.json --shot s01-last-arrival s10-safe-water
 ```
 
 Lanczos upscale (`scale=-2:1080:flags=lanczos`), video re-encoded at `--crf 18`,

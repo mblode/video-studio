@@ -77,6 +77,13 @@ A short film in twelve generations (~1:42). No dialogue. Wind, sea, radio,
 and machinery carry it; any score is mixed in post.
 ```
 
+The same film sized for Seedance 2.5, where each generation is an act:
+
+```
+A short film in four 30s acts (2:00 of clips, ~2:06 with cards). No dialogue.
+Wind, sea, radio, and machinery carry it; any score is mixed in post.
+```
+
 Two valid prose registers, chosen by how tightly narrative must tie to
 generations:
 
@@ -95,11 +102,32 @@ version simply does more of the beat sheet's work up front.
 ## Length and budget reality
 
 Runtime ties directly to generation count and each generation costs money, so
-keep the treatment honest about scope. Roughly: a 35-second film is five
-generations; a two-minute film can be 10 to 15. Title cards add real runtime on
-top of the summed clip durations. If the treatment implies forty beats, it
-implies forty generations and a bill to match. Trim the story to the budget
-here, in prose, where trimming is free.
+keep the treatment honest about scope. How many generations a runtime buys
+depends entirely on the model:
+
+| Runtime | Seedance 2.0 (4-15s, 8s typical) | Seedance 2.5 (4-30s) |
+| ------- | -------------------------------- | -------------------- |
+| 0:35    | 5 generations                    | 2 acts               |
+| 1:00    | 8 generations                    | 2 to 3 acts          |
+| 2:00    | 10 to 15 generations             | 4 acts               |
+
+On 2.5 a generation is an act, so the count you write in the intro line is a
+count of acts, and each one carries five to seven internal beats.
+
+**Fewer generations is not a cheaper film, and this is the counter-intuitive
+part.** Two minutes of 720p bills exactly the same tokens whether it is fifteen
+8s clips or four 30s acts, because the token formula is per pixel-second. But
+2.5's rate is dearer (about 39% more for the same runtime), and it runs one
+task at a time against 2.0's three, so the same film takes roughly four times
+the wall clock and is strictly serial. What the longer window buys is coherence
+inside an act and far fewer retakes, not price and not speed. The budget
+conversation gets shorter, not easier. Real numbers in the vs skill's
+`references/models.md`.
+
+Title cards add real runtime on top of the summed clip durations. If the
+treatment implies forty beats, that is forty beats to place: forty generations
+on 2.0, six or seven acts on 2.5, and a bill to match either way. Trim the
+story to the budget here, in prose, where trimming is free.
 
 ## Checklist
 

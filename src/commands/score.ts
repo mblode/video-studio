@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import type { GeminiClient } from "../gemini.js";
+import { resolveOutput } from "../paths.js";
 import {
   buildScorePlan,
   estimateFilmRuntimeSeconds,
@@ -10,7 +11,7 @@ import {
   extractInlineAudio,
 } from "../score.js";
 import { assertNewVideoOutput, versionLabel } from "../versions.js";
-import { createGeminiClient, resolveFilm, resolveOutput } from "./context.js";
+import { createGeminiClient, resolveFilm } from "./context.js";
 import { emit, heading, line, note, ok } from "./output.js";
 
 export interface ScoreOptions {

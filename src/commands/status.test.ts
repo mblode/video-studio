@@ -70,4 +70,44 @@ describe("runStatus", () => {
     const output = write.mock.calls.map((call) => String(call[0])).join("");
     expect(output).toContain("task-1");
   });
+
+  /**
+   * `status` is what an agent reads to decide whether to spend, so a typo must
+   * not come back as a clean, empty, exit-0 "nothing generated yet".
+   */
+  it("fails on a shots file that is not there", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vs-status-"));
+    const missing = join(dir, "nope.json");
+    const failure = (await runStatus(missing, {
+      draft: false,
+      refresh: false,
+      shots: "./shots.json",
+    }).catch((error: unknown) => error)) as Error & {
+      code?: string;
+      hint?: string;
+    };
+
+    expect(failure.code).toBe("file_not_found");
+    expect(failure.message).toContain(missing);
+    expect(failure.hint).toContain("vs init");
+  });
+
+  it("still reports an empty manifest for a real film with nothing generated", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vs-status-"));
+    const shotsPath = join(dir, "shots.json");
+    await writeFile(
+      shotsPath,
+      JSON.stringify({
+        film: { title: "T" },
+        shots: [{ id: "a", prompt: "p" }],
+      })
+    );
+    await expect(
+      runStatus(shotsPath, {
+        draft: false,
+        refresh: false,
+        shots: "./shots.json",
+      })
+    ).resolves.toBeUndefined();
+  });
 });

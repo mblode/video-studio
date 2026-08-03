@@ -1,19 +1,23 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { extname } from "node:path";
 
+import { VsError } from "./errors.js";
+import { MODEL_IDS } from "./models.js";
 import { safeJoin } from "./paths.js";
-import { DEFAULT_DURATION } from "./types.js";
+import { DEFAULT_DURATION, DEFAULT_RESOLUTION } from "./types.js";
 import type {
   ArkContentItem,
+  AspectRatio,
   CreateTaskRequest,
   FilmDefaults,
   Resolution,
   Shot,
+  ShotReference,
   ShotsFile,
 } from "./types.js";
 
-export const DEFAULT_VIDEO_MODEL = "dreamina-seedance-2-0-260128";
+export const DEFAULT_VIDEO_MODEL = MODEL_IDS.seedance20;
 /** Confirmed fast variant (~27% cheaper). Opt in per film via `film.draftModel`. */
 export const DRAFT_VIDEO_MODEL = "dreamina-seedance-2-0-fast-260128";
 
@@ -37,20 +41,96 @@ export interface PayloadOverrides {
   model?: string;
 }
 
+/**
+ * What a shot will actually be generated with, after the
+ * `override ?? shot ?? film.defaults ?? BASE_DEFAULTS` ladder.
+ */
+export interface EffectiveShotParams {
+  cameraFixed: boolean;
+  duration: number;
+  generateAudio: boolean;
+  model: string;
+  ratio: AspectRatio;
+  /**
+   * The resolution the model renders at, which is what a cost estimate has to
+   * price. When `emitResolution` is false this is the API's own default rather
+   * than anything the film asked for.
+   */
+  resolution: Resolution;
+  /**
+   * Whether `resolution` goes on the wire. False means nothing set one, and the
+   * payload OMITS the field so the API applies its default — the doc example
+   * omits it, so an unconfigured film never risks an unknown-field reject. The
+   * estimate still prices `resolution`, so this flag is the whole of the
+   * difference between what we send and what we quote.
+   */
+  emitResolution: boolean;
+  watermark: boolean;
+}
+
+/**
+ * Resolve every generation parameter for one shot, once.
+ *
+ * THE LADDER LIVES HERE ONLY. `buildTaskPayload` sends these values and
+ * `vs generate` prices them, and a second copy of the ladder is a bill that
+ * disagrees with the wire while every test still passes. Costs are a safety
+ * property in this CLI (see SECURITY.md), so the estimate is only honest if it
+ * is derived from the same resolution as the request.
+ */
+export function effectiveShotParams(
+  shot: Shot,
+  film: ShotsFile["film"],
+  overrides: PayloadOverrides = {}
+): EffectiveShotParams {
+  const defaults = { ...BASE_DEFAULTS, ...film.defaults };
+  const resolution =
+    overrides.resolution ?? shot.resolution ?? defaults.resolution;
+  return {
+    cameraFixed: shot.cameraFixed ?? defaults.cameraFixed,
+    duration: shot.duration ?? defaults.duration,
+    emitResolution: resolution !== undefined,
+    generateAudio: overrides.generateAudio ?? defaults.generateAudio,
+    model: overrides.model ?? film.model ?? DEFAULT_VIDEO_MODEL,
+    ratio: shot.ratio ?? defaults.ratio,
+    resolution: resolution ?? DEFAULT_RESOLUTION,
+    watermark: defaults.watermark,
+  };
+}
+
 const MIME_BY_EXT: Record<string, string> = {
+  ".aac": "audio/aac",
   ".jpeg": "image/jpeg",
   ".jpg": "image/jpeg",
+  ".m4a": "audio/mp4",
+  ".mov": "video/quicktime",
+  ".mp3": "audio/mpeg",
+  ".mp4": "video/mp4",
   ".png": "image/png",
+  ".wav": "audio/wav",
+  ".webm": "video/webm",
   ".webp": "image/webp",
 };
+
+/**
+ * Ceiling on an inlined non-image reference, measured on the FILE. The base64
+ * body that goes on the wire is ~1.37x this, so 20 MB here permits ~27 MB of
+ * request. A 30s 1080p clip runs to tens of megabytes, which is both a slow hash on
+ * every submit and a plausible request-size rejection. Nobody has confirmed the
+ * Ark `video_url` content type accepts data URLs at all (the image one is
+ * documented, that is why images are inlined), so fail loudly and early with
+ * the workaround rather than posting a body that may be silently truncated.
+ */
+const MAX_INLINE_BYTES = 20 * 1024 * 1024;
 
 function isRemote(url: string): boolean {
   return url.startsWith("https://");
 }
 
 /**
- * Local image reference paths are inlined as base64 data URLs (the Ark
- * image_url content type accepts data URLs). Video/audio must be remote.
+ * Local reference paths are inlined as base64 data URLs. This is documented for
+ * the Ark `image_url` content type; for video/audio it is only reachable on
+ * Seedance 2.5 (the schema refuses it elsewhere) and is capped at
+ * `MAX_INLINE_BYTES`. An https URL is always the supported path.
  */
 export async function resolveReferenceUrl(
   url: string,
@@ -64,14 +144,89 @@ export async function resolveReferenceUrl(
   const mime = MIME_BY_EXT[extname(absolute).toLowerCase()];
   if (!mime) {
     throw new Error(
-      `unsupported local image extension for reference: ${url} (use png/jpg/webp)`
+      `unsupported local extension for reference: ${url} (images png/jpg/webp; video mp4/mov/webm; audio mp3/wav/m4a/aac)`
     );
+  }
+  // Size FIRST, and before the skipInline return, for three reasons: reading a
+  // 900 MB clip to reject it costs ~1 GB of RSS, a file over 2 GiB makes
+  // readFile throw ERR_FS_FILE_TOO_LARGE (a plain Error with no code and no
+  // hint, so the biggest file gets the least useful message), and `--dry-run`
+  // is meant to be the "will this work before I spend" gate. `stat` costs
+  // nothing and covers all three.
+  if (!mime.startsWith("image/")) {
+    const { size } = await stat(absolute);
+    if (size > MAX_INLINE_BYTES) {
+      const mb = (size / 1024 / 1024).toFixed(1);
+      throw new VsError(
+        "invalid_input",
+        `local reference ${url} is ${mb} MB, over the ${MAX_INLINE_BYTES / 1024 / 1024} MB inline ceiling`,
+        {
+          hint: "upload it and reference the https URL instead (`vs share` will compress a clip first)",
+        }
+      );
+    }
   }
   if (skipInline) {
     return `data:${mime};base64,<inlined from ${url} at submit time>`;
   }
   const bytes = await readFile(absolute);
   return `data:${mime};base64,${bytes.toString("base64")}`;
+}
+
+/**
+ * THE ORDINAL CONTRACT.
+ *
+ * Seedance 2.5 prompts bind references by ordinal, in the form
+ * `"use (at)Image 1 for her face, (at)Image 2 for the room"` (written with a
+ * literal at-sign in a real prompt). That ordinal is resolved against the
+ * submitted `content` array, so what the author types has to match what the
+ * model receives, or a $7 generation silently uses the wrong reference for the
+ * wrong job. Two things make it easy to get wrong:
+ *
+ * 1. Ordinals count PER MEDIA TYPE, not per array index. In
+ *    `[video, image, image]`, the first Image ordinal is the SECOND array entry.
+ * 2. Frame roles are images on the wire, so a `first_frame` CONSUMES an image
+ *    ordinal. A shot with a first_frame plus two reference_images has its
+ *    keyframe at Image ordinal 1 and its packs at ordinals 2 and 3.
+ *
+ * `buildTaskPayload` emits the text item first, then references in authored
+ * array order, so the mapping below is exactly what the model sees. The array
+ * is deliberately never reordered: silently permuting it would break "what you
+ * typed is what you send" and change `payloadHash` for every existing film.
+ *
+ * Returns the 1-based ordinal of each reference within its own media type,
+ * POSITIONALLY: `ordinals[i]` belongs to `refs[i]`. Keying a Map by the
+ * reference object instead would collapse an aliased array (`[ref, ref]`) to a
+ * single entry and silently report ordinal 2 for the first reference, and
+ * position is what the authored-order contract is actually about.
+ */
+export function referenceOrdinals(
+  refs: readonly ShotReference[]
+): readonly number[] {
+  const seen: Record<ShotReference["type"], number> = {
+    audio: 0,
+    image: 0,
+    video: 0,
+  };
+  return refs.map((ref) => {
+    seen[ref.type] += 1;
+    return seen[ref.type];
+  });
+}
+
+/** How many references of each media type a shot carries, for ordinal lints. */
+export function referenceCountsByType(
+  refs: readonly ShotReference[]
+): Record<ShotReference["type"], number> {
+  const counts: Record<ShotReference["type"], number> = {
+    audio: 0,
+    image: 0,
+    video: 0,
+  };
+  for (const ref of refs) {
+    counts[ref.type] += 1;
+  }
+  return counts;
 }
 
 /** Prepend the film's locked style preamble (color script) to the shot prompt. */
@@ -81,58 +236,49 @@ function composePrompt(film: ShotsFile["film"], shot: Shot): string {
     : shot.prompt;
 }
 
+/** One reference to one wire content item, resolving local paths to data URLs. */
+async function toContentItem(
+  ref: ShotReference,
+  shotsDir: string,
+  skipInline: boolean
+): Promise<ArkContentItem> {
+  const url = await resolveReferenceUrl(ref.url, shotsDir, skipInline);
+  if (ref.type === "image") {
+    return { image_url: { url }, role: ref.role, type: "image_url" };
+  }
+  if (ref.type === "video") {
+    return { role: ref.role, type: "video_url", video_url: { url } };
+  }
+  return { audio_url: { url }, role: ref.role, type: "audio_url" };
+}
+
 export async function buildTaskPayload(
   shot: Shot,
   film: ShotsFile["film"],
   shotsDir: string,
   options?: { skipInline?: boolean; overrides?: PayloadOverrides }
 ): Promise<CreateTaskRequest> {
-  const defaults = { ...BASE_DEFAULTS, ...film.defaults };
-  const overrides = options?.overrides ?? {};
+  const params = effectiveShotParams(shot, film, options?.overrides);
+  const skipInline = options?.skipInline ?? false;
+
+  // Text first, then references in AUTHORED ORDER. That order is the ordinal
+  // contract every 2.5 prompt depends on; see `referenceOrdinals` above.
   const content: ArkContentItem[] = [
     { text: composePrompt(film, shot), type: "text" },
   ];
-
   for (const ref of shot.references ?? []) {
-    if (ref.type === "image") {
-      content.push({
-        image_url: {
-          url: await resolveReferenceUrl(
-            ref.url,
-            shotsDir,
-            options?.skipInline ?? false
-          ),
-        },
-        role: ref.role,
-        type: "image_url",
-      });
-    } else if (ref.type === "video") {
-      content.push({
-        role: ref.role,
-        type: "video_url",
-        video_url: { url: ref.url },
-      });
-    } else {
-      content.push({
-        audio_url: { url: ref.url },
-        role: ref.role,
-        type: "audio_url",
-      });
-    }
+    content.push(await toContentItem(ref, shotsDir, skipInline));
   }
 
-  const cameraFixed = shot.cameraFixed ?? defaults.cameraFixed;
-  const resolution =
-    overrides.resolution ?? shot.resolution ?? defaults.resolution;
   return {
     content,
-    duration: shot.duration ?? defaults.duration,
-    generate_audio: overrides.generateAudio ?? defaults.generateAudio,
-    model: overrides.model ?? film.model ?? DEFAULT_VIDEO_MODEL,
-    ratio: shot.ratio ?? defaults.ratio,
-    watermark: defaults.watermark,
-    ...(resolution ? { resolution } : {}),
-    ...(cameraFixed ? { camera_fixed: true } : {}),
+    duration: params.duration,
+    generate_audio: params.generateAudio,
+    model: params.model,
+    ratio: params.ratio,
+    watermark: params.watermark,
+    ...(params.emitResolution ? { resolution: params.resolution } : {}),
+    ...(params.cameraFixed ? { camera_fixed: true } : {}),
     ...(shot.seed === undefined ? {} : { seed: shot.seed }),
   };
 }
@@ -142,33 +288,44 @@ function sha256(input: string): string {
 }
 
 /**
+ * Rewrite any data-URL body in a content item via `transform`, for every media
+ * type. Only images are inlined today, but a video data URL leaking through
+ * unhandled would be hashed in full on every submit and, worse, PRINTED in full
+ * by --dry-run — tens of megabytes of base64 into a terminal. Handle all three
+ * so a future relaxation cannot regress into that.
+ */
+function mapDataUrls(
+  item: ArkContentItem,
+  transform: (url: string) => string
+): ArkContentItem {
+  if (item.type === "image_url" && item.image_url.url.startsWith("data:")) {
+    return { ...item, image_url: { url: transform(item.image_url.url) } };
+  }
+  if (item.type === "video_url" && item.video_url.url.startsWith("data:")) {
+    return { ...item, video_url: { url: transform(item.video_url.url) } };
+  }
+  if (item.type === "audio_url" && item.audio_url.url.startsWith("data:")) {
+    return { ...item, audio_url: { url: transform(item.audio_url.url) } };
+  }
+  return item;
+}
+
+/**
  * Stable hash of a submitted payload for the manifest audit trail. Data-URL
  * bodies are replaced by their own sha256 first so the hash stays small to
  * compute and identical payloads always hash identically.
  */
 export function hashPayload(payload: CreateTaskRequest): string {
-  const normalizedContent = payload.content.map((item) => {
-    if (item.type === "image_url" && item.image_url.url.startsWith("data:")) {
-      return {
-        ...item,
-        image_url: { url: `sha256:${sha256(item.image_url.url)}` },
-      };
-    }
-    return item;
-  });
+  const normalizedContent = payload.content.map((item) =>
+    mapDataUrls(item, (url) => `sha256:${sha256(url)}`)
+  );
   return sha256(JSON.stringify({ ...payload, content: normalizedContent }));
 }
 
 /** Render a payload for --dry-run with data URLs truncated, never megabytes of base64. */
 export function renderPayload(payload: CreateTaskRequest): string {
-  const safeContent = payload.content.map((item) => {
-    if (item.type === "image_url" && item.image_url.url.startsWith("data:")) {
-      return {
-        ...item,
-        image_url: { url: `${item.image_url.url.slice(0, 64)}… (truncated)` },
-      };
-    }
-    return item;
-  });
+  const safeContent = payload.content.map((item) =>
+    mapDataUrls(item, (url) => `${url.slice(0, 64)}… (truncated)`)
+  );
   return JSON.stringify({ ...payload, content: safeContent }, null, 2);
 }

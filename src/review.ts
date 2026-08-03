@@ -9,7 +9,6 @@ import type { ManifestEntry } from "./types.js";
  * Frame sample points across the clip. We force the FIRST frame (~0%) and the
  * LAST frame (~98%, just shy of EOF) and spread the rest between: the first
  * frame is what you eyeball against the reference still for identity drift, and
- * the last frame is what a `continueFrom` chain consumes as its next opening.
  */
 export function frameTimestamps(duration: number, count: number): number[] {
   if (count <= 1) {

@@ -4,30 +4,9 @@ import { isVsError } from "./errors.js";
 import {
   escapeDrawtext,
   frameAtArgs,
-  lastFrameArgs,
   probeClip,
   summarizeFfmpegStderr,
 } from "./ffmpeg.js";
-
-describe("lastFrameArgs", () => {
-  it("seeks from EOF and writes one frame", () => {
-    const args = lastFrameArgs("/a/in.mp4", "/a/out.png");
-    expect(args).toEqual([
-      "-y",
-      "-sseof",
-      "-0.5",
-      "-i",
-      "/a/in.mp4",
-      "-frames:v",
-      "1",
-      "-update",
-      "1",
-      "-q:v",
-      "2",
-      "/a/out.png",
-    ]);
-  });
-});
 
 describe("frameAtArgs", () => {
   it("seeks to the timestamp", () => {

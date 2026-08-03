@@ -15,6 +15,20 @@ export function passSuffix(pass: Pass): "" | "-draft" {
   return pass === "draft" ? "-draft" : "";
 }
 
+/**
+ * `--output` is ALWAYS resolved against the current working directory: it is
+ * an operator-supplied path, so it means what it would mean to `cp`. Paths that
+ * come from the film itself (`film.outputDir`, `shot.output`) stay relative to
+ * the film directory. Whether the value names a file or a directory is per
+ * command and stated in `--output`'s help text.
+ */
+export function resolveOutput(
+  output: string | undefined,
+  fallback: string
+): string {
+  return output ? resolve(process.cwd(), output) : fallback;
+}
+
 function escapes(rel: string): boolean {
   return rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
 }

@@ -142,7 +142,10 @@ export type ReferenceSlots = Partial<Record<KnownReferenceRole, number>> &
 
 export interface ShotReference {
   type: "image" | "video" | "audio";
-  /** https URL, or (images only) a local path relative to the shots file. */
+  /**
+   * https URL, or a local path relative to the shots file: images on any model,
+   * video/audio on Seedance 2.5 only and under a 20 MB ceiling.
+   */
   url: string;
   role: ReferenceRole;
 }
@@ -150,12 +153,6 @@ export interface ShotReference {
 export interface Shot {
   id: string;
   prompt: string;
-  /**
-   * Id of an EARLIER shot whose final frame becomes this shot's first_frame
-   * (extracted locally with ffmpeg). Mutually exclusive with references —
-   * Seedance's first/last-frame mode cannot mix with reference_* roles.
-   */
-  continueFrom?: string;
   duration?: number;
   ratio?: AspectRatio;
   /** Short-side resolution; defaults to the film default (1080p). A draft run forces 480p. */

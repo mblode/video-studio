@@ -40,6 +40,14 @@ export type Billing =
       kind: "tokens";
       /** USD per 1M output tokens. Missing entries fall back to the dearest listed rate. */
       usdPerMTokenByResolution: Partial<Record<Resolution, number>>;
+      /**
+       * Cheaper rate when the request carries video input (region edit, extend).
+       * Absent means the same rate applies either way. Deliberately NOT used by
+       * the pre-flight estimate: the conditioned input seconds are unknowable
+       * for a remote URL, so discounting an under-counted token base would
+       * under-quote twice. An over-quote is a surprise; an under-quote is a bill.
+       */
+      usdPerMTokenWithVideoInput?: Partial<Record<Resolution, number>>;
     }
   | { kind: "perSecond"; usdPerSecond: number };
 
@@ -85,6 +93,13 @@ export const MODEL_IDS = {
 
 /** Seedance 2.5 console rate (USD / 1M tokens) without video input. */
 const SEEDANCE_25_USD_PER_MTOKEN = 10.7;
+/**
+ * Console rate WITH video input bound. Note this does not make a region edit
+ * cheaper than a fresh pass: the formula bills (input + output) seconds, so a
+ * 30s edit on a 30s source is 60s of tokens at the lower rate — about 20% MORE
+ * than generating 30s fresh. Region edit buys quality, not savings.
+ */
+const SEEDANCE_25_USD_PER_MTOKEN_WITH_VIDEO = 6.4;
 
 /** CONFIRMED on the 2.5 console card: 4-30s. Auto (-1) is unconfirmed. */
 const SEEDANCE_25_DURATIONS: DurationSupport = {
@@ -264,13 +279,17 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
         "480p": SEEDANCE_25_USD_PER_MTOKEN,
         "720p": SEEDANCE_25_USD_PER_MTOKEN,
       },
+      usdPerMTokenWithVideoInput: {
+        "480p": SEEDANCE_25_USD_PER_MTOKEN_WITH_VIDEO,
+        "720p": SEEDANCE_25_USD_PER_MTOKEN_WITH_VIDEO,
+      },
     },
     confidence: "inferred",
     durations: SEEDANCE_25_DURATIONS,
     fps: DEFAULT_FPS,
     limits: SEEDANCE_25_LIMITS,
     notes:
-      "Console id + rates published; API/Playground marked coming soon (docs 1520757). 480p/720p only. Do not set as film.model default until a live create-task succeeds.",
+      "Console id + rates published; API/Playground marked coming soon (docs 1520757). Console card lists 480p/720p; launch marketing claims up to 4K/10-bit, which is unconfirmed and not modelled here. Confidence stays `inferred` until a live create-task succeeds, which also means a 1080p request warns rather than being refused.",
     referenceSlots: SEEDANCE_25_REFERENCE_SLOTS,
     resolutions: ["480p", "720p"],
   },
@@ -370,17 +389,26 @@ export function modelRateLimits(
  */
 export function usdPerMToken(
   capabilities: ModelCapabilities,
-  resolution: Resolution
+  resolution: Resolution,
+  options?: { videoInput?: boolean }
 ): number {
   if (capabilities.billing.kind !== "tokens") {
     return 0;
   }
-  const table = capabilities.billing.usdPerMTokenByResolution;
-  const listed = table[resolution];
+  const base = capabilities.billing.usdPerMTokenByResolution;
+  const withVideo = options?.videoInput
+    ? capabilities.billing.usdPerMTokenWithVideoInput
+    : undefined;
+  // Fall through PER RESOLUTION, not per table. Selecting the whole with-video
+  // table first means a partial one (say 480p only) quotes the 480p rate for a
+  // 1080p run, and an empty one `{}` survives `??` and collapses to the global
+  // rate rather than this model's dearest. Both under-quote, in a function
+  // whose whole job is to never do that.
+  const listed = withVideo?.[resolution] ?? base[resolution];
   if (listed !== undefined) {
     return listed;
   }
-  const rates = Object.values(table).filter(
+  const rates = Object.values(base).filter(
     (rate): rate is number => rate !== undefined
   );
   return rates.length > 0 ? Math.max(...rates) : STANDARD_USD_PER_MTOKEN;

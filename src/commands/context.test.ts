@@ -5,12 +5,7 @@ import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { isVsError } from "../errors.js";
-import {
-  assertInteractive,
-  packageInfo,
-  resolveFilm,
-  resolveOutput,
-} from "./context.js";
+import { assertInteractive, packageInfo, resolveFilm } from "./context.js";
 
 async function writeShots(outputDir?: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "vs-context-"));
@@ -60,18 +55,6 @@ describe("resolveFilm", () => {
       { pass: "draft" }
     );
     expect(outputDir).toBe(resolve(shotsDir, "clips-draft"));
-  });
-});
-
-describe("resolveOutput", () => {
-  it("resolves an operator path against the cwd", () => {
-    expect(resolveOutput("out/film.mp4", "/fallback")).toBe(
-      resolve(process.cwd(), "out/film.mp4")
-    );
-  });
-
-  it("passes the fallback through untouched", () => {
-    expect(resolveOutput(undefined, "/film/output")).toBe("/film/output");
   });
 });
 

@@ -4,7 +4,7 @@ import { dirname, join, resolve } from "node:path";
 
 import { ELEVEN_V3_MODEL, buildSpeechBody } from "./elevenlabs.js";
 import type { ElevenLabsSpeechRequest } from "./elevenlabs.js";
-import { VsError } from "./errors.js";
+import { fileReadError, VsError } from "./errors.js";
 import type { TimelineSegment } from "./timeline.js";
 
 export {
@@ -252,8 +252,36 @@ export function scratchAudioPath(
   return join(dirname(resolve(textFilePath)), SCRATCH_NARRATION_FILENAME);
 }
 
+/**
+ * A bare `readFile` reports a missing file as a raw `ENOENT: no such file or
+ * directory` with no `code` to branch on and no way out, and the narrate paths
+ * are where that is most likely: the placement TSV defaults to a path you have
+ * usually not written yet. Wrap it so every one of them fails like the rest of
+ * the CLI does.
+ */
+async function readTextFile(
+  path: string,
+  options: { hint: string }
+): Promise<string> {
+  try {
+    return await readFile(path, "utf-8");
+  } catch (error) {
+    throw fileReadError(
+      path,
+      error,
+      () =>
+        new VsError("file_not_found", `cannot read ${path}`, {
+          cause: error,
+          hint: options.hint,
+        })
+    );
+  }
+}
+
 export async function loadScratchText(path: string): Promise<string> {
-  const raw = await readFile(path, "utf-8");
+  const raw = await readTextFile(path, {
+    hint: "check the --text-file path (it is relative to your current directory), or write the narration copy there first",
+  });
   const text = raw.trim();
   if (!text) {
     throw new VsError("invalid_input", "text file is empty", {
@@ -264,13 +292,21 @@ export async function loadScratchText(path: string): Promise<string> {
 }
 
 export async function loadLinesFile(path: string): Promise<NarrationLine[]> {
-  return parseLinesTsv(await readFile(path, "utf-8"));
+  return parseLinesTsv(
+    await readTextFile(path, {
+      hint: "check the path, or write the lines TSV first: one row per line, `NN\\ttext`",
+    })
+  );
 }
 
 export async function loadPlacementFile(
   path: string
 ): Promise<NarrationPlacement[]> {
-  return parsePlacementTsv(await readFile(path, "utf-8"));
+  return parsePlacementTsv(
+    await readTextFile(path, {
+      hint: "write the placement TSV first (one row per line: `line\\tshotId\\toffset`), or point --placement at an existing file",
+    })
+  );
 }
 
 /**

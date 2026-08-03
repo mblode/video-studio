@@ -30,13 +30,32 @@ interface FilmConfigInput {
 
 const [DEFAULT_RATIO] = ASPECT_RATIOS;
 
+/**
+ * Every file `vs init` writes. The guard, the writes, and the done message all
+ * read this list, so adding a fourth file cannot leave it unguarded.
+ */
+const SCAFFOLDED_FILES = ["shots.json", "stills.json", "README.md"] as const;
+
 const PREAMBLE_PLACEHOLDER =
   "Consistent look across the film: describe the palette, lighting, film stock, and character continuity here once. Realtime speed, lively, not slow motion.";
 
+/**
+ * Declining is a decision, not a success: nothing was scaffolded, so the exit
+ * code has to say so. Exiting 0 here made `vs init films/x && vs stills
+ * films/x/stills.json` run the second command against a film that was never
+ * written. Setting `process.exitCode` and unwinding (rather than
+ * `process.exit`) is also what lets in-flight stdout writes drain on a pipe.
+ */
+function abort(): void {
+  cancel("Aborted.");
+  process.exitCode = 1;
+}
+
+/** `undefined` means the operator cancelled a prompt; the caller must bail. */
 async function collectConfig(
   options: InitOptions,
   defaultTitle: string
-): Promise<FilmConfigInput> {
+): Promise<FilmConfigInput | undefined> {
   if (options.yes) {
     return {
       duration: options.duration ?? DEFAULT_DURATION,
@@ -53,8 +72,8 @@ async function collectConfig(
     message: "Film title",
   });
   if (isCancel(title)) {
-    cancel("Aborted.");
-    process.exit(0);
+    abort();
+    return;
   }
   const ratio = await select({
     initialValue: options.ratio ?? DEFAULT_RATIO,
@@ -62,16 +81,16 @@ async function collectConfig(
     options: ASPECT_RATIOS.map((value) => ({ value })),
   });
   if (isCancel(ratio)) {
-    cancel("Aborted.");
-    process.exit(0);
+    abort();
+    return;
   }
   const duration = await text({
     initialValue: String(options.duration ?? DEFAULT_DURATION),
     message: "Default shot duration (seconds)",
   });
   if (isCancel(duration)) {
-    cancel("Aborted.");
-    process.exit(0);
+    abort();
+    return;
   }
   // The colour script: one style block every shot inherits, so per-shot prompts
   // stay short enough to keep their timed beats inside the length lint.
@@ -80,8 +99,8 @@ async function collectConfig(
     message: "Style preamble prepended to every shot prompt (blank to skip)",
   });
   if (isCancel(preamble)) {
-    cancel("Aborted.");
-    process.exit(0);
+    abort();
+    return;
   }
 
   return {
@@ -197,9 +216,6 @@ Tips:
   upscale only the shots that make the final edit if you need 1080p delivery.
 - \`film.promptPreamble\` is the colour script: the style block every shot prompt
   inherits. Keep per-shot prompts to what is unique to the shot.
-- \`continueFrom\` (chaining a shot onto the previous clip's last frame) still
-  exists for tight continuity, but it serializes generation and cascades retakes —
-  prefer a literal keyframe per shot.
 `;
 }
 
@@ -209,14 +225,28 @@ export async function runInit(
 ): Promise<void> {
   const filmDir = resolve(process.cwd(), dir);
   const shotsPath = join(filmDir, "shots.json");
-  if (existsSync(shotsPath) && !options.force) {
-    throw new VsError("already_exists", `${dir} already has a shots.json`, {
-      hint: "pass --force to overwrite it, or pick a new directory",
-    });
+  const stillsPath = join(filmDir, "stills.json");
+  // Every file the scaffold writes, not just shots.json: hand-written keyframe
+  // prompts are real work and a template over the top of them has no undo.
+  const existing = SCAFFOLDED_FILES.filter((name) =>
+    existsSync(join(filmDir, name))
+  );
+  if (existing.length > 0 && !options.force) {
+    throw new VsError(
+      "already_exists",
+      `${dir} already has ${existing.join(", ")}`,
+      {
+        hint: "pass --force to overwrite it, or pick a new directory",
+      }
+    );
   }
 
   const config = await collectConfig(options, basename(filmDir));
-  const stillsPath = join(filmDir, "stills.json");
+  if (!config) {
+    // Cancelled at a prompt. `abort()` already set the exit code; unwind before
+    // anything is written so a partial film never lands on disk.
+    return;
+  }
 
   await mkdir(filmDir, { recursive: true });
   await writeFile(
@@ -233,7 +263,7 @@ export async function runInit(
     warn(warning);
   }
 
-  const done = `scaffolded ${dir} (shots.json, stills.json, README.md)`;
+  const done = `scaffolded ${dir} (${SCAFFOLDED_FILES.join(", ")})`;
   if (options.yes) {
     ok(done);
   } else {

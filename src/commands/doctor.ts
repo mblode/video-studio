@@ -7,7 +7,15 @@ import { formatError } from "../errors.js";
 import { assertBinary } from "../ffmpeg.js";
 import { TASK_STATUSES } from "../types.js";
 import { createArkClient, packageInfo } from "./context.js";
-import { color, emit, isJsonMode, isVerbose, line } from "./output.js";
+import {
+  color,
+  emit,
+  fail,
+  isJsonMode,
+  isVerbose,
+  line,
+  writeLine,
+} from "./output.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -238,12 +246,15 @@ const MARKS: Record<
 
 function print(check: DoctorCheck): void {
   const { color: hue, mark } = MARKS[check.status];
-  const text = `${mark} ${check.label}`;
   // Failures go to stderr so `vs doctor 2>/dev/null` shows only what passed.
-  const stream = check.status === "fail" ? process.stderr : process.stdout;
-  stream.write(`${color(hue, text)}\n`);
+  // Naming the stream rather than holding it keeps the per-stream painter in
+  // output.ts: `color()` is keyed to stdout's colour depth, so painting a stderr
+  // write with it puts raw escape codes into `vs doctor 2> log` for exactly the
+  // checks a bug report needs to be legible.
+  const stream = check.status === "fail" ? "stderr" : "stdout";
+  writeLine(stream, hue, `${mark} ${check.label}`);
   if (check.detail) {
-    stream.write(`${color("dim", `    ${check.detail}`)}\n`);
+    writeLine(stream, "dim", `    ${check.detail}`);
   }
 }
 
@@ -282,7 +293,9 @@ export async function runDoctor(
 
   if (checks.some((check) => check.status === "fail")) {
     if (isJsonMode()) {
-      process.stderr.write("✗ doctor found problems\n");
+      // The human rendering already showed every ✗; in JSON mode stdout is the
+      // payload, so the headline goes to stderr on its own.
+      fail("doctor found problems");
     }
     process.exitCode = 1;
   }

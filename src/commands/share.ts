@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 
 import { assertFfmpeg, probeClip, runFfmpeg } from "../ffmpeg.js";
+import { resolveOutput } from "../paths.js";
 import { buildSharePlan } from "../share.js";
 import { assertNewVideoOutput, nextExportPath } from "../versions.js";
-import { resolveOutput } from "./context.js";
 import { emit, heading, line, note, ok, warn } from "./output.js";
 
 export interface ShareCommandOptions {

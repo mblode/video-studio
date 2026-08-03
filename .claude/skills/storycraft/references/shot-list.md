@@ -24,39 +24,80 @@ roles, anchoring mechanics), see `../../seedance/references/seedance-prompting.m
 
 One entry per generation, in film order:
 
-- **Heading:** `## sNN · <shot-id> · <dur>s · <KEYFRAME|CHAIN>`. Add the age
-  block if the character ages. Anchor strategy in the heading so you can scan
-  continuity at a glance.
+- **Heading:** `## sNN · <shot-id> · <dur>s · <KEYFRAME|MODE B>`. Add the
+  age block if the character ages. Anchor strategy in the heading so you can
+  scan continuity at a glance.
 - **Refs:** which stills the shot uses and in what role. This mirrors the
   beat-sheet decision; seedance owns what the roles mean.
-- **Beats:** as many as the story needs, each one a distinct camera setup and a
-  distinct verb, written as prose.
+- **Beats:** each one prefixed with **its timestamp span**, and each one a
+  distinct camera setup and a distinct verb, written as prose. Spans are
+  contiguous and cover the whole duration.
 - **Camera:** the move for each beat, named in real cinematography terms.
 - **Audio:** diegetic sound effects and ambience only.
 - **Continuity:** the bookkeeping a future you needs. What must not appear,
   which card follows, what this shot sets up or pays off.
 
-A real entry (`films/lighthouse/`, s10):
+The timestamp span is not decoration. On anything 20s or longer the entry
+compiles almost verbatim into the prompt's timestamp plan, so a beat without a
+span is a decision you have deferred to the model. Short 2.0 clips can use bare
+`Beat N:` numbering, since one beat fills the clip and there is nothing to
+schedule.
+
+A real 8s entry (`films/lighthouse/`, s09), in the bare-beat form:
 
 ```
-## s10 · `s10-beam-returns` · 8s · KEYFRAME
+## s09 · `s09-trust-turns-light` · 8s · KEYFRAME
 
-Refs: s10-beam-returns (first_frame). Close two-shot over exposed gears as the
-keeper offers the brass key to the relief; service motor ready by the flywheel.
-Beat 1: locked close. She accepts the key; their eyes meet; he points it toward
-the hidden clutch release.
-Beat 2: cut low along the drive. He holds the clutch open while she couples the
-motor; their hands move in one rhythm.
-Beat 3: crane up through the stairwell. The Fresnel lens turns and amber light
-moves off the cliff, through rain, across both faces.
-Audio: key chime, alarm stopping, clutch clack, motor rising, gears catching.
+Refs: s09-trust-turns-light (first_frame). Close two-shot over the exposed
+service shaft; the relief holds one open palm between them, the keeper grips the
+dark iron key, the motor is already mounted.
+Beat 1: locked hand close. After the second horn he looks from the frozen beam
+to her palm, unclips the key and places it there.
+Beat 2: cut low along the drive. He points out the concealed release; she
+unlocks the clutch while he holds the broken weight train clear, then couples
+the motor.
+Beat 3: crane up through the stairwell as she starts it. The flywheel and
+Fresnel lens turn, and pale bars cross both faces for the first time.
+Audio: muffled horn, belt clip, one metal chime, clutch clack, motor rising,
+gears catching, glass resonance.
 Continuity: first shared action; key ownership changes during the shot. Pays off
-the opposite methods established in s03 and the exposed solution in s09.
+the opposite methods established in s03 and the exposed solution in s08.
 ```
 
 The Continuity line is doing real work: it records the climax's relationship
 turn, the hero-prop handover, and the exact earlier setups this paid generation
 must resolve.
+
+The same climax as a 30s act, where the entry is the timestamp plan:
+
+```
+## a03 · `a03-trust-turns-light` · 30s · MODE B
+
+Refs: keeper (reference_image 1), relief (reference_image 2), service-shaft
+plate (reference_image 3), lamp-room plate (reference_image 4).
+0-6s: wide from the stairwell head, pushing in. The motor sits half-mounted on
+the exposed drive; the clutch is locked and the beam is frozen inland.
+7-12s: cut to a close two-shot. He looks from the dead beam to her open palm
+and does not move; the second horn sounds under it.
+13-18s: cut tight to the hands. He unclips the dark iron key and places it in
+her palm, and the key changes owner on camera.
+19-24s: cut low along the drive, tracking. She unlocks the concealed release
+while he holds the broken weight train clear, then couples the motor.
+25-30s: crane up through the stairwell as she starts it. The flywheel and the
+Fresnel lens turn, and pale bars cross both faces for the first time.
+Audio: muffled horn, belt clip, one metal chime, clutch clack, motor rising,
+gears catching, glass resonance.
+Continuity: first shared action; key ownership changes at 13-18s. Pays off the
+opposite methods established in a01 and the exposed drive left at the end of
+a02. Nothing in this act may show the beam reaching the water; that is a04.
+```
+
+Note what the act form costs you and buys you. Four of the five internal cuts
+are now the model's to execute rather than the editor's, so the spans have to
+be honest about where the story turns. In exchange, the key handover, the
+clutch release, and the lens turning happen in one continuous take with one
+lighting state and one pair of faces, which is the coherence that three
+separate 8s generations were always fighting for.
 
 ## Camera language
 
@@ -94,10 +135,23 @@ different stories.
 
 ## Beats
 
-Beat count follows the story, not a house number. Each beat is one clear action.
-Do not cram thirty seconds of story into a six-second clip; if a beat needs more
-room, it is another generation. Each beat opens on its own camera setup, which is
-what produces an internal cut rather than one stretched gesture.
+Beat count follows the story, not a house number, but it does have to match the
+duration. **Roughly one beat per 6 to 10 seconds.** That rule has two sides and
+each model fails on a different one:
+
+- **Too many beats for the window (the 2.0 failure).** Thirty seconds of story
+  crammed into a six-second clip. The model skips actions, or blurs them into
+  one another, and nothing reads. If a beat needs more room, it is another
+  generation.
+- **Too few beats for the window (the 2.5 failure).** Three beats in a 30s act.
+  The model has thirty seconds to fill and only three things to do, so it
+  stretches: drifting cameras, held gestures, slow-motion nobody asked for.
+  Sludge. A 30s act wants five to seven beats, and the fix for a thin act is to
+  find more story for it, not to shorten it and pay for a fifth generation.
+
+Each beat opens on its own camera setup, which is what produces an internal cut
+rather than one stretched gesture. On a 30s act those internal cuts are the
+edit, so beat boundaries are cut points and should land where the story turns.
 
 The exact syntax the beats compile into is seedance's: a timestamp plan or
 `Shot N:` form (see `../../seedance/references/seedance-prompting.md`). Here the
@@ -125,11 +179,17 @@ not.
 Not every film needs a full per-shot entry. For a short, mostly keyframed film
 where each shot is a single clean beat, an ID / Still / Duration / Purpose
 table is enough. Use the full entry form when shots carry multi-beat action,
-mirrored staging, chaining, age cuts, or continuity constraints.
+mirrored staging, age cuts, or continuity constraints. **A 30s act
+always needs the full form**: five to seven beats, a reference pack, and a
+timestamp span per beat do not fit in a table cell, and the entry is the
+prompt.
 
 ## Checklist
 
-- Every beat is one action, and beats fit the shot duration.
+- Every beat is one action, and beat density fits the duration: roughly one per
+  6 to 10 seconds, neither crammed nor stretched.
+- Every entry of 20s or more prefixes each beat with a contiguous timestamp
+  span covering the full duration.
 - Camera move matches the energy of the action and audio.
 - Staging carries the beat: eyeline, presentation order, mirrored pairs, the
   pause before the reaction.

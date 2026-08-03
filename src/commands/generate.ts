@@ -1,10 +1,9 @@
-import { join, relative } from "node:path";
+import { relative } from "node:path";
 
 import { confirm, isCancel } from "@clack/prompts";
 import pLimit from "p-limit";
 
 import type { ArkClient } from "../ark.js";
-import { chainDependencies, resolveChainFrame } from "../chain.js";
 import {
   checkCostCeiling,
   estimateClips,
@@ -14,8 +13,7 @@ import {
 } from "../cost.js";
 import type { ClipSpec, CostEstimate } from "../cost.js";
 import { downloadFile } from "../download.js";
-import { formatError, VsError } from "../errors.js";
-import { assertFfmpeg } from "../ffmpeg.js";
+import { formatError, isVsError, VsError } from "../errors.js";
 import {
   isComplete,
   isInFlight,
@@ -27,25 +25,18 @@ import { modelRateLimits, validateShotAgainstModel } from "../models.js";
 import type { Pass } from "../paths.js";
 import {
   buildTaskPayload,
-  DEFAULT_VIDEO_MODEL,
+  effectiveShotParams,
   hashPayload,
   renderPayload,
 } from "../payload.js";
 import type { PayloadOverrides } from "../payload.js";
 import { lintShotsFile } from "../shots.js";
-import {
-  DEFAULT_DURATION,
-  DEFAULT_RESOLUTION,
-  DRAFT_RESOLUTION,
-  DURATION_AUTO,
-} from "../types.js";
+import { DRAFT_RESOLUTION } from "../types.js";
 import type {
   ArkTask,
   CreateTaskRequest,
   Manifest,
-  Resolution,
   Shot,
-  ShotReference,
   ShotsFile,
 } from "../types.js";
 import { clipRevisionPath } from "../versions.js";
@@ -76,11 +67,22 @@ export interface GenerateOptions {
   yes: boolean;
 }
 
-/**
- * A draft run forces the cheap path — 480p, no per-clip audio (the score and
- * narration are mixed at stitch anyway) — and uses the fast model if the film
- * opts in via `film.draftModel`. Returns undefined for a final run.
- */
+function selectShots(file: ShotsFile, ids: string[] | undefined): Shot[] {
+  if (!ids || ids.length === 0) {
+    return file.shots;
+  }
+  const byId = new Map(file.shots.map((shot) => [shot.id, shot]));
+  return ids.map((id) => {
+    const shot = byId.get(id);
+    if (!shot) {
+      throw new VsError("unknown_id", `no shot with id "${id}" in this film`, {
+        hint: `valid ids: ${file.shots.map((s) => s.id).join(", ")}`,
+      });
+    }
+    return shot;
+  });
+}
+
 function draftOverrides(
   file: ShotsFile,
   draft: boolean
@@ -99,46 +101,6 @@ function describeEstimate(estimate: CostEstimate): string {
   return formatEstimate(estimate.tokens, estimate.usd);
 }
 
-interface Deferred {
-  promise: Promise<void>;
-  reject: (reason: Error) => void;
-  resolve: () => void;
-}
-
-function deferred(): Deferred {
-  // oxlint-disable-next-line typescript/no-invalid-void-type -- void is the resolved type, not a parameter
-  const resolvers = Promise.withResolvers<void>();
-  // oxlint-disable-next-line promise/prefer-await-to-then -- leaf shots have no dependents awaiting this; keep the rejection handled
-  resolvers.promise.catch(() => {
-    // intentionally empty
-  });
-  return {
-    promise: resolvers.promise,
-    reject: resolvers.reject,
-    resolve: resolvers.resolve,
-  };
-}
-
-function selectShots(file: ShotsFile, ids: string[] | undefined): Shot[] {
-  if (!ids || ids.length === 0) {
-    return file.shots;
-  }
-  const byId = new Map(file.shots.map((shot) => [shot.id, shot]));
-  return ids.map((id) => {
-    const shot = byId.get(id);
-    if (!shot) {
-      throw new VsError("unknown_id", `no shot with id "${id}" in this film`, {
-        hint: `valid ids: ${file.shots.map((s) => s.id).join(", ")}`,
-      });
-    }
-    return shot;
-  });
-}
-
-function chainFrameRef(framePath: string): ShotReference {
-  return { role: "first_frame", type: "image", url: framePath };
-}
-
 async function dryRun(
   shots: Shot[],
   file: ShotsFile,
@@ -147,21 +109,10 @@ async function dryRun(
   overrides: PayloadOverrides | undefined,
   estimate: CostEstimate
 ): Promise<void> {
-  const framesRel = pass === "draft" ? "frames-draft" : "frames";
   const payloads: { payload: CreateTaskRequest; shotId: string }[] = [];
   for (const shot of shots) {
-    const effective: Shot = shot.continueFrom
-      ? {
-          ...shot,
-          references: [
-            chainFrameRef(join(framesRel, `${shot.continueFrom}-last.png`)),
-          ],
-        }
-      : shot;
-    // dry-run never extracts; the frame path may not exist yet, so always
-    // render a placeholder instead of inlining
     payloads.push({
-      payload: await buildTaskPayload(effective, file.film, shotsDir, {
+      payload: await buildTaskPayload(shot, file.film, shotsDir, {
         overrides,
         skipInline: true,
       }),
@@ -181,33 +132,27 @@ async function dryRun(
   });
 }
 
-/** Effective short-side resolution for cost math (the request may omit it → API default 1080p). */
-function effectiveResolution(
-  shot: Shot,
-  file: ShotsFile,
-  overrides?: PayloadOverrides
-): Resolution {
-  return (
-    overrides?.resolution ??
-    shot.resolution ??
-    file.film.defaults?.resolution ??
-    DEFAULT_RESOLUTION
-  );
-}
-
-/** What a shot costs, in the terms `src/cost.ts` bills in. */
+/**
+ * What a shot costs, in the terms `src/cost.ts` bills in.
+ *
+ * Every field comes from `effectiveShotParams`, the same call `buildTaskPayload`
+ * makes, so the quote is priced off exactly what goes on the wire — including
+ * the draft model, which bills at a different rate than `film.model`. The one
+ * deliberate asymmetry is `resolution`: the payload omits it when nothing set
+ * one, but the clip still renders at the API's default, so it is always priced
+ * (`emitResolution` is a wire concern, never a pricing one).
+ */
 function clipSpec(
   shot: Shot,
   file: ShotsFile,
   overrides?: PayloadOverrides
 ): ClipSpec {
+  const params = effectiveShotParams(shot, file.film, overrides);
   return {
-    duration: shot.duration ?? file.film.defaults?.duration ?? DEFAULT_DURATION,
-    // Mirrors the model buildTaskPayload will actually send: the fast draft
-    // model bills at a different rate, so quoting `film.model` would be wrong.
-    modelId: overrides?.model ?? file.film.model ?? DEFAULT_VIDEO_MODEL,
-    ratio: shot.ratio ?? file.film.defaults?.ratio,
-    resolution: effectiveResolution(shot, file, overrides),
+    duration: params.duration,
+    modelId: params.model,
+    ratio: params.ratio,
+    resolution: params.resolution,
   };
 }
 
@@ -230,17 +175,13 @@ function assertShotsCapable(
 ): void {
   const errors: string[] = [];
   for (const shot of shots) {
-    const modelId = overrides?.model ?? file.film.model ?? DEFAULT_VIDEO_MODEL;
-    const duration =
-      shot.duration ?? file.film.defaults?.duration ?? DEFAULT_DURATION;
-    const resolution = effectiveResolution(shot, file, overrides);
-    const problems = validateShotAgainstModel(modelId, {
-      duration,
-      generateAudio:
-        overrides?.generateAudio ?? file.film.defaults?.generateAudio,
-      ratio: shot.ratio ?? file.film.defaults?.ratio,
+    const params = effectiveShotParams(shot, file.film, overrides);
+    const problems = validateShotAgainstModel(params.model, {
+      duration: params.duration,
+      generateAudio: params.generateAudio,
+      ratio: params.ratio,
       references: shot.references,
-      resolution,
+      resolution: params.resolution,
     });
     for (const problem of problems) {
       const message = `${shot.id}: ${problem.message}`;
@@ -271,9 +212,11 @@ function effectiveConcurrency(
 ): number {
   let max = Math.max(1, requested);
   for (const shot of shots) {
-    const modelId = overrides?.model ?? file.film.model ?? DEFAULT_VIDEO_MODEL;
-    const resolution = effectiveResolution(shot, file, overrides);
-    const allowed = modelRateLimits(modelId, resolution).concurrency;
+    const params = effectiveShotParams(shot, file.film, overrides);
+    const allowed = modelRateLimits(
+      params.model,
+      params.resolution
+    ).concurrency;
     max = Math.min(max, allowed);
   }
   return max;
@@ -287,6 +230,11 @@ function effectiveConcurrency(
  * nobody to read the estimate. The ceiling is then the only thing between a
  * typo'd duration and a real bill, so it cannot be something `--yes` waives.
  */
+/** The smallest `--max-cost` value, in whole cents, that lets this run through. */
+function smallestCeiling(estimate: CostEstimate): number {
+  return Math.ceil(estimate.usd * 100) / 100;
+}
+
 function assertCostCeiling(estimate: CostEstimate, maxCost?: number): void {
   const { allowed, reason } = checkCostCeiling(estimate, maxCost);
   if (allowed) {
@@ -295,8 +243,30 @@ function assertCostCeiling(estimate: CostEstimate, maxCost?: number): void {
   throw new VsError("cost_ceiling", reason ?? "cost ceiling exceeded", {
     // The reason already lists the ways out, so the hint carries the one thing
     // it cannot: the exact ceiling that would let this run through.
-    hint: `nothing was submitted and nothing was billed; \`--max-cost ${Math.ceil(estimate.usd * 100) / 100}\` is the smallest ceiling that allows this run`,
+    hint: `nothing was submitted and nothing was billed; \`--max-cost ${smallestCeiling(estimate)}\` is the smallest ceiling that allows this run`,
   });
+}
+
+/**
+ * The confirm prompt is the last thing between an unattended caller and a real
+ * bill, so the failure it raises has to name BOTH gates. `--yes` alone skips the
+ * confirm and leaves no ceiling behind it (an absent `--max-cost` means no
+ * ceiling at all), so a hint that named only `--yes` would be pointing the one
+ * reader guaranteed to see it — an agent, in CI, with nobody watching — at
+ * unbounded spend.
+ */
+function assertCostPromptAnswerable(estimate: CostEstimate): void {
+  try {
+    assertInteractive("--yes");
+  } catch (error) {
+    if (!(isVsError(error) && error.code === "not_interactive")) {
+      throw error;
+    }
+    throw new VsError("not_interactive", error.message, {
+      cause: error,
+      hint: `re-run with \`--yes --max-cost ${smallestCeiling(estimate)}\` to accept unattended; this run is estimated at $${estimate.usd.toFixed(2)}, and \`--yes\` on its own removes every spend guard`,
+    });
+  }
 }
 
 async function confirmCost(
@@ -305,18 +275,15 @@ async function confirmCost(
   pass: Pass,
   estimate: CostEstimate
 ): Promise<boolean> {
-  let seconds = 0;
-  for (const shot of shots) {
-    const duration =
-      shot.duration ?? file.film.defaults?.duration ?? DEFAULT_DURATION;
-    seconds += duration === DURATION_AUTO ? DEFAULT_DURATION : duration;
-  }
+  // `estimate.seconds` is already the billable length of exactly these shots,
+  // auto-duration resolved; recounting it here is a third copy of the ladder.
+  const { seconds } = estimate;
   // Show the counterfactual so the draft↔final saving is visible at spend time.
   const counterfactual =
     pass === "draft"
       ? ` (final ≈ ${describeEstimate(estimateRun(shots, file))})`
       : "";
-  assertInteractive("--yes");
+  assertCostPromptAnswerable(estimate);
   const answer = await confirm({
     message: `Submit ${shots.length} ${pass} shot(s) / ${seconds}s ≈ ${describeEstimate(estimate)}${counterfactual}?`,
   });
@@ -357,12 +324,16 @@ function billingReport(
   let actualUsd = 0;
   for (const shot of billed) {
     const tokens = manifest.entries[shot.id]?.tokensUsed ?? 0;
+    const spec = clipSpec(shot, file, overrides);
     actualTokens += tokens;
-    actualUsd += usdForTokens(
-      tokens,
-      clipSpec(shot, file, overrides).modelId,
-      effectiveResolution(shot, file, overrides)
-    );
+    // Reconciliation prices REAL completion_tokens, so the token base is known
+    // and the cheaper with-video rate can be applied safely. The pre-flight
+    // estimate deliberately does not: conditioned input seconds are unknowable
+    // for a remote URL, and discounting an under-counted base under-quotes
+    // twice. See `usdPerMTokenWithVideoInput` in src/models.ts.
+    actualUsd += usdForTokens(tokens, spec.modelId, spec.resolution, {
+      videoInput: shot.references?.some((ref) => ref.type === "video"),
+    });
   }
   const estimate = estimateRun(billed, file, overrides);
   const { message, withinTolerance } = reconcileTokens(
@@ -476,43 +447,6 @@ async function settleTask(options: {
   await saveManifest(shotsFile, manifest, pass);
 }
 
-function validateChains(options: {
-  manifest: Manifest;
-  pendingIds: Set<string>;
-  shots: Shot[];
-  shotsDir: string;
-  wait: boolean;
-}): void {
-  const chained = options.shots.filter(
-    (shot) => shot.continueFrom !== undefined
-  );
-  for (const shot of chained) {
-    const depId = shot.continueFrom as string;
-    const depComplete = isComplete(
-      options.manifest.entries[depId],
-      options.shotsDir
-    );
-    if (!(depComplete || options.pendingIds.has(depId))) {
-      throw new VsError(
-        "chain_invalid",
-        `${shot.id} continues from ${depId}, which is neither downloaded nor selected in this run`,
-        {
-          hint: `add \`--shot ${depId}\` to this run, or generate ${depId} first`,
-        }
-      );
-    }
-    if (!depComplete && !options.wait) {
-      throw new VsError(
-        "chain_invalid",
-        `${shot.id} continues from ${depId}, which has not finished downloading`,
-        {
-          hint: "drop --no-wait so the dependency's last frame exists before the chained shot starts",
-        }
-      );
-    }
-  }
-}
-
 export async function runGenerate(
   shotsFilePath: string,
   options: GenerateOptions,
@@ -564,18 +498,6 @@ export async function runGenerate(
     return;
   }
 
-  const pendingIds = new Set(pending.map((shot) => shot.id));
-  validateChains({
-    manifest,
-    pendingIds,
-    shots: pending,
-    shotsDir,
-    wait: options.wait,
-  });
-  if (pending.some((shot) => shot.continueFrom !== undefined)) {
-    await assertFfmpeg();
-  }
-
   const toSubmit = pending.filter(
     (shot) => !isInFlight(manifest.entries[shot.id])
   );
@@ -607,37 +529,9 @@ export async function runGenerate(
     );
   }
   const limit = pLimit(concurrency);
-  const deps = chainDependencies(pending);
-  const doneSignals = new Map(pending.map((shot) => [shot.id, deferred()]));
-
-  async function awaitDependency(shot: Shot): Promise<void> {
-    const depId = deps.get(shot.id);
-    if (depId === undefined) {
-      return;
-    }
-    const signal = doneSignals.get(depId);
-    if (signal) {
-      // wait OUTSIDE the concurrency limit so a blocked shot never holds a slot
-      await signal.promise.catch(() => {
-        throw new VsError(
-          "chain_invalid",
-          `${shot.id} skipped because its dependency ${depId} failed`,
-          {
-            hint: `fix and regenerate ${depId} first, then re-run; this shot chains onto its last frame`,
-          }
-        );
-      });
-    }
-  }
-
   async function submitShot(shot: Shot): Promise<void> {
-    let effective = shot;
-    if (shot.continueFrom !== undefined) {
-      const framePath = await resolveChainFrame(shot, manifest, shotsDir, pass);
-      effective = { ...shot, references: [chainFrameRef(framePath)] };
-    }
     const payload: CreateTaskRequest = await buildTaskPayload(
-      effective,
+      shot,
       file.film,
       shotsDir,
       { overrides }
@@ -702,20 +596,9 @@ export async function runGenerate(
     }
   }
 
-  const jobs = pending.map(async (shot) => {
-    const signal = doneSignals.get(shot.id);
-    try {
-      await awaitDependency(shot);
-      await limit(() =>
-        toReattach.has(shot) ? reattachShot(shot) : submitShot(shot)
-      );
-      signal?.resolve();
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      signal?.reject(err);
-      throw err;
-    }
-  });
+  const jobs = pending.map((shot) =>
+    limit(() => (toReattach.has(shot) ? reattachShot(shot) : submitShot(shot)))
+  );
 
   const results = await Promise.allSettled(jobs);
   const failures = results.filter((result) => result.status === "rejected");

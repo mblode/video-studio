@@ -151,9 +151,10 @@ export function estimateCostUsd(
 export function usdForTokens(
   tokens: number,
   modelId?: string,
-  resolution: Resolution = DEFAULT_RESOLUTION
+  resolution: Resolution = DEFAULT_RESOLUTION,
+  options?: { videoInput?: boolean }
 ): number {
-  const rate = usdPerMToken(lookupModel(modelId), resolution);
+  const rate = usdPerMToken(lookupModel(modelId), resolution, options);
   return (tokens / 1_000_000) * rate;
 }
 

@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { isLocalPathSafe, safeJoin } from "./paths.js";
+import { isLocalPathSafe, resolveOutput, safeJoin } from "./paths.js";
 
 const BASE = "/films/demo";
 
@@ -19,6 +19,18 @@ describe("safeJoin", () => {
 
   it("throws on an absolute path", () => {
     expect(() => safeJoin(BASE, "/etc/passwd")).toThrow(/escapes/u);
+  });
+});
+
+describe("resolveOutput", () => {
+  it("resolves an operator path against the cwd", () => {
+    expect(resolveOutput("out/film.mp4", "/fallback")).toBe(
+      resolve(process.cwd(), "out/film.mp4")
+    );
+  });
+
+  it("passes the fallback through untouched", () => {
+    expect(resolveOutput(undefined, "/film/output")).toBe("/film/output");
   });
 });
 

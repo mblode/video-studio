@@ -15,6 +15,7 @@ import { VsError } from "../errors.js";
 import { assertFfmpeg, probeClip, runFfmpeg } from "../ffmpeg.js";
 import type { ClipProbe } from "../ffmpeg.js";
 import { isComplete, loadManifest } from "../manifest.js";
+import { resolveOutput } from "../paths.js";
 import type { Pass } from "../paths.js";
 import { lintShotsFile } from "../shots.js";
 import { buildStitchPlan, orderTimeline } from "../stitch.js";
@@ -28,7 +29,7 @@ import type {
   TitleCard,
 } from "../types.js";
 import { assertNewVideoOutput, nextRenderPath } from "../versions.js";
-import { resolveFilm, resolveOutput } from "./context.js";
+import { resolveFilm } from "./context.js";
 import { emit, heading, line, note, ok, warn } from "./output.js";
 
 /**

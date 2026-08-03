@@ -62,7 +62,16 @@ commands.
   `vs stitch --xfade … --music score-vNNN.mp3 --narration narration.mp3` (same
   `--xfade` on both). Re-stitch after regenerating a shot.
 - **720p is the generation target, not 1080p.** Generate at 720p, then
-  `vs upscale --shot <final-edit ids>` for delivery, which is free.
+  `vs upscale --shot <final-edit ids>` for delivery, which is free. A prior 2.0
+  run here asked for 1080p, was delivered 720p, and was billed at the 1080p
+  rate.
+- **A Seedance 2.5 run is strictly serial.** 1 concurrent task regardless of
+  `--concurrency`, and a 30s generation takes 10 to 15 minutes, so a six-act
+  film is 60 to 90 minutes. It is also about 39% dearer than 2.0 for the same
+  runtime. What it buys is coherence, not price or speed.
+- **A 2.5 film sets no `film.draftModel`.** There is no 2.5-fast, and 2.0-fast
+  caps at 15s, so a 30s film pointed at it is refused rather than drafted.
+  Unset, `--draft` runs the film's own model at 480p. `--dry-run` lints for it.
 - **Non-interactive runs need `--yes`**, or the command fails fast rather than
   hanging. Pair it with `--max-cost <usd>`, which is a hard refusal that
   applies even with `--yes`.
@@ -71,8 +80,7 @@ commands.
 - **`--force` creates a new revision.** It never replaces a clip. A failed
   retake leaves the previous downloaded revision selected.
 - **Title cards are macOS-only** (rasterised via `qlmanage` and `sips`), and
-  ffmpeg is required for `animatic`, `review`, `stitch`, `upscale`, and
-  chaining.
+  ffmpeg is required for `animatic`, `review`, `stitch`, and `upscale`.
 - **`--output` resolves against the cwd** and refuses to replace an existing
   video. Omit it for an automatically numbered render.
 

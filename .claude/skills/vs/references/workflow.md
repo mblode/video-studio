@@ -12,12 +12,19 @@ regenerated three times.
 
 | Rung | Command                        | Costs      | Locks             |
 | ---- | ------------------------------ | ---------- | ----------------- |
-| 0    | `generate --dry-run`           | nothing    | Schema and lint   |
+| 0    | `generate --dry-run`           | $0         | Schema and lint   |
 | 1    | `stills`                       | cents      | The look          |
 | 2    | `animatic`                     | $0 of video | Pacing and order |
-| 3    | `generate --draft`             | ~45% of a final | Motion       |
-| 4    | `generate`                     | the real spend | Quality        |
+| 3    | `generate --draft` (480p)      | ~45% of a final | Motion       |
+| 4    | `generate` (720p)              | the real spend | Quality        |
 | 5    | `review`, `stitch`, `upscale`  | free       | The cut           |
+
+The ratio at rung 3 is unchanged on Seedance 2.5 (480p is 45% of 720p's tokens
+at any duration), but the base is 3.75x larger per clip: a 30s 720p act on 2.5
+costs $6.93, where an 8s 720p clip on 2.0 costs $1.33. **Rung 2 therefore
+carries more weight than it used to.** The animatic is the last rung that costs
+nothing, and every paid rung above it is now five times dearer per clip. Cut
+the film in the animatic until the order and the act boundaries are settled.
 
 ```bash
 node dist/cli.js doctor                                        # keys, ffmpeg, Node, card tools
@@ -52,13 +59,37 @@ namespaces every artifact so it can never clobber the final:
 | ------------ | --------------- | ------------------ |
 | manifest     | `tasks.json`    | `tasks.draft.json` |
 | clips        | `output/clips/<shot>/vNNN.mp4` | `output-draft/clips/<shot>/vNNN.mp4` |
-| chain frames | `frames/`       | `frames-draft/`    |
 | review sheet | `review/`       | `review-draft/`    |
 
 Promotion needs no new command. The seed lives in `shots.json` and is shared
 across passes, so re-running `generate` without `--draft` (optionally with
 `--shot <approved ids>`) reproduces the approved draft's composition family at
 full quality.
+
+### Drafting a Seedance 2.5 film
+
+**Leave `film.draftModel` unset.** There is no 2.5-fast, and 2.0-fast is not a
+cheap proxy for a 30s act, it is a refused run: `vs generate --draft` validates
+every shot against `film.draftModel` rather than `film.model`, 2.0-fast is
+documented at 4-15s, and a documented mismatch is a hard error. A 30s film with
+`draftModel: "dreamina-seedance-2-0-fast-260128"` fails with `invalid_input`
+after you have already committed to the run.
+
+With `draftModel` unset, `--draft` runs the film's own model at 480p, which is
+45% of the final cost. That is the same ratio as the 2.0 ladder, on a base
+3.75x larger per clip. `lintShotsFile` catches the envelope mismatch at
+`--dry-run`, so rung 0 is where you find out, not rung 3:
+
+```bash
+node dist/cli.js generate films/<slug>/shots.json --dry-run
+```
+
+**Promote one act before drafting the rest.** The seed is portable across
+passes but the composition is not guaranteed to survive a resolution change.
+Run one act at 480p, promote that same act to 720p at the same seed, and
+compare. If the composition re-rolls between the two, drafting the other acts
+teaches you nothing and you should go straight to finals. At $6.93 an act that
+one check is worth its own cost several times over.
 
 ## Cost control
 
@@ -119,10 +150,14 @@ another machine, and a generation run is reviewable as a git diff.
 ## Concurrency
 
 `--concurrency` defaults to 3 for `generate` (the individual account's task
-limit) and 2 for `stills`. Keyframe-anchored shots are independent, so they all
-submit in parallel; `continueFrom` chains serialize because each shot needs the
-previous clip's last frame. A 4K run is capped at one concurrent task by the
+limit) and 2 for `stills`. Every shot is independent, so they all submit in
+parallel up to that limit. A 4K run is capped at one concurrent task by the
 provider regardless of the flag.
+
+**So is every Seedance 2.5 run**, at every resolution: 1 concurrent, 60 RPM. A
+30s generation takes 10 to 15 minutes, so a six-act film is 60 to 90 minutes
+strictly serial and `--concurrency` changes nothing. Plan the session around
+that, and prefer one considered pass to three hopeful ones.
 
 ## Agent-driven runs
 

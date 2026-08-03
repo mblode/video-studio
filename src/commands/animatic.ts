@@ -11,12 +11,13 @@ import {
 import type { Dimensions } from "../animatic.js";
 import { renderCardPng } from "../cards.js";
 import { assertFfmpeg, runFfmpeg } from "../ffmpeg.js";
+import { resolveOutput } from "../paths.js";
 import type { Pass } from "../paths.js";
 import { lintShotsFile } from "../shots.js";
 import { buildStitchPlan, orderTimeline } from "../stitch.js";
 import type { StitchClip } from "../stitch.js";
 import { assertNewVideoOutput, nextRenderPath } from "../versions.js";
-import { resolveFilm, resolveOutput } from "./context.js";
+import { resolveFilm } from "./context.js";
 import { emit, heading, line, note, ok, warn } from "./output.js";
 import { filmFrame } from "./stitch.js";
 

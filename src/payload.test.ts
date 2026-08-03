@@ -4,8 +4,21 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { buildTaskPayload, hashPayload, renderPayload } from "./payload.js";
-import type { Shot, ShotsFile } from "./types.js";
+import {
+  buildTaskPayload,
+  effectiveShotParams,
+  hashPayload,
+  referenceCountsByType,
+  referenceOrdinals,
+  renderPayload,
+} from "./payload.js";
+import { DEFAULT_RESOLUTION } from "./types.js";
+import type {
+  CreateTaskRequest,
+  Shot,
+  ShotReference,
+  ShotsFile,
+} from "./types.js";
 
 const film: ShotsFile["film"] = {
   defaults: {
@@ -204,5 +217,185 @@ describe("buildTaskPayload — preamble, resolution, camera", () => {
       "/tmp"
     );
     expect(locked.camera_fixed).toBe(true);
+  });
+});
+
+/**
+ * The planner is the ONLY copy of the ladder, and `vs generate` prices what it
+ * returns. If a wire field ever stops matching the planner, the estimate is
+ * quoting a different run than the one being submitted — so pin the two
+ * together at every rung: nothing set, film default, shot, run override.
+ */
+describe("effectiveShotParams", () => {
+  const unset: ShotsFile["film"] = { title: "Unset" };
+  const rungs: { name: string; film: ShotsFile["film"]; shot: Shot }[] = [
+    { film: unset, name: "nothing set", shot: { id: "a", prompt: "p" } },
+    { film, name: "film defaults", shot: { id: "a", prompt: "p" } },
+    {
+      film,
+      name: "shot values",
+      shot: {
+        duration: 12,
+        id: "a",
+        prompt: "p",
+        ratio: "9:16",
+        resolution: "720p",
+      },
+    },
+  ];
+
+  it.each(rungs)("sends exactly what it plans ($name)", async (rung) => {
+    for (const overrides of [
+      undefined,
+      { generateAudio: false, model: "dreamina-seedance-2-5-260628" },
+      { resolution: "480p" as const },
+    ]) {
+      const params = effectiveShotParams(rung.shot, rung.film, overrides);
+      const payload = await buildTaskPayload(rung.shot, rung.film, "/tmp", {
+        overrides,
+      });
+      expect(payload.duration).toBe(params.duration);
+      expect(payload.ratio).toBe(params.ratio);
+      expect(payload.model).toBe(params.model);
+      expect(payload.generate_audio).toBe(params.generateAudio);
+      expect(payload.watermark).toBe(params.watermark);
+      // The one deliberate asymmetry: the payload omits `resolution` unless
+      // something set one, while `params.resolution` always names the frame the
+      // clip renders (and bills) at.
+      expect(payload.resolution).toBe(
+        params.emitResolution ? params.resolution : undefined
+      );
+    }
+  });
+
+  it("prices the API's default when nothing sets a resolution", () => {
+    const params = effectiveShotParams({ id: "a", prompt: "p" }, film);
+    expect(params.emitResolution).toBe(false);
+    expect(params.resolution).toBe(DEFAULT_RESOLUTION);
+  });
+});
+
+const refImage = (n: number): ShotReference => ({
+  role: "reference_image",
+  type: "image",
+  url: `https://example.com/${n}.png`,
+});
+
+describe("the ordinal contract", () => {
+  it("counts ordinals per media type, not per array index", () => {
+    // `@Image 1` is the SECOND array entry here. This is the trap.
+    const refs: ShotReference[] = [
+      { role: "reference_video", type: "video", url: "https://e.com/v.mp4" },
+      refImage(1),
+      refImage(2),
+    ];
+    // Video ordinal 1, then Image ordinals 1 and 2.
+    expect(referenceOrdinals(refs)).toEqual([1, 1, 2]);
+  });
+
+  it("lets a frame role consume an image ordinal", () => {
+    const refs: ShotReference[] = [
+      { role: "first_frame", type: "image", url: "./stills/key.png" },
+      refImage(1),
+    ];
+    // The keyframe itself occupies Image ordinal 1.
+    expect(referenceOrdinals(refs)).toEqual([1, 2]);
+    expect(referenceCountsByType(refs)).toEqual({
+      audio: 0,
+      image: 2,
+      video: 0,
+    });
+  });
+
+  it("submits references in authored order, so ordinals match the wire", async () => {
+    const refs: ShotReference[] = [
+      { role: "reference_video", type: "video", url: "https://e.com/v.mp4" },
+      refImage(1),
+      refImage(2),
+    ];
+    const payload = await buildTaskPayload(
+      { id: "s", prompt: "use @Image 1 for her face", references: refs },
+      film,
+      "/tmp"
+    );
+
+    // Text first, then references in the exact order the author wrote them.
+    expect(payload.content.map((c) => c.type)).toEqual([
+      "text",
+      "video_url",
+      "image_url",
+      "image_url",
+    ]);
+  });
+});
+
+const payloadWithInlineVideo = (bodyLength = 5000): CreateTaskRequest => ({
+  content: [
+    { text: "edit this", type: "text" },
+    {
+      role: "reference_video",
+      type: "video_url",
+      video_url: { url: `data:video/mp4;base64,${"A".repeat(bodyLength)}` },
+    },
+  ],
+  duration: 30,
+  generate_audio: true,
+  model: "dreamina-seedance-2-5-260628",
+  ratio: "16:9",
+  watermark: false,
+});
+
+describe("data URLs never reach the hash or the terminal", () => {
+  it("truncates an inlined video instead of dumping megabytes into --dry-run", () => {
+    const rendered = renderPayload(payloadWithInlineVideo());
+    expect(rendered).toContain("(truncated)");
+    expect(rendered).not.toContain("A".repeat(200));
+  });
+
+  it("hashes an inlined video by digest rather than by its whole body", () => {
+    const small = payloadWithInlineVideo(64);
+    const large = payloadWithInlineVideo(5000);
+    // Same digest length whatever the body size: the hash is over a sha256 of
+    // the data URL, not the megabytes themselves.
+    expect(hashPayload(small)).toHaveLength(64);
+    expect(hashPayload(large)).toHaveLength(64);
+    expect(hashPayload(small)).not.toBe(hashPayload(large));
+  });
+
+  it("does not move an existing film's payloadHash", () => {
+    // payloadHash is persisted in every manifest, so if this literal changes,
+    // every already-generated film reads as if its payload had been edited.
+    // Adding the video/audio branches to mapDataUrls must not disturb it.
+    const imageOnly: CreateTaskRequest = {
+      content: [
+        { text: "a quiet street", type: "text" },
+        {
+          image_url: { url: "data:image/png;base64,AAAA" },
+          role: "first_frame",
+          type: "image_url",
+        },
+      ],
+      duration: 8,
+      generate_audio: true,
+      model: "dreamina-seedance-2-0-260128",
+      ratio: "16:9",
+      watermark: false,
+    };
+    expect(hashPayload(imageOnly)).toBe(
+      "24b3df2fff5ef0a0f4be39832bbc2c7b8e22cfdb2e42d068776a8c130b3b8c1e"
+    );
+  });
+});
+
+describe("referenceOrdinals is positional", () => {
+  it("gives an aliased array two distinct ordinals", () => {
+    // A Map keyed by the reference object collapses [r, r] to one entry and
+    // reports ordinal 2 for the first reference. Position cannot.
+    const r: ShotReference = {
+      role: "reference_image",
+      type: "image",
+      url: "./a.png",
+    };
+    expect(referenceOrdinals([r, r])).toEqual([1, 2]);
   });
 });

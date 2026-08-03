@@ -27,8 +27,9 @@ import {
   scratchAudioPath,
   shotStartTimes,
 } from "../narrate.js";
+import { resolveOutput } from "../paths.js";
 import { assertNewVideoOutput } from "../versions.js";
-import { resolveFilm, resolveOutput } from "./context.js";
+import { resolveFilm } from "./context.js";
 import { emit, heading, line, note, ok, warn } from "./output.js";
 
 export interface NarrateOptions {

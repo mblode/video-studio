@@ -1,0 +1,98 @@
+{
+  "film": {
+    "title": "The Last Watch (Seedance 2.5 cut)",
+    "outputDir": "./output",
+    "model": "dreamina-seedance-2-5-260628",
+    "defaults": {
+      "ratio": "1:1",
+      "duration": 30,
+      "resolution": "720p",
+      "generateAudio": true,
+      "watermark": false
+    },
+    "promptPreamble": "Photorealistic expressionist maritime cinema in stark black-and-white, composed for an exact almost-square 1.10:1 frame inherited from the bound reference plates. Orthochromatic tonal response renders skin pale, sky chalky, wool and wet rock nearly black. Hard practical light, deep crushed shadows, silver halation, coarse 35mm grain, slight gate weave, salt haze, real spray and condensation. Reference images are bound by ordinal: each @Image N is named in the timestamp plan with the one job it does, and is used for nothing else. Claustrophobic, severe, human, and grounded. Realtime speed, brisk natural motion, precise physical action. Hard cuts land exactly on the timestamps given, and the camera never drifts across a cut. Diegetic sound only. Keep every frame subtitle-free and free of flags, brands, dialogue, logos, watermarks, readable labels, and on-screen lettering."
+  },
+  "cards": [
+    {
+      "after": "start",
+      "text": "THE LAST WATCH",
+      "duration": 3,
+      "transition": 0.4
+    },
+    {
+      "after": "end",
+      "text": "THE WATCH PASSES ON",
+      "duration": 3,
+      "fontSize": 48,
+      "transition": 0.7
+    }
+  ],
+  "shots": [
+    {
+      "id": "a1-the-refusal",
+      "prompt": "THE KEEPER is a lean weathered man in his late sixties with grey stubble, a near-black wool coat, thick dark scarf and black boots, working with deliberate economy and no wasted step; use @Image 1 for his face, build and wardrobe only. THE RELIEF is a woman in her early thirties with cropped dark curls, a pale slick oilskin, black sweater and brown canvas tool roll, still while observing and fast once she acts; use @Image 2 for her face, hair and wardrobe only. Use @Image 3 for the exterior: a remote white stone lighthouse rising vertically out of a treeless headland, its lamp dark, a wet path climbing to a low cottage. Use @Image 4 for the windowless machinery room, its guarded vertical weight chain and its clockwork drive. Use @Image 5 for the single worn chain link, rubbed bright and thin against its neighbours.\n\n0-5s: open mid-action on a wide exterior pushing toward the vertical tower as wind lashes the long grass sideways; THE RELIEF climbs the lower path with her tool roll and a compact dark motor case, the lamp above her completely unlit; <wind tearing across grass, surf below, boots on wet stone>.\n6-11s: hard cut to a cramped vertical two-shot across an open iron door; she offers her right hand, he takes the motor case from her instead, sets it against the stone wall and pushes the door shut between them; <iron hinges, a case set down on stone, a door closing hard>.\n12-19s: hard cut low into the machinery room; he draws a large dark iron service key from inside his coat, fits it and winds the counterweight upward in long even strokes while she raises a grey vibration meter behind the guarded chain; <ratchet clicking, chain taking load, a meter ticking>.\n20-25s: cut to macro inside the guard; one link passes through frame rubbed bright and thin against its neighbours, then climbs out of shot; <chain links knocking, metal under strain>.\n26-30s: pull back to a locked two-shot; he steps across the guard to block her view, pockets the key and holds her eye; she lowers the meter without looking away; <the drive settling, wind through stone, no music>.\n\nExactly two people in every frame, one KEEPER and one RELIEF, never duplicated. The lamp is unlit and there is no beam anywhere in this generation.",
+      "seed": 8201,
+      "transition": 0.4,
+      "references": [
+        {
+          "type": "image",
+          "url": "./stills/keeper.png",
+          "role": "reference_image"
+        },
+        {
+          "type": "image",
+          "url": "./stills/relief.png",
+          "role": "reference_image"
+        },
+        {
+          "type": "image",
+          "url": "./stills/tower-exterior.png",
+          "role": "reference_image"
+        },
+        {
+          "type": "image",
+          "url": "./stills/machinery-room.png",
+          "role": "reference_image"
+        },
+        {
+          "type": "image",
+          "url": "./stills/worn-link.png",
+          "role": "reference_image"
+        }
+      ]
+    },
+    {
+      "id": "a2-the-dark-hour",
+      "prompt": "The opening frame matches the provided keyframe at @Image 1: a hard-lit radio room above a fogging sea window, both keepers small beneath it as storm rain erases the horizon. THE KEEPER is the lean weathered man in the near-black wool coat and dark scarf; use @Image 2 for his face and wardrobe only. THE RELIEF is the woman in the pale slick oilskin with cropped dark curls; use @Image 3 for her face and wardrobe only. Use @Image 4 for the lamp room, its unlit Fresnel lens and its iron frame. Use @Image 5 for the sea geography: black open channel on one side, white reef breaking on the other.\n\n0-5s: open mid-action on a tight push onto the old radio and barometer; static detonates out of the speaker and the barometer needle drops off its scale; <radio static, a warning bell, rain hammering glass>.\n6-11s: whip pan as THE RELIEF wipes condensation from the high window; THE KEEPER reaches her side and both see a small working boat still driving through the last visible channel; <a sleeve dragging on wet glass, a distant diesel, one low horn>.\n12-18s: hard cut up into the lamp room; he strikes the igniter and the lamp catches, then drives the dark iron key home and engages the clockwork as her meter needle hammers against its stop; <flint crack, ignition thump, gears rising, a hard vibration buzz>.\n19-24s: hard cut to macro inside the chain guard; the worn link stretches under load, parts cleanly and lashes into its steel guard while both keepers stay well clear; the lamp dies at the exact instant of the snap; <chain strain, a sharp steel snap, gears grinding down>.\n25-30s: hard cut outside to a sea-level wide; the boat runs on between black open water and white breaking reef with no beam to separate them, and the tower stands completely dark behind it while lightning silhouettes cloud far offshore; <surf exploding, storm wind, a diesel labouring>.\n\nExactly two people inside the tower, one KEEPER and one RELIEF, never duplicated. After 19s there is no lamp, no glow and no beam anywhere in frame.",
+      "seed": 8205,
+      "transition": 0.15,
+      "references": [
+        {
+          "type": "image",
+          "url": "./stills/a2-radio-room.png",
+          "role": "first_frame"
+        },
+        {
+          "type": "image",
+          "url": "./stills/keeper.png",
+          "role": "reference_image"
+        },
+        {
+          "type": "image",
+          "url": "./stills/relief.png",
+          "role": "reference_image"
+        },
+        {
+          "type": "image",
+          "url": "./stills/lamp-room.png",
+          "role": "reference_image"
+        },
+        {
+          "type": "image",
+          "url": "./stills/sea-geography.png",
+          "role": "reference_image"
+        }
+      ]
+    }
+  ]
+}
