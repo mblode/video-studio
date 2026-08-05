@@ -24,13 +24,26 @@ function backoffMs(attempt: number): number {
   return base + Math.floor(Math.random() * 500);
 }
 
-/** An HTTP failure from a provider. `status` is the transport code. */
+/**
+ * An HTTP failure from a provider. `status` is the transport code.
+ *
+ * `name` is derived from the provider (`ArkApiError`, `GeminiApiError`, ...)
+ * for two reasons: it keeps the class each provider used to own recognisable in
+ * a stack trace, and `apiStatus` in src/errors.ts identifies a provider error
+ * structurally, by `name.endsWith("ApiError")`, so that it can turn a 401 or a
+ * 429 into a next step without knowing every client.
+ */
 export class ApiError extends Error {
   readonly status: number;
 
   constructor(provider: string, status: number, message: string) {
     super(`${provider} API ${status}: ${message}`);
-    this.name = "ApiError";
+    // Deliberately NOT the literal class name. `apiStatus` in src/errors.ts
+    // recognises a provider error by `name.endsWith("ApiError")` so it can turn
+    // a 401 or 429 into a next step without knowing every client, and keeping
+    // the provider in the name is what makes a stack trace say which API failed.
+    // oxlint-disable-next-line unicorn/custom-error-definition
+    this.name = `${provider}ApiError`;
     this.status = status;
   }
 }
@@ -78,31 +91,39 @@ export function parseOrThrow<T>(
   throw new ResponseShapeError(provider, what, issues, body);
 }
 
-export interface JsonRequestOptions<T> {
+export interface RequestOptions {
   body?: unknown;
   fetchImpl: typeof fetch;
   headers: Record<string, string>;
   method: "GET" | "POST";
   /** Provider name, for error messages only. */
   provider: string;
-  schema: z.ZodType<T>;
   url: string;
+}
+
+export interface JsonRequestOptions<T> extends RequestOptions {
+  schema: z.ZodType<T>;
   /** Operation name, for error messages only, e.g. "createTask". */
   what: string;
 }
 
 /**
- * One JSON request with the shared retry policy.
+ * One request with the shared retry policy, returning the successful response.
+ *
+ * TRANSPORT ONLY, deliberately: the four provider clients disagree about what
+ * comes back (validated JSON, unvalidated JSON, raw audio bytes) but must NOT
+ * disagree about when to retry. Retrying a 4xx on a generation endpoint spends
+ * money; not retrying a 429 throws away a run that would have succeeded a
+ * second later. Splitting transport from parsing is what lets all four share
+ * the second decision while keeping the first.
  *
  * Retries 429/5xx/network errors with exponential backoff, honouring
- * `Retry-After`. Every other 4xx fails immediately, because retrying costs
- * money. A body that fails validation is not transient either, so it throws
- * rather than burning the retry budget on a contract change.
+ * `Retry-After`. Every other 4xx fails immediately.
  */
-export async function requestJson<T>(
-  options: JsonRequestOptions<T>
-): Promise<T> {
-  const { body, fetchImpl, headers, method, provider, url, what } = options;
+export async function requestWithRetry(
+  options: RequestOptions
+): Promise<Response> {
+  const { body, fetchImpl, headers, method, provider, url } = options;
   const init: RequestInit = { headers, method };
   if (body !== undefined) {
     init.body = JSON.stringify(body);
@@ -118,18 +139,7 @@ export async function requestJson<T>(
       continue;
     }
     if (response.ok) {
-      let json: unknown;
-      try {
-        json = await response.json();
-      } catch {
-        throw new ResponseShapeError(
-          provider,
-          what,
-          ["body is not valid JSON"],
-          await response.text().catch(() => "<unreadable>")
-        );
-      }
-      return parseOrThrow(provider, what, options.schema, json);
+      return response;
     }
     const text = await response.text();
     if (response.status === 429 || response.status >= 500) {
@@ -145,4 +155,28 @@ export async function requestJson<T>(
     throw new ApiError(provider, response.status, text);
   }
   throw lastError;
+}
+
+/**
+ * A JSON request, validated at the boundary. A body that fails validation is
+ * not transient, so it throws rather than burning the retry budget on what is
+ * really a contract change.
+ */
+export async function requestJson<T>(
+  options: JsonRequestOptions<T>
+): Promise<T> {
+  const { provider, what } = options;
+  const response = await requestWithRetry(options);
+  let json: unknown;
+  try {
+    json = await response.json();
+  } catch {
+    throw new ResponseShapeError(
+      provider,
+      what,
+      ["body is not valid JSON"],
+      await response.text().catch(() => "<unreadable>")
+    );
+  }
+  return parseOrThrow(provider, what, options.schema, json);
 }

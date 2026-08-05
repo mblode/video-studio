@@ -22,8 +22,6 @@ export interface ResolvedModelId {
   provider: ProviderId;
   /** The id to send on the wire, with any `provider:` prefix stripped. */
   modelId: string;
-  /** True when the caller named the provider rather than it being inferred. */
-  explicit: boolean;
 }
 
 const PROVIDER_PREFIXES: readonly ProviderId[] = ["ark", "minimax"];
@@ -34,19 +32,11 @@ export function resolveModelId(configured: string): ResolvedModelId {
     const prefix = configured.slice(0, separator).toLowerCase();
     const provider = PROVIDER_PREFIXES.find((known) => known === prefix);
     if (provider) {
-      return {
-        explicit: true,
-        modelId: configured.slice(separator + 1),
-        provider,
-      };
+      return { modelId: configured.slice(separator + 1), provider };
     }
     // An unknown prefix is far more likely to be part of the id itself than a
     // typo'd provider, so it is left alone rather than rejected. The registry
     // gets the whole string, unchanged.
   }
-  return {
-    explicit: false,
-    modelId: configured,
-    provider: lookupModel(configured).provider,
-  };
+  return { modelId: configured, provider: lookupModel(configured).provider };
 }

@@ -1,6 +1,5 @@
-import { setTimeout as sleep } from "node:timers/promises";
-
 import { VsError } from "./errors.js";
+import { requestWithRetry } from "./http.js";
 
 /** Best expressive model for film narration (Aug 2026). */
 export const ELEVEN_V3_MODEL = "eleven_v3";
@@ -9,8 +8,8 @@ export const ELEVEN_MULTILINGUAL_V2_MODEL = "eleven_multilingual_v2";
 
 export const DEFAULT_ELEVEN_BASE_URL = "https://api.elevenlabs.io";
 
-const MAX_RETRIES = 3;
-const BACKOFF_MS = [1000, 4000, 16_000];
+/** Name used in error messages, e.g. "ElevenLabs API 401: ...". */
+const PROVIDER = "ElevenLabs";
 
 export interface ElevenLabsSpeechRequest {
   text: string;
@@ -29,20 +28,8 @@ export interface ElevenLabsSpeechRequest {
   };
 }
 
-export class ElevenLabsApiError extends Error {
-  readonly status: number;
-
-  constructor(status: number, message: string) {
-    super(`ElevenLabs API ${status}: ${message}`);
-    this.name = "ElevenLabsApiError";
-    this.status = status;
-  }
-}
-
-function backoffMs(attempt: number): number {
-  const base = BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)] ?? 16_000;
-  return base + Math.floor(Math.random() * 500);
-}
+/** Historical name for the shared provider error; same class, not a subclass. */
+export { ApiError as ElevenLabsApiError } from "./http.js";
 
 /** Default film-VO settings: warm, slightly slow, speaker-boosted. */
 export function defaultVoiceSettings(): NonNullable<
@@ -96,36 +83,21 @@ export class ElevenLabsClient {
     url.searchParams.set("output_format", format);
     const body = buildSpeechBody(request);
 
-    let lastError: Error = new Error("unreachable");
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
-      let response: Response;
-      try {
-        response = await this.fetchImpl(url, {
-          body: JSON.stringify(body),
-          headers: {
-            Accept: "audio/mpeg",
-            "Content-Type": "application/json",
-            "xi-api-key": this.apiKey,
-          },
-          method: "POST",
-        });
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        await sleep(backoffMs(attempt));
-        continue;
-      }
-      if (response.ok) {
-        return Buffer.from(await response.arrayBuffer());
-      }
-      const text = await response.text();
-      if (response.status === 429 || response.status >= 500) {
-        lastError = new ElevenLabsApiError(response.status, text);
-        await sleep(backoffMs(attempt));
-        continue;
-      }
-      throw new ElevenLabsApiError(response.status, text);
-    }
-    throw lastError;
+    // Audio bytes, not JSON, which is exactly why the shared helper returns a
+    // Response rather than a parsed body.
+    const response = await requestWithRetry({
+      body,
+      fetchImpl: this.fetchImpl,
+      headers: {
+        Accept: "audio/mpeg",
+        "Content-Type": "application/json",
+        "xi-api-key": this.apiKey,
+      },
+      method: "POST",
+      provider: PROVIDER,
+      url: url.toString(),
+    });
+    return Buffer.from(await response.arrayBuffer());
   }
 }
 

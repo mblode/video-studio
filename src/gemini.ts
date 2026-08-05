@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
-import { setTimeout as sleep } from "node:timers/promises";
 
+import { requestWithRetry } from "./http.js";
 import { safeJoin } from "./paths.js";
 
 /**
@@ -16,13 +16,13 @@ import { safeJoin } from "./paths.js";
  * GEMINI_API_KEY with credit is available — this is built but not yet smoke-tested.
  */
 
+/** Name used in error messages, e.g. "Gemini API 429: ...". */
+const PROVIDER = "Gemini";
+
 /** Nano Banana 2 — the high-efficiency Gemini 3.1 Flash Image model. */
 export const DEFAULT_GEMINI_IMAGE_MODEL = "gemini-3.1-flash-image";
 /** Nano Banana Pro — the professional-asset Gemini 3 Pro Image model. */
 export const GEMINI_PRO_IMAGE_MODEL = "gemini-3-pro-image";
-
-const MAX_RETRIES = 3;
-const BACKOFF_MS = [1000, 4000, 16_000];
 
 const MIME_BY_EXT: Record<string, string> = {
   ".jpeg": "image/jpeg",
@@ -53,20 +53,8 @@ export interface GeminiImageRequest {
   imageSize?: string;
 }
 
-export class GeminiApiError extends Error {
-  readonly status: number;
-
-  constructor(status: number, message: string) {
-    super(`Gemini API ${status}: ${message}`);
-    this.name = "GeminiApiError";
-    this.status = status;
-  }
-}
-
-function backoffMs(attempt: number): number {
-  const base = BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)] ?? 16_000;
-  return base + Math.floor(Math.random() * 500);
-}
+/** Historical name for the shared provider error; same class, not a subclass. */
+export { ApiError as GeminiApiError } from "./http.js";
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null
@@ -197,43 +185,19 @@ export class GeminiClient {
     return await this.request(model, body);
   }
 
-  /** Retries 429/5xx/network with backoff; other 4xx fail immediately. */
+  /** Transport, retry, and backoff all come from the shared policy. */
   private async request(model: string, body: unknown): Promise<unknown> {
-    const url = `${this.base}/models/${encodeURIComponent(model)}:generateContent`;
-    const init: RequestInit = {
-      body: JSON.stringify(body),
+    const response = await requestWithRetry({
+      body,
+      fetchImpl: this.fetchImpl,
       headers: {
         "Content-Type": "application/json",
         "x-goog-api-key": this.apiKey,
       },
       method: "POST",
-    };
-    let lastError: Error = new Error("unreachable");
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
-      let response: Response;
-      try {
-        response = await this.fetchImpl(url, init);
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        await sleep(backoffMs(attempt));
-        continue;
-      }
-      if (response.ok) {
-        return await response.json();
-      }
-      const text = await response.text();
-      if (response.status === 429 || response.status >= 500) {
-        lastError = new GeminiApiError(response.status, text);
-        const retryAfter = Number(response.headers.get("retry-after"));
-        await sleep(
-          Number.isFinite(retryAfter) && retryAfter > 0
-            ? retryAfter * 1000
-            : backoffMs(attempt)
-        );
-        continue;
-      }
-      throw new GeminiApiError(response.status, text);
-    }
-    throw lastError;
+      provider: PROVIDER,
+      url: `${this.base}/models/${encodeURIComponent(model)}:generateContent`,
+    });
+    return await response.json();
   }
 }

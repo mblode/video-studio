@@ -43,20 +43,20 @@ describe("formatError", () => {
   });
 
   it("maps an auth failure to the key to check", () => {
-    expect(formatError(new ArkApiError(401, "{}")).hint).toContain(
+    expect(formatError(new ArkApiError("Ark", 401, "{}")).hint).toContain(
       "ARK_API_KEY"
     );
   });
 
   it("maps a 429 to the account's rate limits", () => {
-    const hint = formatError(new ArkApiError(429, "{}")).hint ?? "";
+    const hint = formatError(new ArkApiError("Ark", 429, "{}")).hint ?? "";
     expect(hint).toContain("180 requests/min");
     expect(hint).toContain("--concurrency");
   });
 
   it("leaves an ordinary 400 without a fabricated hint", () => {
     expect(
-      formatError(new ArkApiError(400, "bad prompt")).hint
+      formatError(new ArkApiError("Ark", 400, "bad prompt")).hint
     ).toBeUndefined();
   });
 

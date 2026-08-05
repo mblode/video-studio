@@ -3,6 +3,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
 
 import { VsError } from "./errors.js";
+import { requestJson } from "./http.js";
 import { TASK_STATUSES } from "./types.js";
 import type {
   ArkTask,
@@ -17,14 +18,13 @@ import type {
  * {base}/contents/generations/tasks: POST to create, GET /{id} to read,
  * GET to list, DELETE /{id} to cancel. The base URL already carries /api/v3.
  */
+/** Name used in error messages, e.g. "Ark API 429: ...". */
+const PROVIDER = "Ark";
+
 export const TASKS_PATH = "/contents/generations/tasks";
 export const IMAGES_PATH = "/images/generations";
 
-const MAX_RETRIES = 3;
-const BACKOFF_MS = [1000, 4000, 16_000];
 const MAX_CONSECUTIVE_POLL_ERRORS = 5;
-/** Characters of the offending body echoed in a validation error. */
-const BODY_EXCERPT_CHARS = 400;
 
 const TERMINAL_STATUSES = new Set<TaskStatus>([
   "succeeded",
@@ -109,44 +109,6 @@ const createImageResponseSchema = z.looseObject({
 });
 
 /**
- * A 2xx response whose body is not the shape we depend on. Separate from
- * ArkApiError (an HTTP failure) because the causes and the fixes differ: this
- * one means the provider changed the contract, or the base URL points at
- * something that is not ModelArk.
- */
-export class ArkResponseError extends Error {
-  readonly issues: string[];
-
-  constructor(what: string, issues: string[], body: unknown) {
-    let excerpt: string;
-    try {
-      excerpt = JSON.stringify(body) ?? String(body);
-    } catch {
-      excerpt = String(body);
-    }
-    if (excerpt.length > BODY_EXCERPT_CHARS) {
-      excerpt = `${excerpt.slice(0, BODY_EXCERPT_CHARS)}…`;
-    }
-    super(
-      `Ark API returned an unexpected ${what} response: ${issues.join("; ")}. Body: ${excerpt}`
-    );
-    this.name = "ArkResponseError";
-    this.issues = issues;
-  }
-}
-
-function parseOrThrow<T>(what: string, schema: z.ZodType<T>, body: unknown): T {
-  const parsed = schema.safeParse(body);
-  if (parsed.success) {
-    return parsed.data;
-  }
-  const issues = parsed.error.issues.map(
-    (issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`
-  );
-  throw new ArkResponseError(what, issues, body);
-}
-
-/**
  * Poll timeouts are reported in the unit the operator typed (`--timeout` is in
  * minutes); "1200000ms" makes them do the arithmetic. Sub-minute waits still
  * read in seconds rather than rounding to a useless "0 minutes".
@@ -158,20 +120,15 @@ function formatTimeout(ms: number): string {
     : `${Math.max(1, Math.round(ms / 1000))}s`;
 }
 
-function backoffMs(attempt: number): number {
-  const base = BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)] ?? 16_000;
-  return base + Math.floor(Math.random() * 500);
-}
-
-export class ArkApiError extends Error {
-  readonly status: number;
-
-  constructor(status: number, message: string) {
-    super(`Ark API ${status}: ${message}`);
-    this.name = "ArkApiError";
-    this.status = status;
-  }
-}
+/**
+ * Historical names for the shared provider errors. They are the SAME classes,
+ * not subclasses: `ArkApiError` was this codebase's only provider error before
+ * a second provider existed, and a lot of call sites and tests name it.
+ */
+export {
+  ApiError as ArkApiError,
+  ResponseShapeError as ArkResponseError,
+} from "./http.js";
 
 export interface PollOptions {
   intervalMs: number;
@@ -262,66 +219,27 @@ export class ArkClient {
   }
 
   /**
-   * Retries 429/5xx/network errors with exponential backoff (honouring
-   * Retry-After). Other 4xx fail immediately, because retrying costs money. A
-   * body that fails validation is not transient either, so it throws rather
-   * than burning the retry budget.
+   * Every Ark call goes through the SHARED request policy in src/http.ts.
+   * Retry timing is the one thing two providers must never drift on: retrying
+   * a 4xx on a generation endpoint spends money, and not retrying a 429 throws
+   * away a run that would have succeeded a second later.
    */
-  private async request<T>(options: {
+  private request<T>(options: {
     body?: unknown;
     method: "GET" | "POST";
     path: string;
     schema: z.ZodType<T>;
     what: string;
   }): Promise<T> {
-    const { body, method, path } = options;
-    const url = `${this.base}${path}`;
-    const init: RequestInit = {
+    return requestJson({
+      ...options,
+      fetchImpl: this.fetchImpl,
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
       },
-      method,
-    };
-    if (body !== undefined) {
-      init.body = JSON.stringify(body);
-    }
-    let lastError: Error = new Error("unreachable");
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
-      let response: Response;
-      try {
-        response = await this.fetchImpl(url, init);
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        await sleep(backoffMs(attempt));
-        continue;
-      }
-      if (response.ok) {
-        let json: unknown;
-        try {
-          json = await response.json();
-        } catch {
-          throw new ArkResponseError(
-            options.what,
-            ["body is not valid JSON"],
-            await response.text().catch(() => "<unreadable>")
-          );
-        }
-        return parseOrThrow(options.what, options.schema, json);
-      }
-      const text = await response.text();
-      if (response.status === 429 || response.status >= 500) {
-        lastError = new ArkApiError(response.status, text);
-        const retryAfter = Number(response.headers.get("retry-after"));
-        await sleep(
-          Number.isFinite(retryAfter) && retryAfter > 0
-            ? retryAfter * 1000
-            : backoffMs(attempt)
-        );
-        continue;
-      }
-      throw new ArkApiError(response.status, text);
-    }
-    throw lastError;
+      provider: PROVIDER,
+      url: `${this.base}${options.path}`,
+    });
   }
 }
