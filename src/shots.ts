@@ -496,7 +496,12 @@ function lintOneShot(shot: Shot, file: ShotsFile, modelId: string): string[] {
       `${shot.id}: cameraFixed with an image reference — Seedance rejects camera_fixed in image-to-video (first_frame/reference) mode; drop it and lock the camera in the prompt instead`
     );
   }
-  if (!hasImageRef) {
+  const canAnchorWithImage = [
+    "first_frame",
+    "last_frame",
+    "reference_image",
+  ].some((role) => (lookupModel(modelId).referenceSlots[role] ?? 0) > 0);
+  if (!hasImageRef && canAnchorWithImage) {
     warnings.push(
       `${shot.id}: no image reference — anchor the shot to a literal keyframe (first_frame or reference_image); video generates tighter, cheaper, and less glitchy with an image to follow`
     );

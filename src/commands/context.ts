@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { ArkClient } from "../ark.js";
 import {
   baseUrl,
+  comfyuiBaseUrl,
   geminiBaseUrl,
   loadEnv,
   minimaxBaseUrl,
@@ -16,6 +17,7 @@ import { GeminiClient } from "../gemini.js";
 import { passSuffix, resolveOutput } from "../paths.js";
 import type { Pass } from "../paths.js";
 import { createArk } from "../providers/ark.js";
+import { createComfyUI } from "../providers/comfyui.js";
 import { createMinimax } from "../providers/minimax.js";
 import { resolveModelId } from "../providers/registry.js";
 import { loadShotsFile, loadStillsFile } from "../shots.js";
@@ -47,6 +49,9 @@ export function createArkClient(): ArkClient {
 export function createVideoModel(configuredModelId: string): VideoModelV1 {
   loadEnv();
   const { modelId, provider } = resolveModelId(configuredModelId);
+  if (provider === "comfyui") {
+    return createComfyUI({ baseUrl: comfyuiBaseUrl() }).videoModel(modelId);
+  }
   if (provider === "minimax") {
     return createMinimax({
       // The FUNCTION, not its result: a dry-run builds a model to render a

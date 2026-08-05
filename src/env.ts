@@ -15,6 +15,7 @@ export const DEFAULT_GEMINI_BASE_URL =
  * which reads like a bad key rather than a wrong host.
  */
 export const DEFAULT_MINIMAX_BASE_URL = "https://api.minimax.io";
+export const DEFAULT_COMFYUI_BASE_URL = "http://127.0.0.1:8188";
 
 /**
  * Nearest `.env`, searching from `from` up to the filesystem root. A globally
@@ -73,6 +74,11 @@ export function requireMinimaxApiKey(): string {
 
 export function minimaxBaseUrl(): string {
   return process.env.MINIMAX_BASE_URL ?? DEFAULT_MINIMAX_BASE_URL;
+}
+
+/** Local ComfyUI server used by the open-weight H3 adapter. */
+export function comfyuiBaseUrl(): string {
+  return process.env.COMFYUI_BASE_URL ?? DEFAULT_COMFYUI_BASE_URL;
 }
 
 /** Google Gemini key — only needed to generate stills with Nano Banana (gemini-* models). */

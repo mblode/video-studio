@@ -63,6 +63,20 @@ describe("lookupModel", () => {
   it("falls back for an undefined id (no model configured)", () => {
     expect(lookupModel().known).toBe(false);
   });
+
+  it("models local H3 as a zero-provider-cost, single-concurrency backend", () => {
+    const local = lookupModel("comfyui:MiniMax-H3-Local");
+    expect(local).toMatchObject({
+      known: true,
+      limits: { concurrency: 1 },
+      provider: "comfyui",
+      resolutions: ["480p", "768p"],
+    });
+    expect(local.billing).toMatchObject({
+      kind: "perSecond",
+      usdPerSecondByResolution: { "480p": 0, "768p": 0 },
+    });
+  });
 });
 
 describe("modelRateLimits", () => {

@@ -36,11 +36,17 @@ And on MiniMax, a different provider entirely:
 | Model | Id | Notes |
 | --- | --- | --- |
 | MiniMax H3 | `MiniMax-H3` | 4-15s, 768P/2K, **billed per second** ($0.08 / $0.13). Native stereo audio always. 5 RPM |
+| MiniMax H3 Base (local) | `comfyui:MiniMax-H3-Local` | ComfyUI T2V adapter, serial, $0 provider cost. The tested 24 GB draft path is 608x352; native 768p is unverified on that card. |
 
 `film.model` also accepts an explicit `provider:id` form (`minimax:MiniMax-H3`).
 A bare id is resolved through the registry, so the prefix is only needed for a
 model this repo has not learned yet: without it an unknown id falls back to
 Ark and gets POSTed to BytePlus.
+
+The local id is intentionally separate from hosted `MiniMax-H3`: the hosted
+provider includes service-side orchestration that the open Base checkpoint does
+not. Local setup, checkpoint provenance, and license constraints are documented
+in `../../../../docs/local-h3-comfyui.md`.
 
 The three Seedance models also ship on Volcengine with a `doubao-` prefix. Pre-2.0 releases
 (`seedance-1-0-pro-250528`, `seedance-1-5-pro-251215`) are in the registry with
