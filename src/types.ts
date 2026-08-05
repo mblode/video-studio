@@ -18,6 +18,20 @@ export const ASPECT_RATIOS = [
 export type AspectRatio = (typeof ASPECT_RATIOS)[number];
 
 /**
+ * The subset a STILL can use.
+ *
+ * `adaptive` asks a video model to derive the frame from a reference clip. A
+ * still has no such frame to adapt to, and the image backend wants a literal
+ * `{w}:{h}`, so authoring `adaptive` here would send a string the API cannot
+ * read. Refusing it at load time beats a confusing 400 mid-run.
+ */
+export const STILL_ASPECT_RATIOS = ASPECT_RATIOS.filter(
+  (ratio): ratio is Exclude<AspectRatio, "adaptive"> => ratio !== "adaptive"
+);
+
+export type StillAspectRatio = (typeof STILL_ASPECT_RATIOS)[number];
+
+/**
  * Width/height for each fixed ratio. `adaptive` is deliberately undefined: the
  * delivered frame is only known after generation, so callers that need a number
  * (cost estimation) must pick an explicit fallback, and callers that check a
@@ -250,10 +264,15 @@ export interface Still {
   prompt: string;
   /** Reference images for likeness/style: https URLs or local paths relative to the stills file. */
   references?: string[];
-  /** e.g. "2560x1440"; passed through to Seedream (Nano Banana ignores it — use `ratio`). */
+  /**
+   * Legacy pixel size from the Seedream era. Nano Banana takes a ratio, not
+   * pixels, so this is IGNORED and `lintStillsFile` says so. Kept in the schema
+   * only so an existing stills.json still loads instead of hard-failing on an
+   * unknown key.
+   */
   size?: string;
-  /** Output aspect ratio for Nano Banana (`gemini-*`); falls back to the file `ratio`. */
-  ratio?: AspectRatio;
+  /** Output aspect ratio; falls back to the file `ratio`. */
+  ratio?: StillAspectRatio;
   seed?: number;
 }
 
@@ -261,7 +280,7 @@ export interface StillsFile {
   model?: string;
   outputDir?: string;
   /** Default aspect ratio for Nano Banana stills; per-still `ratio` overrides it. */
-  ratio?: AspectRatio;
+  ratio?: StillAspectRatio;
   stills: Still[];
 }
 

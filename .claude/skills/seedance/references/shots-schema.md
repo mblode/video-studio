@@ -33,15 +33,14 @@ composition of every shot, plus any character, prop, or environment plate.
 
 ```json
 {
-  "model": "seedream-5-0-260128",
+  "model": "gemini-3-pro-image",
   "outputDir": "./stills-v2",
   "ratio": "1:1",
   "stills": [
     {
       "id": "s01-last-arrival",
       "prompt": "Photorealistic expressionist maritime black-and-white keyframe, exact 1.10:1 almost-square composition, orthochromatic tonal response... Literal opening composition: remote white stone lighthouse rises vertically through pearl-grey dusk, lamp room dark, cottage compressed below, wet path entering at bottom; THE RELIEF is small on the path in a pale slick oilskin.",
-      "size": "2200x2000",
-      "seed": 8201
+      "ratio": "1:1"
     }
   ]
 }
@@ -49,9 +48,13 @@ composition of every shot, plus any character, prop, or environment plate.
 
 Per-still fields: `id` (required, `[a-z0-9_-]` case-insensitive, unique),
 `prompt` (required), `references` (optional array of strings: https URLs or
-local image paths relative to the stills file), `size` (optional free-form
-string), `ratio` (optional), `seed` (optional int). File fields: `model`,
+local image paths relative to the stills file; png/jpg/webp only), `ratio`
+(optional; a literal `{w}:{h}`, never `adaptive`). File fields: `model`,
 `outputDir`, `ratio`, `stills` (1 or more).
+
+`size` and `seed` still parse but are IGNORED: Nano Banana takes a ratio rather
+than pixels and rolls its own seed. They remain in the schema only so a stills
+file written for Seedream still loads.
 
 Stills carry no roles; every reference is a likeness or style input. A
 style-only still with no `references` is valid, and that is what the demo film
@@ -61,9 +64,8 @@ uses. Environment plates end their prompt with "no people".
 and referenced from a shot as `./stills/foo.png`. Give a keyframe still the
 same id as its shot so the two files stay in lockstep.
 
-Backend follows the file's `model`: a `seedream-*` id (default) uses the Ark
-image API, a `gemini-*` id routes to Nano Banana and needs `GEMINI_API_KEY`.
-See `../../vs/references/models.md`.
+Stills run on Nano Banana through the AI SDK and need `GEMINI_API_KEY`. See
+`../../vs/references/models.md`.
 
 ## shots.json
 

@@ -19,6 +19,7 @@ import {
   DURATION_MAX,
   DURATION_MIN,
   RESOLUTIONS,
+  STILL_ASPECT_RATIOS,
 } from "./types.js";
 import type { Shot, ShotReference, ShotsFile, StillsFile } from "./types.js";
 
@@ -31,6 +32,8 @@ function isUnsafeLocalReference(url: string): boolean {
 }
 
 const ID_PATTERN = /^[a-z0-9_-]+$/iu;
+/** A still reference is an image; anything else is bytes the model cannot read. */
+const STILL_REFERENCE_EXTENSION = /\.(?:png|jpe?g|webp)(?:\?.*)?$/iu;
 
 /**
  * Every soft limit and mode rule that used to be decided here by asking "is this
@@ -149,6 +152,7 @@ function slowMotionTermCount(text: string): number {
 const FRAME_ROLES = new Set(["first_frame", "last_frame"]);
 
 const ratioSchema = z.enum(ASPECT_RATIOS);
+const stillRatioSchema = z.enum(STILL_ASPECT_RATIOS);
 const resolutionSchema = z.enum(RESOLUTIONS);
 
 const durationSchema = z.union([
@@ -312,13 +316,20 @@ const stillSchema = z
       .string()
       .regex(ID_PATTERN, "still id must be alphanumeric/dash/underscore"),
     prompt: z.string().min(1),
-    ratio: ratioSchema.optional(),
+    ratio: stillRatioSchema.optional(),
     references: z.array(z.string().min(1)).optional(),
     seed: z.number().int().optional(),
     size: z.string().optional(),
   })
   .superRefine((still, ctx) => {
     for (const [index, ref] of (still.references ?? []).entries()) {
+      if (!STILL_REFERENCE_EXTENSION.test(ref)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `reference "${ref}" is not an image (use png/jpg/jpeg/webp) — it would be sent as raw bytes and generate nothing useful`,
+          path: ["references", index],
+        });
+      }
       if (isUnsafeLocalReference(ref)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -333,7 +344,7 @@ const stillsFileSchema = z
   .strictObject({
     model: z.string().optional(),
     outputDir: z.string().optional(),
-    ratio: ratioSchema.optional(),
+    ratio: stillRatioSchema.optional(),
     stills: z.array(stillSchema).min(1),
   })
   .superRefine((file, ctx) => {

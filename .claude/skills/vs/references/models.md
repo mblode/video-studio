@@ -137,13 +137,19 @@ enforce. See `../../seedance/references/shots-schema.md`.
 
 ## Stills models
 
-`vs stills` routes on the stills file's top-level `model`:
+Stills run on **Google's Nano Banana** through the AI SDK's `generateImage`.
+The stills file's top-level `model` names the Gemini image model, and
+`GEMINI_API_KEY` is the only key involved. `gemini-3-pro-image` is the default.
 
-- **`seedream-*`** (default, e.g. `seedream-5-0-260128`) hits the Ark image
-  API. Needs `ARK_API_KEY`. Honours the per-still `size` and `seed`.
-- **`gemini-*`** routes to Google's Nano Banana. Needs `GEMINI_API_KEY`. It
-  ignores Seedream's pixel `size` and `seed`, and the CLI prints a note once
-  when it drops them.
+Nano Banana takes an aspect **`ratio`**, not pixels, and rolls its own seed, so
+a per-still `size` or `seed` is ignored and `vs stills` says so once. Both stay
+in the schema only so a stills file from the Seedream era still loads.
+
+**Seedream is gone.** The hand-rolled Ark image client went with it: an image
+backend is worth a dependency, not a wire format to maintain. To bring it back,
+`npm i @ai-sdk/fal` and name a `fal-ai/bytedance/seedream/*` model in
+`src/images.ts` — that is a broker's markup against the direct BytePlus key,
+which is the trade.
 
 | Nano Banana model | Id                       | Good for                                        |
 | ----------------- | ------------------------ | ------------------------------------------------ |

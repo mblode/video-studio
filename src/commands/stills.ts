@@ -8,7 +8,7 @@ import pLimit from "p-limit";
 import { formatError, VsError } from "../errors.js";
 import { GEMINI_PRO_IMAGE_MODEL, resolveImageModel } from "../images.js";
 import { safeJoin } from "../paths.js";
-import type { Still, StillsFile } from "../types.js";
+import type { Still, StillAspectRatio, StillsFile } from "../types.js";
 import { resolveStills } from "./context.js";
 import { emit, fail, heading, isVerbose, line, note, ok } from "./output.js";
 
@@ -75,22 +75,39 @@ async function buildPrompt(
   };
 }
 
-/** What `--dry-run` prints: the portable call, with reference bytes summarised. */
+/**
+ * Every argument `generateImage` will receive except the prompt.
+ *
+ * ONE definition, shared by the real call and by `--dry-run`. Two copies is how
+ * a dry-run drifts from what is actually sent, which turns the free preflight
+ * into a confident lie. `size` is deliberately absent: Nano Banana ignores
+ * pixel sizes, so passing one through would be dead weight the preview then
+ * advertised.
+ */
+function callSettings(
+  still: Still,
+  file: StillsFile
+): { aspectRatio?: StillAspectRatio; seed?: number } {
+  const ratio = still.ratio ?? file.ratio;
+  return {
+    ...(ratio ? { aspectRatio: ratio } : {}),
+    ...(still.seed === undefined ? {} : { seed: still.seed }),
+  };
+}
+
+/** What `--dry-run` prints. Reads no bytes: it is the free preflight. */
 function previewCall(
   still: Still,
   file: StillsFile,
   model: string
 ): Record<string, unknown> {
-  const ratio = still.ratio ?? file.ratio;
   return {
     model,
     prompt: still.prompt,
     ...(still.references?.length
       ? { references: still.references.map((url) => `<bytes from ${url}>`) }
       : {}),
-    ...(ratio ? { aspectRatio: ratio } : {}),
-    ...(still.seed === undefined ? {} : { seed: still.seed }),
-    ...(still.size === undefined ? {} : { size: still.size }),
+    ...callSettings(still, file),
   };
 }
 
@@ -143,18 +160,11 @@ export async function runStills(
   // ONE path. The model is an `ImageModelV4` whichever backend answers, so
   // nothing below this line knows or cares which one it is.
   const imageModel = resolveImageModel(model);
-  const { ratio } = file;
   async function generate(still: Still, outputPath: string): Promise<void> {
     const { image } = await generateImage({
       model: imageModel,
       prompt: await buildPrompt(still, stillsDir),
-      ...((still.ratio ?? ratio)
-        ? { aspectRatio: (still.ratio ?? ratio) as `${number}:${number}` }
-        : {}),
-      ...(still.seed === undefined ? {} : { seed: still.seed }),
-      ...(still.size === undefined
-        ? {}
-        : { size: still.size as `${number}x${number}` }),
+      ...callSettings(still, file),
     });
     await writeFile(outputPath, image.uint8Array);
   }

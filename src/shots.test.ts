@@ -779,3 +779,51 @@ describe("file read errors map to the right code", () => {
     );
   });
 });
+
+describe("stills schema refuses what the image backend cannot read", () => {
+  it("rejects ratio: adaptive on a still", async () => {
+    // `adaptive` asks a VIDEO model to derive the frame from a reference clip.
+    // A still has none, and the image API wants a literal {w}:{h}, so this used
+    // to be cast to a numeric ratio and sent as the string "adaptive".
+    const dir = await mkdtemp(join(tmpdir(), "vs-stills-"));
+    const path = join(dir, "stills.json");
+    await writeFile(
+      path,
+      JSON.stringify({
+        stills: [{ id: "a", prompt: "p", ratio: "adaptive" }],
+      })
+    );
+
+    await expect(loadStillsFile(path)).rejects.toThrow(/ratio/u);
+  });
+
+  it("rejects a reference that is not an image", async () => {
+    // Anything else is read as raw bytes and posted as an image, which
+    // generates something unrelated rather than failing.
+    const dir = await mkdtemp(join(tmpdir(), "vs-stills-"));
+    const path = join(dir, "stills.json");
+    await writeFile(
+      path,
+      JSON.stringify({
+        stills: [{ id: "a", prompt: "p", references: ["./notes.txt"] }],
+      })
+    );
+
+    await expect(loadStillsFile(path)).rejects.toThrow(/png\/jpg\/jpeg\/webp/u);
+  });
+
+  it("still accepts a literal ratio and an image reference", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vs-stills-"));
+    const path = join(dir, "stills.json");
+    await writeFile(
+      path,
+      JSON.stringify({
+        ratio: "1:1",
+        stills: [{ id: "a", prompt: "p", references: ["./face.png"] }],
+      })
+    );
+
+    const file = await loadStillsFile(path);
+    expect(file.stills[0]?.references).toEqual(["./face.png"]);
+  });
+});
