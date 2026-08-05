@@ -75,7 +75,7 @@ export type Billing =
  * moving to a new backend, or a new backend arriving, should be an entry in this
  * file and nothing more.
  */
-export type ProviderId = "ark" | "minimax";
+export type ProviderId = "ark" | "comfyui" | "minimax";
 
 /**
  * What an authoring surface is allowed to do on a model.
@@ -152,6 +152,8 @@ export interface ModelCapabilities extends AuthoringLimits {
 export const MODEL_IDS = {
   /** MiniMax H3, released 2026-07-31. Direct v2 API id, not a broker's. */
   minimaxH3: "MiniMax-H3",
+  /** Open-weight H3 Base FL2VA served by a local ComfyUI instance. */
+  minimaxH3Local: "MiniMax-H3-Local",
   seedance10Pro: "seedance-1-0-pro-250528",
   seedance15Pro: "seedance-1-5-pro-251215",
   seedance20: "dreamina-seedance-2-0-260128",
@@ -369,6 +371,24 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
     referenceSlots: MINIMAX_H3_REFERENCE_SLOTS,
     resolutions: ["768p", "2k"],
   },
+  "minimax-h3-local": {
+    ...MINIMAX_H3_AUTHORING,
+    aspectRatios: ASPECT_RATIOS,
+    audio: "always",
+    billing: {
+      kind: "perSecond",
+      usdPerSecondByResolution: { "480p": 0, "768p": 0 },
+    },
+    confidence: "documented",
+    durations: MINIMAX_H3_DURATIONS,
+    fps: DEFAULT_FPS,
+    limits: { concurrency: 1, rpm: 1 },
+    notes:
+      "Local ComfyUI H3 Base FL2VA. Text-to-video only in this adapter; the CLI's 480p draft tier uses a tested ~0.2 MP low-VRAM canvas (608x352 at 16:9), while 768p is the unverified native canvas. Provider cost is zero, excluding electricity and hardware.",
+    provider: "comfyui",
+    referenceSlots: {},
+    resolutions: ["480p", "768p"],
+  },
   "seedance-1-0-pro": {
     ...SEEDANCE_20_AUTHORING,
     aspectRatios: ASPECT_RATIOS,
@@ -514,7 +534,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
  * entry. Without this a prefixed id would miss the registry entirely and fall
  * through to the permissive fallback, which for a per-second model means a
  * $0.00 quote. */
-const PROVIDER_PREFIX = /^(?:ark|minimax):/u;
+const PROVIDER_PREFIX = /^(?:ark|comfyui|minimax):/u;
 const VENDOR_PREFIXES = ["dreamina-", "doubao-", "dola-"] as const;
 /** Trailing release stamp, e.g. `-260128`. */
 const RELEASE_SUFFIX = /-\d{6,}$/u;

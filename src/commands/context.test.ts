@@ -104,22 +104,26 @@ describe("createVideoModel resolves credentials lazily", () => {
   // whole point of a free preflight.
   const saved = {
     ark: process.env.ARK_API_KEY,
+    comfyui: process.env.COMFYUI_BASE_URL,
     minimax: process.env.MINIMAX_API_KEY,
   };
 
   beforeEach(() => {
     saved.ark = process.env.ARK_API_KEY;
+    saved.comfyui = process.env.COMFYUI_BASE_URL;
     saved.minimax = process.env.MINIMAX_API_KEY;
     // `delete`, not `= undefined`: assigning to process.env coerces, so the key
     // would read back as the string "undefined" and still look present.
     process.env.ARK_API_KEY = undefined;
     process.env.MINIMAX_API_KEY = undefined;
     delete process.env.ARK_API_KEY;
+    delete process.env.COMFYUI_BASE_URL;
     delete process.env.MINIMAX_API_KEY;
   });
 
   afterEach(() => {
     process.env.ARK_API_KEY = saved.ark;
+    process.env.COMFYUI_BASE_URL = saved.comfyui;
     process.env.MINIMAX_API_KEY = saved.minimax;
   });
 
@@ -144,5 +148,19 @@ describe("createVideoModel resolves credentials lazily", () => {
     const failure = await model.getTask("t-1").catch((error: unknown) => error);
     expect(isVsError(failure)).toBe(true);
     expect((failure as { code?: string }).code).toBe("missing_credential");
+  });
+
+  it("builds the local H3 model without any API credential", () => {
+    process.env.COMFYUI_BASE_URL = "http://127.0.0.1:8188";
+    const model = createVideoModel("comfyui:MiniMax-H3-Local");
+    const body = model.toRequestBody({
+      aspectRatio: "16:9",
+      durationSeconds: 5,
+      prompt: "a lighthouse",
+      references: [],
+      resolution: "480p",
+    }) as Record<string, unknown>;
+    expect(model.provider).toBe("comfyui");
+    expect(body.client_id).toBe("video-studio");
   });
 });

@@ -1,0 +1,21 @@
+{
+  "film": {
+    "title": "Local H3 Base Example",
+    "model": "comfyui:MiniMax-H3-Local",
+    "promptPreamble": "Photoreal cinematic wildlife documentary. Stable anatomy and natural motion. Native audio: forest ambience, soft footsteps, distant birds. No dialogue, no text, no logo.",
+    "defaults": {
+      "ratio": "16:9",
+      "duration": 5,
+      "resolution": "480p",
+      "generateAudio": true,
+      "watermark": false
+    }
+  },
+  "shots": [
+    {
+      "id": "local-h3-001",
+      "seed": 20260806,
+      "prompt": "A red fox walks from left to right through a misty fern forest while the camera tracks smoothly at eye level. The fox remains in full profile, moving at a calm natural pace. Fine morning mist drifts between tree trunks."
+    }
+  ]
+}

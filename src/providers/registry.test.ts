@@ -29,6 +29,13 @@ describe("resolveModelId", () => {
     });
   });
 
+  it("routes an explicit ComfyUI model to the local backend", () => {
+    expect(resolveModelId("comfyui:MiniMax-H3-Local")).toEqual({
+      modelId: "MiniMax-H3-Local",
+      provider: "comfyui",
+    });
+  });
+
   it("lets an explicit prefix override what the registry would infer", () => {
     // The whole reason the prefix exists: an id this repo has never seen falls
     // back to Ark, so without a way to say otherwise a new MiniMax model would

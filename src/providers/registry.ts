@@ -24,7 +24,7 @@ export interface ResolvedModelId {
   modelId: string;
 }
 
-const PROVIDER_PREFIXES: readonly ProviderId[] = ["ark", "minimax"];
+const PROVIDER_PREFIXES: readonly ProviderId[] = ["ark", "comfyui", "minimax"];
 
 export function resolveModelId(configured: string): ResolvedModelId {
   const separator = configured.indexOf(":");

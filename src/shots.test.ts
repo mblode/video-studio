@@ -212,6 +212,15 @@ describe("v2 validation", () => {
     expect(warnings.some((w) => w.includes("no image reference"))).toBe(true);
   });
 
+  it("does not request an image anchor from a T2V-only local model", async () => {
+    const { lintShotsFile } = await import("./shots.js");
+    const warnings = lintShotsFile({
+      film: { model: "comfyui:MiniMax-H3-Local", title: "T" },
+      shots: [{ id: "a", prompt: "p", seed: 1 }],
+    });
+    expect(warnings.some((w) => w.includes("no image reference"))).toBe(false);
+  });
+
   it("lintShotsFile uses a ~16 ref soft cap on Seedance 2.5", async () => {
     const { lintShotsFile } = await import("./shots.js");
     const film25 = { model: "dreamina-seedance-2-5-260628", title: "T" };

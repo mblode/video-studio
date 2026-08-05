@@ -46,6 +46,16 @@ vs generate films/lighthouse/shots.json --max-cost 18
 vs stitch   films/lighthouse/shots.json --xfade 0.4   # SFX-only cut; add --music / --narration after score + narrate assemble
 ```
 
+### Local MiniMax H3
+
+`MiniMax-H3` uses MiniMax's hosted API. To run the open H3 Base weights through
+a local ComfyUI server instead, set `film.model` to
+`comfyui:MiniMax-H3-Local` and set `COMFYUI_BASE_URL`. The proven 24 GB path is
+text-to-video only and uses a 608x352 low-VRAM draft canvas. It is not the
+hosted H3-Context-IR/2K pipeline. See
+[Local MiniMax H3 through ComfyUI](docs/local-h3-comfyui.md) for the exact
+checkpoints, command, hardware result, limitations, and model-license terms.
+
 ## Your own film
 
 ```bash
