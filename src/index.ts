@@ -22,13 +22,7 @@ export {
   targetDimensions,
 } from "./animatic.js";
 export type { Dimensions } from "./animatic.js";
-export {
-  ArkApiError,
-  ArkClient,
-  ArkResponseError,
-  IMAGES_PATH,
-  TASKS_PATH,
-} from "./ark.js";
+export { ArkApiError, ArkClient, ArkResponseError, TASKS_PATH } from "./ark.js";
 export type { PollOptions } from "./ark.js";
 export {
   cardSvg,
@@ -86,17 +80,14 @@ export {
   summarizeFfmpegStderr,
 } from "./ffmpeg.js";
 export type { ClipProbe } from "./ffmpeg.js";
+export { GeminiApiError, GeminiClient } from "./gemini.js";
 export {
-  buildGeminiRequestBody,
   DEFAULT_GEMINI_IMAGE_MODEL,
-  extractInlineImage,
   GEMINI_PRO_IMAGE_MODEL,
-  GeminiApiError,
-  GeminiClient,
   isGeminiModel,
-  resolveInlineImage,
-} from "./gemini.js";
-export type { GeminiImageRequest, GeminiInlineImage } from "./gemini.js";
+  resolveImageModel,
+  seedreamProviderOptions,
+} from "./images.js";
 export {
   isComplete,
   isInFlight,

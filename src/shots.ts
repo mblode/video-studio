@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 import { z } from "zod";
 
 import { fileReadError, VsError } from "./errors.js";
-import { isGeminiModel } from "./gemini.js";
+import { isGeminiModel } from "./images.js";
 import {
   DEFAULT_VIDEO_MODEL,
   lookupModel,

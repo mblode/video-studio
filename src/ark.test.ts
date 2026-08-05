@@ -138,15 +138,6 @@ describe("ArkClient response validation", () => {
     });
   });
 
-  it("validates the image response shape", async () => {
-    const f = vi.fn().mockResolvedValue(ok({ data: "not-an-array" }));
-    await expect(makeClient(f).createImage({} as never)).rejects.toBeInstanceOf(
-      ArkResponseError
-    );
-  });
-});
-
-describe("ArkClient.pollTask", () => {
   it("returns once the task reaches a terminal status, updating each poll", async () => {
     const f = vi.fn();
     f.mockResolvedValueOnce(ok({ id: "t", status: "running" }));

@@ -358,23 +358,6 @@ export interface ArkTask {
   };
 }
 
-export interface CreateImageRequest {
-  /** Reference image inputs (https URLs or base64 data URLs). */
-  image?: string[];
-  model: string;
-  prompt: string;
-  response_format: "url" | "b64_json";
-  seed?: number;
-  sequential_image_generation?: "auto" | "disabled";
-  /** e.g. "2048x1152" or named sizes like "2K". */
-  size?: string;
-  watermark?: boolean;
-}
-
-export interface CreateImageResponse {
-  data: { url?: string; b64_json?: string }[];
-}
-
 // --- Manifest ---
 
 export type ManifestStatus = TaskStatus | "submitted" | "downloaded";

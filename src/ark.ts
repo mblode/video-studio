@@ -5,13 +5,7 @@ import { z } from "zod";
 import { VsError } from "./errors.js";
 import { requestJson } from "./http.js";
 import { TASK_STATUSES } from "./types.js";
-import type {
-  ArkTask,
-  CreateImageRequest,
-  CreateImageResponse,
-  CreateTaskRequest,
-  TaskStatus,
-} from "./types.js";
+import type { ArkTask, CreateTaskRequest, TaskStatus } from "./types.js";
 
 /**
  * CONFIRMED (ModelArk docs page 1520757/1521675): tasks live at
@@ -22,7 +16,6 @@ import type {
 const PROVIDER = "Ark";
 
 export const TASKS_PATH = "/contents/generations/tasks";
-export const IMAGES_PATH = "/images/generations";
 
 const MAX_CONSECUTIVE_POLL_ERRORS = 5;
 
@@ -99,15 +92,6 @@ const createTaskResponseSchema = arkTaskSchema.extend({
   status: taskStatusSchema.default("queued"),
 });
 
-const createImageResponseSchema = z.looseObject({
-  data: z.array(
-    z.looseObject({
-      b64_json: z.string().optional(),
-      url: z.string().optional(),
-    })
-  ),
-});
-
 /**
  * Poll timeouts are reported in the unit the operator typed (`--timeout` is in
  * minutes); "1200000ms" makes them do the arithmetic. Sub-minute waits still
@@ -149,16 +133,6 @@ export class ArkClient {
     this.apiKey = options.apiKey;
     this.base = options.baseUrl.replace(/\/$/u, "");
     this.fetchImpl = options.fetchImpl ?? fetch;
-  }
-
-  createImage(request: CreateImageRequest): Promise<CreateImageResponse> {
-    return this.request({
-      body: request,
-      method: "POST",
-      path: IMAGES_PATH,
-      schema: createImageResponseSchema,
-      what: "createImage",
-    });
   }
 
   createTask(request: CreateTaskRequest): Promise<ArkTask> {

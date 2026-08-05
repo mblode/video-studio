@@ -1,27 +1,22 @@
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { generateImage } from "ai";
 import pLimit from "p-limit";
 
-import type { ArkClient } from "../ark.js";
-import { downloadFile } from "../download.js";
 import { formatError, VsError } from "../errors.js";
-import { isGeminiModel, resolveInlineImage } from "../gemini.js";
-import type { GeminiClient } from "../gemini.js";
-import { resolveReferenceUrl } from "../payload.js";
-import type { CreateImageRequest, Still, StillsFile } from "../types.js";
 import {
-  createArkClient,
-  createGeminiClient,
-  resolveStills,
-} from "./context.js";
+  isGeminiModel,
+  resolveImageModel,
+  seedreamProviderOptions,
+} from "../images.js";
+import { safeJoin } from "../paths.js";
+import type { Still, StillsFile } from "../types.js";
+import { resolveStills } from "./context.js";
 import { emit, fail, heading, isVerbose, line, note, ok } from "./output.js";
 
 export const DEFAULT_IMAGE_MODEL = "seedream-5-0-260128";
-
-/** Generate one still to `outputPath`. The backend (Seedream/Nano Banana) is bound up front. */
-type StillGenerator = (still: Still, outputPath: string) => Promise<void>;
 
 export interface StillsOptions {
   concurrency: number;
@@ -31,95 +26,70 @@ export interface StillsOptions {
   still?: string[];
 }
 
-async function buildImagePayload(
-  still: Still,
-  file: StillsFile,
-  stillsDir: string,
-  skipInline: boolean
-): Promise<CreateImageRequest> {
-  const references = still.references
-    ? await Promise.all(
-        still.references.map((url) =>
-          resolveReferenceUrl(url, stillsDir, skipInline)
-        )
-      )
-    : undefined;
-  return {
-    model: file.model ?? DEFAULT_IMAGE_MODEL,
-    prompt: still.prompt,
-    response_format: "url",
-    sequential_image_generation: "disabled",
-    watermark: false,
-    ...(references === undefined ? {} : { image: references }),
-    ...(still.seed === undefined ? {} : { seed: still.seed }),
-    ...(still.size === undefined ? {} : { size: still.size }),
-  };
-}
-
-/** Dry-run preview of the Nano Banana / Gemini generateContent body (no files read). */
-function geminiPreview(still: Still, file: StillsFile, model: string): unknown {
-  const images = (still.references ?? []).map((url) => ({
-    inlineData: {
-      data: `<inlined from ${url} at submit time>`,
-      mimeType: "image/*",
-    },
-  }));
-  const ratio = still.ratio ?? file.ratio;
-  return {
-    contents: [{ parts: [{ text: still.prompt }, ...images] }],
-    generationConfig: {
-      responseModalities: ["IMAGE"],
-      ...(ratio ? { imageConfig: { aspectRatio: ratio } } : {}),
-    },
-    model,
-  };
-}
-
-function seedreamGenerator(
-  client: ArkClient,
-  file: StillsFile,
+/**
+ * A reference image, as bytes.
+ *
+ * `generateImage` takes references as `DataContent` on the prompt object, so a
+ * local path is read and a remote one fetched, and the SDK's provider encodes
+ * each for whichever wire format its backend wants. That encoding is the whole
+ * reason this file no longer has two generators.
+ */
+async function loadReference(
+  url: string,
   stillsDir: string
-): StillGenerator {
-  return async (still, outputPath) => {
-    const response = await client.createImage(
-      await buildImagePayload(still, file, stillsDir, false)
-    );
-    const [image] = response.data;
-    if (image?.url) {
-      await downloadFile(image.url, outputPath);
-    } else if (image?.b64_json) {
-      await writeFile(outputPath, Buffer.from(image.b64_json, "base64"));
-    } else {
+): Promise<Uint8Array> {
+  if (url.startsWith("https://")) {
+    const response = await fetch(url);
+    if (!response.ok) {
       throw new VsError(
         "probe_failed",
-        `${still.id}: the image API returned neither a url nor b64_json`,
-        {
-          hint: "re-run with --dry-run to inspect the request, and check the model id in stills.json is one your account has activated",
-        }
+        `reference ${url} returned ${response.status}`,
+        { hint: "check the URL is public and still live" }
       );
     }
+    return new Uint8Array(await response.arrayBuffer());
+  }
+  return new Uint8Array(await readFile(safeJoin(stillsDir, url)));
+}
+
+/**
+ * The prompt for one still: bare text, or text plus reference images when the
+ * still binds any. Nano Banana's likeness workflow and Seedream's reference
+ * mode are the same shape here, which they were not before.
+ */
+async function buildPrompt(
+  still: Still,
+  stillsDir: string
+): Promise<string | { images: Uint8Array[]; text: string }> {
+  const references = still.references ?? [];
+  if (references.length === 0) {
+    return still.prompt;
+  }
+  return {
+    images: await Promise.all(
+      references.map((url) => loadReference(url, stillsDir))
+    ),
+    text: still.prompt,
   };
 }
 
-function geminiGenerator(
-  client: GeminiClient,
+/** What `--dry-run` prints: the portable call, with reference bytes summarised. */
+function previewCall(
+  still: Still,
   file: StillsFile,
-  model: string,
-  stillsDir: string
-): StillGenerator {
-  return async (still, outputPath) => {
-    const images = still.references
-      ? await Promise.all(
-          still.references.map((url) => resolveInlineImage(url, stillsDir))
-        )
-      : undefined;
-    const bytes = await client.generateImage({
-      aspectRatio: still.ratio ?? file.ratio,
-      images,
-      model,
-      prompt: still.prompt,
-    });
-    await writeFile(outputPath, bytes);
+  model: string
+): Record<string, unknown> {
+  const ratio = still.ratio ?? file.ratio;
+  return {
+    model,
+    prompt: still.prompt,
+    ...(still.references?.length
+      ? { references: still.references.map((url) => `<bytes from ${url}>`) }
+      : {}),
+    ...(ratio ? { aspectRatio: ratio } : {}),
+    ...(still.seed === undefined ? {} : { seed: still.seed }),
+    ...(still.size === undefined ? {} : { size: still.size }),
+    ...(isGeminiModel(model) ? {} : seedreamProviderOptions()),
   };
 }
 
@@ -151,15 +121,10 @@ export async function runStills(
   const gemini = isGeminiModel(model);
 
   if (options.dryRun) {
-    const payloads: { payload: unknown; stillId: string }[] = [];
-    for (const still of stills) {
-      payloads.push({
-        payload: gemini
-          ? geminiPreview(still, file, model)
-          : await buildImagePayload(still, file, stillsDir, true),
-        stillId: still.id,
-      });
-    }
+    const payloads = stills.map((still) => ({
+      payload: previewCall(still, file, model),
+      stillId: still.id,
+    }));
     emit({ dryRun: true, model, payloads }, () => {
       for (const { payload, stillId } of payloads) {
         heading(`# ${stillId}`);
@@ -179,9 +144,25 @@ export async function runStills(
     note("Nano Banana / Gemini ignores per-still seed and size");
   }
 
-  const generate: StillGenerator = gemini
-    ? geminiGenerator(createGeminiClient(), file, model, stillsDir)
-    : seedreamGenerator(createArkClient(), file, stillsDir);
+  // ONE path. The model is an `ImageModelV4` whichever backend answers, so
+  // nothing below this line knows or cares which one it is.
+  const imageModel = resolveImageModel(model);
+  const { ratio } = file;
+  async function generate(still: Still, outputPath: string): Promise<void> {
+    const { image } = await generateImage({
+      model: imageModel,
+      prompt: await buildPrompt(still, stillsDir),
+      ...((still.ratio ?? ratio)
+        ? { aspectRatio: (still.ratio ?? ratio) as `${number}:${number}` }
+        : {}),
+      ...(still.seed === undefined ? {} : { seed: still.seed }),
+      ...(still.size === undefined
+        ? {}
+        : { size: still.size as `${number}x${number}` }),
+      ...(gemini ? {} : { providerOptions: seedreamProviderOptions() }),
+    });
+    await writeFile(outputPath, image.uint8Array);
+  }
   await mkdir(outputDir, { recursive: true });
   const limit = pLimit(options.concurrency);
 
