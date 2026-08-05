@@ -82,8 +82,8 @@ export {
 export type { ClipProbe } from "./ffmpeg.js";
 export { GeminiApiError, GeminiClient } from "./gemini.js";
 export {
-  DEFAULT_GEMINI_IMAGE_MODEL,
   GEMINI_PRO_IMAGE_MODEL,
+  NANO_BANANA_IMAGE_MODEL,
   resolveImageModel,
 } from "./images.js";
 export {
