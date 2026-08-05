@@ -6,7 +6,12 @@ import { z } from "zod";
 
 import { fileReadError, VsError } from "./errors.js";
 import { isGeminiModel } from "./gemini.js";
-import { lookupModel, MODEL_IDS, validateShotAgainstModel } from "./models.js";
+import {
+  DEFAULT_VIDEO_MODEL,
+  lookupModel,
+  validateShotAgainstModel,
+} from "./models.js";
+import type { AuthoringLimits } from "./models.js";
 import { isLocalPathSafe } from "./paths.js";
 import { referenceCountsByType } from "./payload.js";
 import {
@@ -28,41 +33,16 @@ function isUnsafeLocalReference(url: string): boolean {
 
 const ID_PATTERN = /^[a-z0-9_-]+$/iu;
 
-/** Soft quality warn for Seedance 2.0-era models (platform allows more). */
-const MAX_REFERENCES_DEFAULT = 5;
 /**
- * Soft quality warn for 2.5. An 8-14 reference ordinal pack is the design
- * idiom, so 12 warned on healthy work; 16 leaves headroom and is still barely
- * half the 30-image product ceiling. The ceiling is not a target.
+ * Every soft limit and mode rule that used to be decided here by asking "is this
+ * Seedance 2.5?" now comes from the model's own registry entry. See
+ * `AuthoringLimits` in src/models.ts for why the flags describe capabilities
+ * rather than naming models.
  */
-const MAX_REFERENCES_SEEDANCE_25 = 16;
-
-function isSeedance25(modelId: string | undefined): boolean {
-  return lookupModel(modelId).family.startsWith("seedance-2-5");
+function authoringLimits(modelId: string | undefined): AuthoringLimits {
+  return lookupModel(modelId);
 }
 
-function softReferenceLimit(modelId: string | undefined): number {
-  return isSeedance25(modelId)
-    ? MAX_REFERENCES_SEEDANCE_25
-    : MAX_REFERENCES_DEFAULT;
-}
-// Multi-beat timed-segment shots (several [0:00-0:0N] beats in one generation)
-// legitimately need more words than a single-action shot; warn only past ~400 so
-// real bloat (overstacked, model-diluting prompts) is still flagged.
-const MAX_PROMPT_WORDS = 400;
-/**
- * A 30s Seedance 2.5 act carries roughly twice the beats of a 15s shot AND an
- * ordinal binding block naming each reference's single job, so 400 words warns
- * on healthy work. Measured acts land at 380-430 plus preamble; 700 still
- * catches real bloat. Do NOT compress ordinal bindings to fit a cap.
- */
-const MAX_PROMPT_WORDS_SEEDANCE_25 = 700;
-
-function promptWordLimit(modelId: string | undefined): number {
-  return isSeedance25(modelId)
-    ? MAX_PROMPT_WORDS_SEEDANCE_25
-    : MAX_PROMPT_WORDS;
-}
 /** Longer clips without a beat carrier tend to stretch one verb into slow-mo. */
 const LONG_SHOT_BEAT_SECONDS = 12;
 const HAS_SHOT_BEAT = /Shot\s+\d+\s*:/iu;
@@ -277,10 +257,9 @@ const shotsFileSchema = z
   .superRefine((file, ctx) => {
     const seenIds = new Set<string>();
     // Two rules below depend on the model, which only this schema can see.
-    // Seedance 2.5 combines frame and reference modes (its own R2V demos bind a
-    // scene reference alongside per-subject ones) and accepts local video and
-    // audio paths. Seedance 2.0 does neither.
-    const is25 = isSeedance25(file.film.model ?? MODEL_IDS.seedance20);
+    const modelId = file.film.model ?? DEFAULT_VIDEO_MODEL;
+    const { framesExcludeReferences, inlineNonImageRefs } =
+      authoringLimits(modelId);
     for (const [index, shot] of file.shots.entries()) {
       if (seenIds.has(shot.id)) {
         ctx.addIssue({
@@ -290,21 +269,25 @@ const shotsFileSchema = z
       }
       const refs = shot.references ?? [];
       for (const ref of refs) {
-        if (ref.type !== "image" && !ref.url.startsWith("https://") && !is25) {
+        if (
+          ref.type !== "image" &&
+          !ref.url.startsWith("https://") &&
+          !inlineNonImageRefs
+        ) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: `shot ${shot.id}: ${ref.type} references must be https URLs on this model (local paths are supported for images, and for video/audio on Seedance 2.5). Upload the clip and paste its URL.`,
+            message: `shot ${shot.id}: ${ref.type} references must be https URLs on ${modelId} (local paths are always supported for images). Upload the clip and paste its URL.`,
           });
         }
       }
       if (
-        !is25 &&
+        framesExcludeReferences &&
         refs.some((ref) => FRAME_ROLES.has(ref.role)) &&
         refs.some((ref) => !FRAME_ROLES.has(ref.role))
       ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `shot ${shot.id}: first_frame/last_frame cannot be mixed with reference_* roles on this model. Seedance 2.0's frame mode and omni-reference mode are mutually exclusive; Seedance 2.5 allows both.`,
+          message: `shot ${shot.id}: first_frame/last_frame cannot be mixed with reference_* roles on ${modelId} — frame mode and omni-reference mode are mutually exclusive on this model. Drop one mode, or move the film to a model that combines them (Seedance 2.5 does).`,
           path: ["shots", index, "references"],
         });
       }
@@ -368,9 +351,9 @@ const stillsFileSchema = z
   });
 
 /**
- * The 2.5 ordinal idiom is the cheapest thing to get wrong and the dearest to
- * discover: a mis-bound `@Image 3` spends the whole 30s generation and reads as
- * a model failure rather than an authoring one. See `referenceOrdinals` in
+ * The ordinal idiom is the cheapest thing to get wrong and the dearest to
+ * discover: a mis-bound `@Image 3` spends the whole generation and reads as a
+ * model failure rather than an authoring one. See `referenceOrdinals` in
  * src/payload.ts for the contract these checks enforce.
  */
 function lintOrdinalBinding(
@@ -380,7 +363,8 @@ function lintOrdinalBinding(
 ): string[] {
   const warnings: string[] = [];
   const refs = shot.references ?? [];
-  const is25 = isSeedance25(modelId);
+  const { framesExcludeReferences, ordinalBindingIdiom } =
+    authoringLimits(modelId);
   const counts = referenceCountsByType(refs);
   const bound = boundOrdinals(shot.prompt);
 
@@ -393,27 +377,32 @@ function lintOrdinalBinding(
     }
   }
 
+  // No model gate needed: only a model that can render a clip this long can
+  // reach the threshold, so the duration IS the condition.
   const duration = shot.duration ?? file.film.defaults?.duration;
   if (
-    is25 &&
     typeof duration === "number" &&
     duration >= TIMESTAMP_PLAN_SECONDS &&
     lacksTimestampPlan(shot.prompt)
   ) {
     warnings.push(
-      `${shot.id}: ${duration}s on Seedance 2.5 with no timestamp plan — use 0-6s: / 7-13s: ranges (or [0:00-0:06]) so the turns are pinned to the clock; Shot N: alone orders the beats but leaves the model to invent the pacing between them`
+      `${shot.id}: ${duration}s with no timestamp plan — use 0-6s: / 7-13s: ranges (or [0:00-0:06]) so the turns are pinned to the clock; Shot N: alone orders the beats but leaves the model to invent the pacing between them`
     );
   }
 
-  if (is25 && refs.length >= 2 && bound.size === 0) {
+  if (ordinalBindingIdiom && refs.length >= 2 && bound.size === 0) {
     warnings.push(
       `${shot.id}: ${refs.length} references but the prompt never binds one by ordinal — name each reference's single job ("use @Image 1 for her face, @Image 2 for the room") or the model averages them together`
     );
   }
 
+  // Only reachable on a model that lets the two modes coexist; elsewhere the
+  // schema has already refused the file.
   const frameRef = refs.find((ref) => FRAME_ROLES.has(ref.role));
   const mixedMode =
-    is25 && frameRef && refs.some((ref) => !FRAME_ROLES.has(ref.role));
+    !framesExcludeReferences &&
+    frameRef &&
+    refs.some((ref) => !FRAME_ROLES.has(ref.role));
   if (mixedMode && refs[0] !== frameRef) {
     warnings.push(
       `${shot.id}: the ${frameRef.role} is not the first reference — a frame role is an image on the wire and consumes an image ordinal, so put it first and start the packs at @Image 2, or the ordinals shift under you`
@@ -452,17 +441,13 @@ function lintDraftModelEnvelope(file: ShotsFile): string[] {
   ];
 }
 
-function lintOneShot(
-  shot: Shot,
-  file: ShotsFile,
-  modelId: string,
-  maxRefs: number
-): string[] {
+function lintOneShot(shot: Shot, file: ShotsFile, modelId: string): string[] {
+  const { promptWordLimit, softReferenceLimit } = authoringLimits(modelId);
   const warnings: string[] = [];
   const refCount = shot.references?.length ?? 0;
-  if (refCount > maxRefs) {
+  if (refCount > softReferenceLimit) {
     warnings.push(
-      `${shot.id}: ${refCount} references — quality degrades above ~${maxRefs} for this model; trim to the essentials`
+      `${shot.id}: ${refCount} references — quality degrades above ~${softReferenceLimit} for this model; trim to the essentials`
     );
   }
   if (shot.seed === undefined) {
@@ -474,10 +459,9 @@ function lintOneShot(
   const words = wordCount(
     preamble ? `${preamble} ${shot.prompt}` : shot.prompt
   );
-  const wordLimit = promptWordLimit(modelId);
-  if (words > wordLimit) {
+  if (words > promptWordLimit) {
     warnings.push(
-      `${shot.id}: prompt is ${words} words (incl. promptPreamble) — even a multi-beat shot degrades past ~${wordLimit}; move shared style into film.promptPreamble, trim to the timed beats, or split the shot`
+      `${shot.id}: prompt is ${words} words (incl. promptPreamble) — even a multi-beat shot degrades past ~${promptWordLimit}; move shared style into film.promptPreamble, trim to the timed beats, or split the shot`
     );
   }
   const slowTerms = slowMotionTermCount(shot.prompt);
@@ -519,10 +503,9 @@ function lintOneShot(
  * drift — prefer a literal keyframe per shot.
  */
 export function lintShotsFile(file: ShotsFile): string[] {
-  const modelId = file.film.model ?? MODEL_IDS.seedance20;
-  const maxRefs = softReferenceLimit(modelId);
+  const modelId = file.film.model ?? DEFAULT_VIDEO_MODEL;
   return [
-    ...file.shots.flatMap((shot) => lintOneShot(shot, file, modelId, maxRefs)),
+    ...file.shots.flatMap((shot) => lintOneShot(shot, file, modelId)),
     ...lintDraftModelEnvelope(file),
   ];
 }

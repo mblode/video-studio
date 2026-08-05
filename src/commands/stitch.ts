@@ -69,6 +69,7 @@ export interface StitchCommandOptions {
   narrationGain: number;
   output?: string;
   sfxGain: number;
+  muteClips: boolean;
   xfade: number;
 }
 
@@ -472,6 +473,7 @@ export async function runStitch(
     grade: options.grade,
     musicGainDb: options.musicGain,
     musicPath: options.music,
+    muteClips: options.muteClips,
     narrationGainDb: options.narrationGain,
     narrationPath: options.narration,
     outputPath,

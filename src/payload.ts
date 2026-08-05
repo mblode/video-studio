@@ -3,13 +3,12 @@ import { readFile, stat } from "node:fs/promises";
 import { extname } from "node:path";
 
 import { VsError } from "./errors.js";
-import { MODEL_IDS } from "./models.js";
+import { DEFAULT_VIDEO_MODEL } from "./models.js";
 import { safeJoin } from "./paths.js";
+import type { VideoModelV1CallOptions } from "./spec/video-model.js";
 import { DEFAULT_DURATION, DEFAULT_RESOLUTION } from "./types.js";
 import type {
-  ArkContentItem,
   AspectRatio,
-  CreateTaskRequest,
   FilmDefaults,
   Resolution,
   Shot,
@@ -17,7 +16,12 @@ import type {
   ShotsFile,
 } from "./types.js";
 
-export const DEFAULT_VIDEO_MODEL = MODEL_IDS.seedance20;
+/**
+ * Re-exported so this module's public surface is unchanged; the constant itself
+ * lives beside the registry in src/models.ts, where `lintShotsFile` can reach
+ * it without importing this file.
+ */
+export { DEFAULT_VIDEO_MODEL } from "./models.js";
 /** Confirmed fast variant (~27% cheaper). Opt in per film via `film.draftModel`. */
 export const DRAFT_VIDEO_MODEL = "dreamina-seedance-2-0-fast-260128";
 
@@ -236,50 +240,51 @@ function composePrompt(film: ShotsFile["film"], shot: Shot): string {
     : shot.prompt;
 }
 
-/** One reference to one wire content item, resolving local paths to data URLs. */
-async function toContentItem(
-  ref: ShotReference,
-  shotsDir: string,
-  skipInline: boolean
-): Promise<ArkContentItem> {
-  const url = await resolveReferenceUrl(ref.url, shotsDir, skipInline);
-  if (ref.type === "image") {
-    return { image_url: { url }, role: ref.role, type: "image_url" };
-  }
-  if (ref.type === "video") {
-    return { role: ref.role, type: "video_url", video_url: { url } };
-  }
-  return { audio_url: { url }, role: ref.role, type: "audio_url" };
-}
-
-export async function buildTaskPayload(
+/**
+ * Resolve one shot into a provider-neutral generation request.
+ *
+ * This is where a Shot stops being an authoring concept and becomes a call.
+ * It does the parameter ladder, composes the prompt, and resolves every
+ * reference URL (inlining local files where the model permits it) — all things
+ * that depend on the film and the filesystem, and none of which a provider
+ * adapter should have to know about.
+ *
+ * What it deliberately does NOT do is decide the wire format. References come
+ * out in AUTHORED ORDER because that order is the ordinal contract every
+ * `@Image N` binding depends on (see `referenceOrdinals` above); the adapter
+ * maps them to content items without reordering.
+ */
+export async function buildCallOptions(
   shot: Shot,
   film: ShotsFile["film"],
   shotsDir: string,
   options?: { skipInline?: boolean; overrides?: PayloadOverrides }
-): Promise<CreateTaskRequest> {
+): Promise<VideoModelV1CallOptions> {
   const params = effectiveShotParams(shot, film, options?.overrides);
   const skipInline = options?.skipInline ?? false;
 
-  // Text first, then references in AUTHORED ORDER. That order is the ordinal
-  // contract every 2.5 prompt depends on; see `referenceOrdinals` above.
-  const content: ArkContentItem[] = [
-    { text: composePrompt(film, shot), type: "text" },
-  ];
+  const references: ShotReference[] = [];
   for (const ref of shot.references ?? []) {
-    content.push(await toContentItem(ref, shotsDir, skipInline));
+    references.push({
+      ...ref,
+      url: await resolveReferenceUrl(ref.url, shotsDir, skipInline),
+    });
   }
 
   return {
-    content,
-    duration: params.duration,
-    generate_audio: params.generateAudio,
-    model: params.model,
-    ratio: params.ratio,
-    watermark: params.watermark,
+    aspectRatio: params.ratio,
+    cameraFixed: params.cameraFixed,
+    durationSeconds: params.duration,
+    generateAudio: params.generateAudio,
+    prompt: composePrompt(film, shot),
+    references,
+    // `emitResolution` is the whole of the difference between what we send and
+    // what we quote: undefined here means nothing set one, so the field is
+    // omitted and the provider applies its own default. The estimate still
+    // prices a resolution, because the clip still renders at one.
     ...(params.emitResolution ? { resolution: params.resolution } : {}),
-    ...(params.cameraFixed ? { camera_fixed: true } : {}),
     ...(shot.seed === undefined ? {} : { seed: shot.seed }),
+    watermark: params.watermark,
   };
 }
 
@@ -288,26 +293,37 @@ function sha256(input: string): string {
 }
 
 /**
- * Rewrite any data-URL body in a content item via `transform`, for every media
- * type. Only images are inlined today, but a video data URL leaking through
- * unhandled would be hashed in full on every submit and, worse, PRINTED in full
- * by --dry-run — tens of megabytes of base64 into a terminal. Handle all three
- * so a future relaxation cannot regress into that.
+ * Rewrite every data-URL string anywhere in a wire body via `transform`.
+ *
+ * Deliberately a generic walk rather than a per-content-type branch: the body
+ * is now whatever a provider's `toRequestBody` returned, and this has to hold
+ * for shapes this file has never seen. A data URL that leaked through
+ * unhandled would be hashed in full on every submit and, worse, PRINTED in
+ * full by `--dry-run` — tens of megabytes of base64 into a terminal.
+ *
+ * Key order is preserved (object spread over the original key order), which is
+ * what keeps `hashPayload` byte-stable against the JSON this CLI has always
+ * hashed.
  */
 function mapDataUrls(
-  item: ArkContentItem,
+  value: unknown,
   transform: (url: string) => string
-): ArkContentItem {
-  if (item.type === "image_url" && item.image_url.url.startsWith("data:")) {
-    return { ...item, image_url: { url: transform(item.image_url.url) } };
+): unknown {
+  if (typeof value === "string") {
+    return value.startsWith("data:") ? transform(value) : value;
   }
-  if (item.type === "video_url" && item.video_url.url.startsWith("data:")) {
-    return { ...item, video_url: { url: transform(item.video_url.url) } };
+  if (Array.isArray(value)) {
+    return value.map((item) => mapDataUrls(item, transform));
   }
-  if (item.type === "audio_url" && item.audio_url.url.startsWith("data:")) {
-    return { ...item, audio_url: { url: transform(item.audio_url.url) } };
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        mapDataUrls(item, transform),
+      ])
+    );
   }
-  return item;
+  return value;
 }
 
 /**
@@ -315,17 +331,17 @@ function mapDataUrls(
  * bodies are replaced by their own sha256 first so the hash stays small to
  * compute and identical payloads always hash identically.
  */
-export function hashPayload(payload: CreateTaskRequest): string {
-  const normalizedContent = payload.content.map((item) =>
-    mapDataUrls(item, (url) => `sha256:${sha256(url)}`)
+export function hashPayload(payload: unknown): string {
+  return sha256(
+    JSON.stringify(mapDataUrls(payload, (url) => `sha256:${sha256(url)}`))
   );
-  return sha256(JSON.stringify({ ...payload, content: normalizedContent }));
 }
 
 /** Render a payload for --dry-run with data URLs truncated, never megabytes of base64. */
-export function renderPayload(payload: CreateTaskRequest): string {
-  const safeContent = payload.content.map((item) =>
-    mapDataUrls(item, (url) => `${url.slice(0, 64)}… (truncated)`)
+export function renderPayload(payload: unknown): string {
+  return JSON.stringify(
+    mapDataUrls(payload, (url) => `${url.slice(0, 64)}… (truncated)`),
+    null,
+    2
   );
-  return JSON.stringify({ ...payload, content: safeContent }, null, 2);
 }

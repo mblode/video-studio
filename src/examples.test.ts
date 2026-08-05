@@ -20,6 +20,18 @@ const SHOTS_FILES = [
   "films/lighthouse/shots.json",
 ] as const;
 
+/**
+ * Examples that must parse but legitimately trip a best-practice warning.
+ *
+ * `shots-h3.json` is text-to-video, which is H3's headline mode (native audio,
+ * no keyframe needed) and exactly what the linter's "anchor every shot to a
+ * literal keyframe" advice argues against. The advice is right for Seedance
+ * and the example is right for H3, so it validates here and is deliberately
+ * kept out of the zero-warning list rather than papered over with a fake
+ * reference URL.
+ */
+const SCHEMA_ONLY_SHOTS_FILES = ["examples/shots-h3.json"] as const;
+
 const STILLS_FILES = ["films/lighthouse/stills.json"] as const;
 
 // The shipped example and demo film are the first thing a new user copies, so
@@ -29,6 +41,14 @@ describe("shipped examples", () => {
     const file = await loadShotsFile(join(repoRoot, rel));
     expect(file.shots.length).toBeGreaterThan(0);
   });
+
+  it.each(SCHEMA_ONLY_SHOTS_FILES)(
+    "%s validates against the shots schema",
+    async (rel) => {
+      const file = await loadShotsFile(join(repoRoot, rel));
+      expect(file.shots.length).toBeGreaterThan(0);
+    }
+  );
 
   it.each(SHOTS_FILES)("%s lints without warnings", async (rel) => {
     const warnings = lintShotsFile(await loadShotsFile(join(repoRoot, rel)));

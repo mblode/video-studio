@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   isKnownModel,
   lookupModel,
+  MODEL_IDS,
+  MODEL_REGISTRY,
   modelRateLimits,
   normalizeModelId,
   usdPerMToken,
@@ -241,5 +243,54 @@ describe("with-video rate falls through per resolution", () => {
       },
     };
     expect(usdPerMToken(empty, "720p", { videoInput: true })).toBe(10);
+  });
+});
+
+describe("authoring limits are capability data, not model names", () => {
+  // These four behaviours used to hang off an `isSeedance25()` family-string
+  // predicate in src/shots.ts. The point of the flags is that a new model
+  // declares what it can do instead of being added to four `if`s, so these
+  // tests read the flags rather than asserting which model has them.
+  it("lets 2.5 combine frame and reference modes where 2.0 cannot", () => {
+    expect(lookupModel(MODEL_IDS.seedance25).framesExcludeReferences).toBe(
+      false
+    );
+    expect(lookupModel(MODEL_IDS.seedance20).framesExcludeReferences).toBe(
+      true
+    );
+  });
+
+  it("permits inlined local video/audio only where the model accepts it", () => {
+    expect(lookupModel(MODEL_IDS.seedance25).inlineNonImageRefs).toBe(true);
+    expect(lookupModel(MODEL_IDS.seedance20).inlineNonImageRefs).toBe(false);
+  });
+
+  it("raises the soft reference and prompt budgets on 2.5", () => {
+    const v25 = lookupModel(MODEL_IDS.seedance25);
+    const v20 = lookupModel(MODEL_IDS.seedance20);
+    expect(v25.softReferenceLimit).toBeGreaterThan(v20.softReferenceLimit);
+    expect(v25.promptWordLimit).toBeGreaterThan(v20.promptWordLimit);
+  });
+
+  it("expects ordinal binding only where the idiom is used", () => {
+    expect(lookupModel(MODEL_IDS.seedance25).ordinalBindingIdiom).toBe(true);
+    expect(lookupModel(MODEL_IDS.seedance20).ordinalBindingIdiom).toBe(false);
+  });
+
+  it("gives an unknown model the CONSERVATIVE authoring envelope", () => {
+    // Capabilities fall back permissively (an unknown model must not be
+    // refused), but these two flags fail the other way: guessing that frame and
+    // reference modes compose lets a payload the API will reject go out and be
+    // billed, while guessing that they do not costs at most a warning.
+    const unknown = lookupModel("some-model-released-next-year");
+    expect(unknown.known).toBe(false);
+    expect(unknown.framesExcludeReferences).toBe(true);
+    expect(unknown.inlineNonImageRefs).toBe(false);
+  });
+
+  it("routes every registered model to a declared provider", () => {
+    for (const family of Object.keys(MODEL_REGISTRY)) {
+      expect(lookupModel(family).provider).toBeDefined();
+    }
   });
 });

@@ -1,27 +1,29 @@
 import { describe, expect, it } from "vitest";
 
 import { ArkClient } from "./ark.js";
+import { DEFAULT_VIDEO_MODEL } from "./models.js";
 import { createModelLimiter, MockVideoProvider } from "./provider.js";
 import type { VideoProvider } from "./provider.js";
-import type { CreateTaskRequest } from "./types.js";
+import type { VideoModelV1CallOptions } from "./spec/video-model.js";
 
 const STANDARD = "dreamina-seedance-2-0-260128";
 
-function request(model = STANDARD): CreateTaskRequest {
+/** A minimal neutral request. The mock translates it with the real Ark rules. */
+function request(): VideoModelV1CallOptions {
   return {
-    content: [{ text: "a shot", type: "text" }],
-    duration: 5,
-    generate_audio: false,
-    model,
-    ratio: "16:9",
+    aspectRatio: "16:9",
+    durationSeconds: 5,
+    generateAudio: false,
+    prompt: "a shot",
+    references: [],
     watermark: false,
   };
 }
 
 describe("VideoProvider port", () => {
   it("is satisfied by ArkClient without an adapter", () => {
-    // The point of the port: the real client already fits it, so wiring a
-    // provider in is a type change at the call site and nothing else.
+    // The legacy port, kept for the doctor probe: the raw client still fits it,
+    // so a task-status check needs no model and no film.
     const client: VideoProvider = new ArkClient({
       apiKey: "k",
       baseUrl: "https://ark.test/api/v3",
@@ -69,7 +71,9 @@ describe("MockVideoProvider", () => {
     const provider = new MockVideoProvider();
     await provider.createTask(request());
     expect(provider.requests).toHaveLength(1);
-    expect(provider.requests[0]?.model).toBe(STANDARD);
+    // The mock claims the CLI's default model, so this also pins what an
+    // unconfigured film generates on.
+    expect(provider.requests[0]?.model).toBe(DEFAULT_VIDEO_MODEL);
   });
 });
 

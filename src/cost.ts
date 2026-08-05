@@ -1,4 +1,4 @@
-import { lookupModel, usdPerMToken } from "./models.js";
+import { lookupModel, usdPerMToken, usdPerSecond } from "./models.js";
 import {
   ASPECT_RATIO_VALUE,
   DEFAULT_DURATION,
@@ -93,11 +93,22 @@ export interface ClipSpec {
   /** Defaults to the model's frame rate (24 for every Seedance model). */
   fps?: number;
   /**
-   * Seconds of INPUT video billed alongside the output. The formula sums input
-   * and output duration, so a reference video is not free (a still image is:
-   * it has no duration).
+   * Seconds of INPUT video billed alongside the output. Both billing kinds sum
+   * input and output duration, so a reference video is not free (a still image
+   * is: it has no duration).
+   *
+   * Callers generally cannot know this: a reference video is usually a remote
+   * URL with no probeable length. `vs generate` leaves it unset and warns
+   * instead, because the alternative is quoting a model's whole documented
+   * input ceiling and making `--max-cost` useless.
    */
   inputVideoSeconds?: number;
+  /**
+   * Reference IMAGES bound to the shot. Free on token billing (an image has no
+   * duration, so it adds no tokens) but charged per image past a free
+   * allowance on some per-second providers.
+   */
+  referenceImages?: number;
   modelId?: string;
 }
 
@@ -158,13 +169,49 @@ export function usdForTokens(
   return (tokens / 1_000_000) * rate;
 }
 
+/**
+ * USD for one clip under whichever scheme its model bills in.
+ *
+ * THE ONE PLACE THAT KNOWS BILLING VARIES. `usd` is the authoritative number
+ * for `--max-cost` and the confirm prompt, and it has to be right for a model
+ * that reports no tokens at all: `Billing.perSecond` sat declared and
+ * unimplemented for a while, and every per-second quote came out as $0.00 and
+ * walked straight through the cost ceiling. Adding a third billing shape is a
+ * union member and one branch here, nothing else.
+ */
+export function usdForClip(spec: ClipSpec): number {
+  const capabilities = lookupModel(spec.modelId);
+  const resolution = spec.resolution ?? DEFAULT_RESOLUTION;
+  if (capabilities.billing.kind !== "perSecond") {
+    return usdForTokens(clipTokens(spec), spec.modelId, resolution);
+  }
+  const { billing } = capabilities;
+  const rate = usdPerSecond(capabilities, resolution);
+  // Input video bills at the output rate, same as the token formula sums the
+  // two durations. Unset means the caller could not know it; see ClipSpec.
+  const seconds =
+    billableSeconds(spec.duration) + (spec.inputVideoSeconds ?? 0);
+  const chargeableImages = Math.max(
+    0,
+    (spec.referenceImages ?? 0) - (billing.freeReferenceImages ?? 0)
+  );
+  const usd =
+    seconds * rate +
+    chargeableImages * (billing.usdPerExtraReferenceImage ?? 0);
+  return Math.max(usd, billing.minimumTaskUsd ?? 0);
+}
+
 export function estimateClip(spec: ClipSpec): CostEstimate {
-  const tokens = clipTokens(spec);
+  // Tokens are meaningless for a per-second model, and reporting a made-up
+  // figure would put a number in the audit trail nobody was ever billed for.
+  // Zero reads as "not billed in tokens", and `formatEstimate` omits the clause.
+  const tokens =
+    lookupModel(spec.modelId).billing.kind === "tokens" ? clipTokens(spec) : 0;
   return {
     clips: 1,
     seconds: billableSeconds(spec.duration),
     tokens,
-    usd: usdForTokens(tokens, spec.modelId, spec.resolution),
+    usd: usdForClip(spec),
   };
 }
 
@@ -217,9 +264,16 @@ function formatTokens(tokens: number): string {
     : `${Math.round(tokens / 1000)}K`;
 }
 
-/** Compact human string, e.g. "4.4M tokens ≈ $25". */
+/**
+ * Compact human string, e.g. "4.4M tokens ≈ $25".
+ *
+ * A per-second model reports no tokens, and "0K tokens ≈ $9.60" reads as a
+ * broken estimate rather than a different billing scheme. The dollars are the
+ * number that matters in both cases, so they are the only one always shown.
+ */
 export function formatEstimate(tokens: number, usd: number): string {
-  return `${formatTokens(tokens)} tokens ≈ $${usd.toFixed(2)}`;
+  const dollars = `$${usd.toFixed(2)}`;
+  return tokens > 0 ? `${formatTokens(tokens)} tokens ≈ ${dollars}` : dollars;
 }
 
 export interface Reconciliation {

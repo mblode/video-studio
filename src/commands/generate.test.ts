@@ -5,9 +5,12 @@ import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ArkClient, PollOptions } from "../ark.js";
+import type { PollOptions } from "../ark.js";
 import { clipTokens } from "../cost.js";
 import { loadManifest } from "../manifest.js";
+import { lookupModel } from "../models.js";
+import { createArk } from "../providers/ark.js";
+import type { VideoModelV1 } from "../spec/video-model.js";
 import { DEFAULT_RESOLUTION } from "../types.js";
 import type { ArkTask, CreateTaskRequest, ManifestEntry } from "../types.js";
 import type { GenerateOptions } from "./generate.js";
@@ -66,17 +69,31 @@ function lastPayload(): { cost?: RunCost } {
   return reported.payloads.at(-1) as { cost?: RunCost };
 }
 
+const MODEL_ID = "dreamina-seedance-2-0-260128";
+/**
+ * A `VideoModelV1` that spends nothing. The wire translation is the REAL Ark
+ * one, so assertions about what was submitted stay assertions about what would
+ * actually be submitted; only the network is faked.
+ */
 function fakeClient(
   failTaskIds: string[] = [],
-  completionTokens?: number
-): ArkClient {
+  completionTokens?: number,
+  modelId: string = MODEL_ID
+): VideoModelV1 {
   let n = 0;
   const fail = new Set(failTaskIds);
+  const real = createArk({
+    apiKey: "test-key",
+    baseUrl: "https://example.invalid",
+  }).videoModel(modelId);
   return {
+    capabilities: lookupModel(modelId),
     createTask: vi.fn((): Promise<ArkTask> => {
       n += 1;
       return Promise.resolve({ id: `task-${n}`, status: "queued" });
     }),
+    getTask: vi.fn(),
+    modelId,
     pollTask: vi.fn(
       async (id: string, pollOpts: PollOptions): Promise<ArkTask> => {
         const status: ArkTask["status"] = fail.has(id) ? "failed" : "succeeded";
@@ -102,7 +119,10 @@ function fakeClient(
         return task;
       }
     ),
-  } as unknown as ArkClient;
+    provider: "ark",
+    specificationVersion: "v1",
+    toRequestBody: real.toRequestBody.bind(real),
+  } as unknown as VideoModelV1;
 }
 
 function opts(overrides?: Partial<GenerateOptions>): GenerateOptions {
@@ -125,7 +145,13 @@ async function scaffold(
 ): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "vs-gen-"));
   const shotsPath = join(dir, "shots.json");
-  await writeFile(shotsPath, JSON.stringify({ film: { title: "T" }, shots }));
+  // Pinned to MODEL_ID rather than left to the default, so the film and
+  // `fakeClient` always agree about which model is being exercised. The CLI
+  // default is 2.5; these tests are about 2.0's envelope.
+  await writeFile(
+    shotsPath,
+    JSON.stringify({ film: { model: MODEL_ID, title: "T" }, shots })
+  );
   if (entries) {
     await writeFile(
       join(dir, "tasks.json"),
@@ -276,6 +302,7 @@ describe("runGenerate", () => {
   });
 
   it("refuses a 24s shot on Seedance 2.0 even though the schema allows 30", async () => {
+    // `scaffold` pins 2.0; the CLI default is 2.5, which accepts 24s.
     const shotsPath = await scaffold([{ duration: 24, id: "a", prompt: "p" }]);
     const failure = await runGenerate(shotsPath, opts({ dryRun: true }), {
       client: fakeClient(),
@@ -297,7 +324,7 @@ describe("runGenerate", () => {
       })
     );
     await runGenerate(shotsPath, opts({ dryRun: true }), {
-      client: fakeClient(),
+      client: fakeClient([], undefined, model),
     });
 
     const payload = reported.payloads.at(-1) as {

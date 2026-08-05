@@ -6,20 +6,58 @@ import {
   baseUrl,
   geminiBaseUrl,
   loadEnv,
+  minimaxBaseUrl,
   requireApiKey,
   requireGeminiApiKey,
+  requireMinimaxApiKey,
 } from "../env.js";
 import { VsError } from "../errors.js";
 import { GeminiClient } from "../gemini.js";
 import { passSuffix, resolveOutput } from "../paths.js";
 import type { Pass } from "../paths.js";
+import { createArk } from "../providers/ark.js";
+import { createMinimax } from "../providers/minimax.js";
+import { resolveModelId } from "../providers/registry.js";
 import { loadShotsFile, loadStillsFile } from "../shots.js";
+import type { VideoModelV1 } from "../spec/video-model.js";
 import type { ShotsFile, StillsFile } from "../types.js";
 
-/** Load `.env` and build an authenticated Ark client — the one place the key is read. */
+/**
+ * Load `.env` and build an authenticated Ark client.
+ *
+ * Still exported for the STILLS path (Seedream), which is deliberately not
+ * behind the video provider spec: it already routes two backends by model id
+ * in stills.ts, and it costs cents rather than dollars. Video commands must
+ * use `createVideoModel` instead.
+ */
 export function createArkClient(): ArkClient {
   loadEnv();
   return new ArkClient({ apiKey: requireApiKey(), baseUrl: baseUrl() });
+}
+
+/**
+ * The one place a video model is constructed, and the one place a key is read
+ * for one.
+ *
+ * Routing is registry data, not a branch that grows per provider: see
+ * `resolveModelId` in src/providers/registry.ts. A command passes the id its
+ * film configured and gets back something satisfying `VideoModelV1`; it never
+ * learns which backend answered.
+ */
+export function createVideoModel(configuredModelId: string): VideoModelV1 {
+  loadEnv();
+  const { modelId, provider } = resolveModelId(configuredModelId);
+  if (provider === "minimax") {
+    return createMinimax({
+      // The FUNCTION, not its result: a dry-run builds a model to render a
+      // body and must not demand a key to do it.
+      apiKey: requireMinimaxApiKey,
+      baseUrl: minimaxBaseUrl(),
+    }).videoModel(modelId);
+  }
+  return createArk({ apiKey: requireApiKey, baseUrl: baseUrl() }).videoModel(
+    modelId
+  );
 }
 
 /** Load `.env` and build a Gemini client for Nano Banana stills (gemini-* models). */

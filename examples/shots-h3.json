@@ -1,0 +1,28 @@
+{
+  "film": {
+    "title": "Signal Fire",
+    "model": "MiniMax-H3",
+    "promptPreamble": "Photoreal coastal night cinema, anamorphic 2.39:1 framing cropped to 16:9, hard sodium practicals against deep blue ambient, fine 35mm grain, salt haze, real spray. Consistent character: THE WATCHER is a woman in her forties, cropped grey-streaked hair, black oilskin over a cable-knit sweater. Realtime speed, brisk natural motion. Native audio: wind, surf, and a low sustained score. No dialogue, no on-screen lettering.",
+    "defaults": {
+      "ratio": "16:9",
+      "duration": 10,
+      "resolution": "768p",
+      "generateAudio": true,
+      "watermark": false
+    }
+  },
+  "shots": [
+    {
+      "id": "a01",
+      "seed": 1101,
+      "duration": 10,
+      "prompt": "0-4s: locked wide on a basalt headland, a single storm lantern burning at frame right, surf detonating below. 4-7s: THE WATCHER enters from frame left and crouches to the lantern, shielding it with her body. 7-10s: she lifts her head to look out to sea, and holds. Camera stays locked throughout."
+    },
+    {
+      "id": "a02",
+      "seed": 1102,
+      "duration": 12,
+      "prompt": "0-5s: slow push in on THE WATCHER's face lit only by the lantern, sodium orange on one side, blue night on the other. 5-9s: her eyes track something moving right to left offscreen. 9-12s: she stands and the frame follows her up, the horizon dropping into the lower third. Handheld with restrained micro-shake."
+    }
+  ]
+}

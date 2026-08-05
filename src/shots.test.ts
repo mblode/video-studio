@@ -59,7 +59,8 @@ describe("loadShotsFile", () => {
 
   it("rejects http (non-https) video references", async () => {
     const path = await writeShotsFile({
-      film: { title: "T" },
+      // A 2.0-era rule, so name 2.0 rather than leaning on the default.
+      film: { model: "dreamina-seedance-2-0-260128", title: "T" },
       shots: [
         {
           ...validShot,
@@ -99,7 +100,8 @@ describe("loadShotsFile", () => {
 describe("v2 validation", () => {
   it("rejects mixing first_frame with reference_image", async () => {
     const path = await writeShotsFile({
-      film: { title: "T" },
+      // A 2.0-era rule, so name 2.0 rather than leaning on the default.
+      film: { model: "dreamina-seedance-2-0-260128", title: "T" },
       shots: [
         {
           ...validShot,
@@ -427,7 +429,8 @@ describe("v2 validation", () => {
     const bloated = Array.from({ length: 420 }, () => "word").join(" ");
     const multiBeat = Array.from({ length: 300 }, () => "word").join(" ");
     const warnings = lintShotsFile({
-      film: { title: "T" },
+      // A 2.0-era rule, so name 2.0 rather than leaning on the default.
+      film: { model: "dreamina-seedance-2-0-260128", title: "T" },
       shots: [
         { id: "multibeat", prompt: multiBeat, seed: 1 },
         { id: "bloated", prompt: bloated, seed: 2 },
@@ -465,7 +468,11 @@ describe("v2 validation", () => {
     const { lintShotsFile } = await import("./shots.js");
     const preamble = Array.from({ length: 400 }, () => "style").join(" ");
     const warnings = lintShotsFile({
-      film: { promptPreamble: preamble, title: "T" },
+      film: {
+        model: "dreamina-seedance-2-0-260128",
+        promptPreamble: preamble,
+        title: "T",
+      },
       shots: [
         { id: "s", prompt: "a calm single action beat here now", seed: 1 },
       ],
@@ -738,7 +745,8 @@ describe("video references: region edit and extend", () => {
 
   it("refuses a local clip on 2.0 and names the workaround", async () => {
     const path = await writeShotsFile({
-      film: { title: "T" },
+      // A 2.0-era rule, so name 2.0 rather than leaning on the default.
+      film: { model: "dreamina-seedance-2-0-260128", title: "T" },
       shots: [videoShot("./output/clips/a1/v001.mp4")],
     });
     await expect(loadShotsFile(path)).rejects.toThrow(/Upload the clip/u);

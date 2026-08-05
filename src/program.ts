@@ -297,6 +297,11 @@ export function buildProgram(): Command {
       numberArgument("--sfx-gain"),
       0
     )
+    .option(
+      "--mute-clips",
+      "drop the clips' own audio (use on a model that bakes a full mix into every clip, so one score from `vs score` plays across the cut instead of N)",
+      false
+    )
     .option("--font <family>", "font family for title cards", DEFAULT_FONT)
     .option("--grade", "apply a subtle filmic grade", false)
     .option(
@@ -319,6 +324,7 @@ export function buildProgram(): Command {
         latest: options.latest,
         music: options.music,
         musicGain: Number(options.musicGain),
+        muteClips: options.muteClips,
         narration: options.narration,
         narrationGain: Number(options.narrationGain),
         output: options.output,

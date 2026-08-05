@@ -3,7 +3,6 @@ import { relative } from "node:path";
 import { confirm, isCancel } from "@clack/prompts";
 import pLimit from "p-limit";
 
-import type { ArkClient } from "../ark.js";
 import {
   checkCostCeiling,
   estimateClips,
@@ -21,26 +20,26 @@ import {
   saveManifest,
   upsertEntry,
 } from "../manifest.js";
-import { modelRateLimits, validateShotAgainstModel } from "../models.js";
+import {
+  DEFAULT_VIDEO_MODEL,
+  lookupModel,
+  modelRateLimits,
+  validateShotAgainstModel,
+} from "../models.js";
 import type { Pass } from "../paths.js";
 import {
-  buildTaskPayload,
+  buildCallOptions,
   effectiveShotParams,
   hashPayload,
   renderPayload,
 } from "../payload.js";
 import type { PayloadOverrides } from "../payload.js";
 import { lintShotsFile } from "../shots.js";
+import type { VideoModelV1 } from "../spec/video-model.js";
 import { DRAFT_RESOLUTION } from "../types.js";
-import type {
-  ArkTask,
-  CreateTaskRequest,
-  Manifest,
-  Shot,
-  ShotsFile,
-} from "../types.js";
+import type { ArkTask, Manifest, Shot, ShotsFile } from "../types.js";
 import { clipRevisionPath } from "../versions.js";
-import { assertInteractive, createArkClient, resolveFilm } from "./context.js";
+import { assertInteractive, createVideoModel, resolveFilm } from "./context.js";
 import {
   emit,
   fail,
@@ -107,15 +106,20 @@ async function dryRun(
   shotsDir: string,
   pass: Pass,
   overrides: PayloadOverrides | undefined,
-  estimate: CostEstimate
+  estimate: CostEstimate,
+  model: VideoModelV1
 ): Promise<void> {
-  const payloads: { payload: CreateTaskRequest; shotId: string }[] = [];
+  // The PROVIDER'S body, not a canonical one: --dry-run is the "will this work
+  // before I spend" gate, so it has to print what actually goes on the wire.
+  const payloads: { payload: unknown; shotId: string }[] = [];
   for (const shot of shots) {
     payloads.push({
-      payload: await buildTaskPayload(shot, file.film, shotsDir, {
-        overrides,
-        skipInline: true,
-      }),
+      payload: model.toRequestBody(
+        await buildCallOptions(shot, file.film, shotsDir, {
+          overrides,
+          skipInline: true,
+        })
+      ),
       shotId: shot.id,
     });
   }
@@ -152,8 +156,34 @@ function clipSpec(
     duration: params.duration,
     modelId: params.model,
     ratio: params.ratio,
+    // Free on token billing; charged past a free allowance on some per-second
+    // providers, so it has to reach the estimator either way.
+    referenceImages: shot.references?.filter((ref) => ref.type === "image")
+      .length,
     resolution: params.resolution,
   };
+}
+
+/**
+ * Say so when the quote is knowingly incomplete.
+ *
+ * Both billing schemes charge for the SECONDS of a bound reference video, and
+ * a reference video is normally a remote URL with no length we can read before
+ * submitting. The alternative to warning is quoting the model's whole
+ * documented input ceiling on every such shot, which over-quotes by several
+ * times and makes `--max-cost` useless. So the estimate excludes it and says
+ * that out loud, which is the one thing a silent under-quote cannot do.
+ */
+function warnUnpricedInput(shots: Shot[]): void {
+  const withVideo = shots.filter((shot) =>
+    shot.references?.some((ref) => ref.type === "video")
+  );
+  if (withVideo.length === 0) {
+    return;
+  }
+  warn(
+    `${withVideo.length} shot(s) bind a reference video (${withVideo.map((shot) => shot.id).join(", ")}); the provider bills its duration too, and the estimate below excludes it because a remote clip's length is not knowable before submitting`
+  );
 }
 
 function estimateRun(
@@ -299,6 +329,46 @@ export interface BillingReport {
   message: string;
   shots: number;
   withinTolerance: boolean;
+  /**
+   * False when the provider reports no usage, so `actual` is the quote rather
+   * than a measurement and there is nothing to reconcile. Kept explicit so the
+   * output can say which of the two it is showing.
+   */
+  reconcilable: boolean;
+}
+
+/**
+ * What a per-second run cost.
+ *
+ * There is no reconciliation to do: the provider returns no usage block at
+ * all, so the only honest report is the quote plus a statement that it was not
+ * checked against anything. Inventing a fake reconciliation here would make
+ * `reconcileTokens`'s tolerance warning meaningless for every model.
+ */
+function perSecondReport(
+  shots: Shot[],
+  file: ShotsFile,
+  overrides: PayloadOverrides | undefined,
+  manifest: Manifest
+): BillingReport | undefined {
+  const billed = shots.filter((shot) => {
+    const status = manifest.entries[shot.id]?.status;
+    return status === "succeeded" || status === "downloaded";
+  });
+  if (billed.length === 0) {
+    return;
+  }
+  const estimate = estimateRun(billed, file, overrides);
+  return {
+    actualTokens: 0,
+    actualUsd: estimate.usd,
+    estimatedTokens: 0,
+    estimatedUsd: estimate.usd,
+    message: `billed per second at the quoted rate; this provider reports no usage to reconcile against`,
+    reconcilable: false,
+    shots: billed.length,
+    withinTolerance: true,
+  };
 }
 
 /**
@@ -314,6 +384,13 @@ function billingReport(
   overrides: PayloadOverrides | undefined,
   manifest: Manifest
 ): BillingReport | undefined {
+  // The SAME ladder as the run itself (see `runGenerate`). Dropping the
+  // default here would resolve an unset `film.model` to the permissive
+  // fallback and pick the wrong billing branch.
+  const modelId = overrides?.model ?? file.film.model ?? DEFAULT_VIDEO_MODEL;
+  if (lookupModel(modelId).billing.kind === "perSecond") {
+    return perSecondReport(shots, file, overrides, manifest);
+  }
   const billed = shots.filter(
     (shot) => manifest.entries[shot.id]?.tokensUsed !== undefined
   );
@@ -346,6 +423,7 @@ function billingReport(
     estimatedTokens: estimate.tokens,
     estimatedUsd: estimate.usd,
     message,
+    reconcilable: true,
     shots: billed.length,
     withinTolerance,
   };
@@ -359,12 +437,14 @@ function reportBilling(report: BillingReport): void {
     warn(headline);
   }
   note(
-    `$${report.actualUsd.toFixed(2)} actual vs $${report.estimatedUsd.toFixed(2)} estimated across ${report.shots} shot(s)`
+    report.reconcilable
+      ? `$${report.actualUsd.toFixed(2)} actual vs $${report.estimatedUsd.toFixed(2)} estimated across ${report.shots} shot(s)`
+      : `$${report.actualUsd.toFixed(2)} across ${report.shots} shot(s), unverified`
   );
 }
 
 async function settleTask(options: {
-  client: ArkClient;
+  client: VideoModelV1;
   download: boolean;
   generateOptions: GenerateOptions;
   manifest: Manifest;
@@ -450,7 +530,7 @@ async function settleTask(options: {
 export async function runGenerate(
   shotsFilePath: string,
   options: GenerateOptions,
-  injected: { client?: ArkClient } = {}
+  injected: { client?: VideoModelV1 } = {}
 ): Promise<void> {
   const pass: Pass = options.draft ? "draft" : "final";
   const { file, outputDir, shotsDir } = await resolveFilm(shotsFilePath, {
@@ -458,6 +538,9 @@ export async function runGenerate(
   });
   const overrides = draftOverrides(file, options.draft);
   const shots = selectShots(file, options.shot);
+  // One model per run: shots cannot set `model`, so the only variation is the
+  // draft override, and that applies to the whole run.
+  const modelId = overrides?.model ?? file.film.model ?? DEFAULT_VIDEO_MODEL;
 
   for (const warning of lintShotsFile(file)) {
     warn(warning);
@@ -467,13 +550,22 @@ export async function runGenerate(
   if (options.dryRun) {
     // The ceiling is checked here too, so `--dry-run --max-cost` is a free
     // preflight: the exit code answers "would this run stay under budget?".
+    warnUnpricedInput(shots);
     const estimate = estimateRun(shots, file, overrides);
     assertCostCeiling(estimate, options.maxCost);
-    await dryRun(shots, file, shotsDir, pass, overrides, estimate);
+    await dryRun(
+      shots,
+      file,
+      shotsDir,
+      pass,
+      overrides,
+      estimate,
+      injected.client ?? createVideoModel(modelId)
+    );
     return;
   }
 
-  const client = injected.client ?? createArkClient();
+  const client = injected.client ?? createVideoModel(modelId);
   const manifest = await loadManifest(shotsFilePath, pass);
 
   const pending = shots.filter((shot) => {
@@ -506,6 +598,7 @@ export async function runGenerate(
   );
 
   if (toSubmit.length > 0) {
+    warnUnpricedInput(toSubmit);
     const estimate = estimateRun(toSubmit, file, overrides);
     assertCostCeiling(estimate, options.maxCost);
     if (!options.yes && !(await confirmCost(toSubmit, file, pass, estimate))) {
@@ -530,28 +623,29 @@ export async function runGenerate(
   }
   const limit = pLimit(concurrency);
   async function submitShot(shot: Shot): Promise<void> {
-    const payload: CreateTaskRequest = await buildTaskPayload(
-      shot,
-      file.film,
-      shotsDir,
-      { overrides }
-    );
-    const task = await client.createTask(payload);
+    const callOptions = await buildCallOptions(shot, file.film, shotsDir, {
+      overrides,
+    });
+    const task = await client.createTask(callOptions);
     upsertEntry(manifest, {
       newAttempt: true,
       params: {
-        duration: payload.duration,
-        generateAudio: payload.generate_audio,
-        model: payload.model,
-        ratio: payload.ratio,
+        duration: callOptions.durationSeconds,
+        generateAudio: callOptions.generateAudio ?? true,
+        model: client.modelId,
+        provider: client.provider,
+        ratio: callOptions.aspectRatio,
         // Exactly what went on the wire: undefined records "we sent no
         // resolution and let the API choose", which is a different fact from
         // "we asked for 1080p".
-        resolution: payload.resolution,
-        seed: payload.seed,
-        watermark: payload.watermark,
+        resolution: callOptions.resolution,
+        seed: callOptions.seed,
+        watermark: callOptions.watermark ?? false,
       },
-      payloadHash: hashPayload(payload),
+      // Hash the PROVIDER'S body, which is what was actually submitted. For
+      // Ark that is byte-identical to what this CLI has always hashed, so no
+      // existing film's audit trail churns.
+      payloadHash: hashPayload(client.toRequestBody(callOptions)),
       shotId: shot.id,
       status: "submitted",
       taskId: task.id,

@@ -9,11 +9,14 @@ import {
   formatEstimate,
   frameSize,
   reconcileTokens,
+  usdForClip,
   usdForTokens,
   videoTokens,
 } from "./cost.js";
 
 const STANDARD = "dreamina-seedance-2-0-260128";
+/** The only per-second-billed model in the registry. */
+const PER_SECOND = "MiniMax-H3";
 
 describe("frameSize", () => {
   it("matches the dimensions in the docs' worked examples", () => {
@@ -154,5 +157,139 @@ describe("reconcileTokens", () => {
 describe("formatEstimate", () => {
   it("renders millions and a dollar amount", () => {
     expect(formatEstimate(4_400_000, 24.6)).toBe("4.4M tokens ≈ $24.60");
+  });
+});
+
+describe("per-second billing", () => {
+  // `Billing.perSecond` was declared in the registry and never implemented, so
+  // `usdPerMToken` returned 0 for it and every quote came out as $0.00. Cost is
+  // a safety property here (SECURITY.md): a model the estimator does not
+  // understand must never look free, because `--max-cost` is the only guard
+  // between an unattended `--yes` run and a real bill.
+  it("never quotes a per-second model at zero", () => {
+    const estimate = estimateClip({
+      duration: 15,
+      modelId: PER_SECOND,
+      resolution: "2k",
+    });
+    expect(estimate.usd).toBeGreaterThan(0);
+  });
+
+  it("prices the published rates exactly", () => {
+    // 15s at 2K is the worked example on the provider's own pricing page.
+    expect(
+      usdForClip({ duration: 15, modelId: PER_SECOND, resolution: "2k" })
+    ).toBeCloseTo(1.95, 2);
+    expect(
+      usdForClip({ duration: 15, modelId: PER_SECOND, resolution: "768p" })
+    ).toBeCloseTo(1.2, 2);
+  });
+
+  it("does not scale with frame area the way token billing does", () => {
+    // The whole reason a per-second 2K clip can undercut a token-billed 720p
+    // one: 2K is 3.5x the pixels of 768P but only 1.6x the price.
+    const cheap = usdForClip({
+      duration: 10,
+      modelId: PER_SECOND,
+      resolution: "768p",
+    });
+    const dear = usdForClip({
+      duration: 10,
+      modelId: PER_SECOND,
+      resolution: "2k",
+    });
+    expect(dear / cheap).toBeLessThan(2);
+  });
+
+  it("applies the per-task minimum to a clip priced below it", () => {
+    // 4s at 768P prices at 4 x $0.08 = $0.32, but the provider's per-task floor
+    // is the cheapest REACHABLE request (2K x 4s = $0.52), so the floor wins.
+    // Asserting the sum here instead would lock in a 38% under-quote.
+    expect(
+      usdForClip({ duration: 4, modelId: PER_SECOND, resolution: "768p" })
+    ).toBeCloseTo(0.52, 2);
+    // ...and does not inflate anything already above it.
+    expect(
+      usdForClip({ duration: 15, modelId: PER_SECOND, resolution: "768p" })
+    ).toBeCloseTo(1.2, 2);
+  });
+
+  it("charges reference images past the free allowance, and only past it", () => {
+    const base = usdForClip({
+      duration: 10,
+      modelId: PER_SECOND,
+      resolution: "2k",
+    });
+    const withFive = usdForClip({
+      duration: 10,
+      modelId: PER_SECOND,
+      referenceImages: 5,
+      resolution: "2k",
+    });
+    const withEight = usdForClip({
+      duration: 10,
+      modelId: PER_SECOND,
+      referenceImages: 8,
+      resolution: "2k",
+    });
+    expect(withFive).toBeCloseTo(base, 6);
+    expect(withEight).toBeCloseTo(base + 3 * 0.04, 6);
+  });
+
+  it("bills input video seconds at the output rate", () => {
+    const alone = usdForClip({
+      duration: 10,
+      modelId: PER_SECOND,
+      resolution: "2k",
+    });
+    const conditioned = usdForClip({
+      duration: 10,
+      inputVideoSeconds: 5,
+      modelId: PER_SECOND,
+      resolution: "2k",
+    });
+    expect(conditioned).toBeCloseTo(alone + 5 * 0.13, 6);
+  });
+
+  it("reports no tokens, and formats without a token clause", () => {
+    const estimate = estimateClip({
+      duration: 15,
+      modelId: PER_SECOND,
+      resolution: "2k",
+    });
+    expect(estimate.tokens).toBe(0);
+    // "0K tokens ≈ $1.95" reads as a broken estimate, not a billing scheme.
+    expect(formatEstimate(estimate.tokens, estimate.usd)).toBe("$1.95");
+  });
+
+  it("still enforces --max-cost, which is the point of all of the above", () => {
+    const estimate = estimateClip({
+      duration: 15,
+      modelId: PER_SECOND,
+      resolution: "2k",
+    });
+    expect(checkCostCeiling(estimate, 0.5).allowed).toBe(false);
+    expect(checkCostCeiling(estimate, 5).allowed).toBe(true);
+  });
+
+  it("totals a mixed-provider run across both billing schemes", () => {
+    const total = estimateClips([
+      { duration: 15, modelId: PER_SECOND, resolution: "2k" },
+      { duration: 8, modelId: STANDARD, resolution: "720p" },
+    ]);
+    const perSecond = estimateClip({
+      duration: 15,
+      modelId: PER_SECOND,
+      resolution: "2k",
+    });
+    const tokenBilled = estimateClip({
+      duration: 8,
+      modelId: STANDARD,
+      resolution: "720p",
+    });
+    expect(total.clips).toBe(2);
+    expect(total.usd).toBeCloseTo(perSecond.usd + tokenBilled.usd, 6);
+    // Only the token-billed half contributes tokens.
+    expect(total.tokens).toBe(tokenBilled.tokens);
   });
 });

@@ -26,12 +26,23 @@ Confirmed on BytePlus ModelArk:
 
 | Model            | Id                                | Notes                                          |
 | ---------------- | --------------------------------- | ---------------------------------------------- |
-| Seedance 2.0     | `dreamina-seedance-2-0-260128`    | The default. 4-15s, 480p to 4K                 |
+| Seedance 2.0     | `dreamina-seedance-2-0-260128`    | 4-15s, 480p to 4K                              |
 | Seedance 2.0 fast | `dreamina-seedance-2-0-fast-260128` | 4-15s, 480p/720p only. About 27% cheaper per token |
 | Seedance 2.0 mini | `dreamina-seedance-2-0-mini-260615` | 4-15s, 480p/720p only. Pricing not published |
-| Seedance 2.5     | `dreamina-seedance-2-5-260628`    | Opt-in. 4-30s, 480p/720p, $10.7/M. **1 concurrent, 60 RPM** |
+| Seedance 2.5     | `dreamina-seedance-2-5-260628`    | **The default.** 4-30s, 480p/720p, $10.7/M. **1 concurrent, 60 RPM** |
 
-The same three ship on Volcengine with a `doubao-` prefix. Pre-2.0 releases
+And on MiniMax, a different provider entirely:
+
+| Model | Id | Notes |
+| --- | --- | --- |
+| MiniMax H3 | `MiniMax-H3` | 4-15s, 768P/2K, **billed per second** ($0.08 / $0.13). Native stereo audio always. 5 RPM |
+
+`film.model` also accepts an explicit `provider:id` form (`minimax:MiniMax-H3`).
+A bare id is resolved through the registry, so the prefix is only needed for a
+model this repo has not learned yet: without it an unknown id falls back to
+Ark and gets POSTed to BytePlus.
+
+The three Seedance models also ship on Volcengine with a `doubao-` prefix. Pre-2.0 releases
 (`seedance-1-0-pro-250528`, `seedance-1-5-pro-251215`) are in the registry with
 `confidence: "inferred"`, so their capability checks report warnings only.
 
@@ -84,8 +95,15 @@ Individual account tier:
 | Default (2.0)     | 180 | 3                |
 | **4K** (2.0)      | 15  | **1**            |
 | **Seedance 2.5**  | 60  | **1**            |
+| **MiniMax H3**    | 5   | 3 (unpublished)  |
 
 Enterprise is 600 RPM and 10 concurrent.
+
+H3's concurrency is **not published**, and "not specified" is not "unlimited",
+so the registry sets a conservative 3: at that width the opening burst cannot
+breach 5 RPM on the create route, and multi-minute tasks then trickle well
+under it. The poll route is the real risk, so the MiniMax adapter floors
+`--poll-interval` at the 10s MiniMax itself recommends.
 
 `--concurrency` defaults to 3 for `generate`, matching the individual tier. A
 **4K film is strictly serial**: passing `--concurrency 3` to a 4K run just
@@ -167,9 +185,48 @@ One 30s clip at 16:9 on Seedance 2.5, at the $10.7/M rate:
 | 720p (1280x720) | 648,000   | $6.93  |
 | 1080p (1920x1080) | 1,458,000 | $15.60 |
 
+### Per-second billing changes the arithmetic entirely
+
+Everything below this heading is about TOKEN billing. MiniMax H3 bills a flat
+rate per second of output, which does not scale with frame area at all, and
+that breaks the intuition the rest of this file builds:
+
+| | $/sec of output |
+| --- | --- |
+| H3, 768P | **$0.080** |
+| H3, 2K | **$0.130** |
+| Seedance 2.5, 480p | $0.104 |
+| Seedance 2.5, 720p | **$0.231** |
+| Seedance 2.0, 720p | $0.166 |
+
+So H3 at 2K — four times the pixels of 720p — is still **44% cheaper** than
+2.5 at 720p. There is no 4K trap on a per-second model because there is no
+pixel term. Extras: reference **video** is billed for its own duration at the
+output rate, reference images past the first five are $0.04 each, and a task
+has a floor equal to the cheapest valid request.
+
+The 120s film, three ways:
+
+| | Shape | USD | Concurrency | Native audio |
+| --- | --- | --- | --- | --- |
+| Seedance 2.0, 720p | 15 x 8s | $19.96 | 3 | SFX only |
+| Seedance 2.5, 720p | 4 x 30s | $27.73 | **1** | SFX only |
+| MiniMax H3, 768P | 8 x 15s | **$9.60** | 3 | full mix |
+| MiniMax H3, 2K | 8 x 15s | $15.60 | 3 | full mix |
+
+What you give up for the saving is **act length**: 15s against 2.5's 30s, so
+every 30s act becomes two clips and a continuity seam. Decide on that, not on
+the price.
+
+`vs generate` prints no token count for a per-second model, because there is
+none, and it does not reconcile afterwards either: H3 returns no `usage` block
+at all, so the run reports the quote and says explicitly that nothing checked
+it. That is honest; a fabricated reconciliation would make the ±15% tolerance
+warning meaningless for every other model.
+
 ### Longer clips are not cheaper clips
 
-The most useful number in this file. **120 seconds at 720p costs exactly
+True of TOKEN-billed models only (see above). **120 seconds at 720p costs exactly
 2,592,000 tokens whether you spend it as 15 clips of 8s on 2.0 or 4 acts of 30s
 on 2.5.** Identical pixels, identical token count. Only the rate differs:
 

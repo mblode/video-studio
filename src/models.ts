@@ -49,11 +49,79 @@ export type Billing =
        */
       usdPerMTokenWithVideoInput?: Partial<Record<Resolution, number>>;
     }
-  | { kind: "perSecond"; usdPerSecond: number };
+  | {
+      kind: "perSecond";
+      /**
+       * USD per second of OUTPUT video, by resolution. Flat: unlike token
+       * billing it does not scale with frame area, which is why a 2K
+       * per-second model can undercut a 720p token-billed one.
+       */
+      usdPerSecondByResolution: Partial<Record<Resolution, number>>;
+      /** Reference images past this many are charged. Absent = all free. */
+      freeReferenceImages?: number;
+      /** USD per reference image beyond `freeReferenceImages`. */
+      usdPerExtraReferenceImage?: number;
+      /**
+       * Floor on a single task's charge, whatever was requested. Providers
+       * that publish one bill the cheapest valid request as a minimum, so a
+       * short cheap clip does not actually cost less than it.
+       */
+      minimumTaskUsd?: number;
+    };
 
-export interface ModelCapabilities {
+/**
+ * Which backend a model id is generated on. This is registry DATA rather than a
+ * branch in the commands, for the same reason everything else here is: a model
+ * moving to a new backend, or a new backend arriving, should be an entry in this
+ * file and nothing more.
+ */
+export type ProviderId = "ark" | "minimax";
+
+/**
+ * What an authoring surface is allowed to do on a model.
+ *
+ * These describe CAPABILITIES, never models. The version this replaced was an
+ * `isSeedance25()` family-string predicate driving four unrelated behaviours,
+ * which meant every new model with any of those behaviours had to be added to
+ * the same four `if`s. A flag that says what a model can do composes; a
+ * predicate that says which model it is does not.
+ */
+export interface AuthoringLimits {
+  /**
+   * True when `first_frame`/`last_frame` and `reference_*` are mutually
+   * exclusive modes. Seedance 2.0 and MiniMax H3 reject the mix; Seedance 2.5
+   * combines them (its own reference-to-video demos bind a scene reference
+   * alongside per-subject ones).
+   */
+  framesExcludeReferences: boolean;
+  /**
+   * True when a local video/audio reference may go on the wire as a base64 data
+   * URL. False means those references must be https URLs. Images are inlinable
+   * everywhere; this flag is only about the heavy media types.
+   */
+  inlineNonImageRefs: boolean;
+  /**
+   * True when prompts on this model are expected to bind each reference by
+   * ordinal (`@Image 1`, `@Video 2`). Seedance 2.5 and MiniMax H3 both resolve
+   * ordinals per media type in authored order; on 2.0-era models the idiom is
+   * not used, so nagging about it would be noise on every existing film.
+   */
+  ordinalBindingIdiom: boolean;
+  /** Soft quality warning threshold for total references. Not a platform cap. */
+  softReferenceLimit: number;
+  /** Soft prompt-length warning, in words. Longer clips legitimately need more. */
+  promptWordLimit: number;
+  /**
+   * Hard platform ceiling on prompt length, in characters, where one is
+   * published. Undefined means no documented cap, so nothing is enforced.
+   */
+  promptCharLimit?: number;
+}
+
+export interface ModelCapabilities extends AuthoringLimits {
   /** The id as supplied by the caller (registry entries are keyed by family). */
   id: string;
+  provider: ProviderId;
   /** Normalised family key, e.g. "seedance-2-0-fast". */
   family: string;
   /**
@@ -82,6 +150,8 @@ export interface ModelCapabilities {
 
 /** Model ids observed in the wild, for docs/scaffolding. Lookup does not need them. */
 export const MODEL_IDS = {
+  /** MiniMax H3, released 2026-07-31. Direct v2 API id, not a broker's. */
+  minimaxH3: "MiniMax-H3",
   seedance10Pro: "seedance-1-0-pro-250528",
   seedance15Pro: "seedance-1-5-pro-251215",
   seedance20: "dreamina-seedance-2-0-260128",
@@ -90,6 +160,18 @@ export const MODEL_IDS = {
   /** Published on ModelArk console; API/Playground still marked coming soon. */
   seedance25: "dreamina-seedance-2-5-260628",
 } as const;
+
+/**
+ * The model a film generates on when `film.model` is unset.
+ *
+ * It lives HERE, beside the registry, rather than in src/payload.ts, because
+ * two unrelated places have to agree on it: `effectiveShotParams` decides what
+ * goes on the wire, and `lintShotsFile` decides what to validate against. When
+ * those disagree the linter checks a film against a model it will never be
+ * generated on, which is the quietest possible way to waste a paid run. Same
+ * reasoning as the single-ladder rule over `effectiveShotParams` itself.
+ */
+export const DEFAULT_VIDEO_MODEL: string = MODEL_IDS.seedance25;
 
 /** Seedance 2.5 console rate (USD / 1M tokens) without video input. */
 const SEEDANCE_25_USD_PER_MTOKEN = 10.7;
@@ -122,6 +204,82 @@ const SEEDANCE_25_REFERENCE_SLOTS: ReferenceSlots = {
 const SEEDANCE_25_LIMITS: RateLimits = { concurrency: 1, rpm: 60 };
 
 /**
+ * Seedance 2.0-era authoring envelope. Frame mode and omni-reference mode are
+ * mutually exclusive, references must be https URLs unless they are images, and
+ * quality degrades past ~5 references.
+ */
+const SEEDANCE_20_AUTHORING: AuthoringLimits = {
+  framesExcludeReferences: true,
+  inlineNonImageRefs: false,
+  ordinalBindingIdiom: false,
+  // Multi-beat timed-segment shots legitimately need more words than a
+  // single-action shot; this warns on real bloat, not on density.
+  promptWordLimit: 400,
+  softReferenceLimit: 5,
+};
+
+/**
+ * Seedance 2.5 authoring envelope. Both reference modes compose, local video
+ * and audio may be inlined, and an 8-14 reference ordinal pack is the design
+ * idiom rather than a smell — so both soft limits are much higher. A 30s act
+ * carries roughly twice the beats of a 15s shot AND an ordinal binding block
+ * naming each reference's single job; measured acts land at 380-430 words plus
+ * preamble. Do NOT compress ordinal bindings to fit a cap.
+ */
+const SEEDANCE_25_AUTHORING: AuthoringLimits = {
+  framesExcludeReferences: false,
+  inlineNonImageRefs: true,
+  ordinalBindingIdiom: true,
+  promptWordLimit: 700,
+  softReferenceLimit: 16,
+};
+
+/**
+ * MiniMax H3 authoring envelope. It binds references by ordinal exactly as 2.5
+ * does (`@Image N` counted per media type, in authored order), but its frame
+ * and reference modes are mutually exclusive like 2.0's, and the docs recommend
+ * URL input with a 64 MB body ceiling rather than inlined media. The 7000 is a
+ * hard platform cap in CHARACTERS, unlike every other limit here.
+ */
+const MINIMAX_H3_AUTHORING: AuthoringLimits = {
+  framesExcludeReferences: true,
+  inlineNonImageRefs: false,
+  ordinalBindingIdiom: true,
+  promptCharLimit: 7000,
+  promptWordLimit: 400,
+  softReferenceLimit: 9,
+};
+
+/** CONFIRMED from the v2 docs: integer 4-15s. No auto. */
+const MINIMAX_H3_DURATIONS: DurationSupport = {
+  auto: false,
+  kind: "range",
+  max: 15,
+  min: 4,
+};
+
+/**
+ * CONFIRMED per-file caps from the v2 docs, with a documented 12-file total
+ * across all types that this per-role table cannot express (see
+ * `validateShotAgainstModel`, which checks roles independently).
+ */
+const MINIMAX_H3_REFERENCE_SLOTS: ReferenceSlots = {
+  first_frame: 1,
+  last_frame: 1,
+  reference_audio: 3,
+  reference_image: 9,
+  reference_video: 3,
+};
+
+/**
+ * Video generation is documented at 5 RPM. Concurrency is NOT published, and
+ * "not specified" is not "unlimited", so this is a deliberately conservative
+ * 3: at that width the initial burst cannot breach 5 RPM on the create route,
+ * and multi-minute tasks then trickle well under it.
+ */
+const MINIMAX_H3_LIMITS: RateLimits = { concurrency: 3, rpm: 5 };
+
+/**
  * USD per 1M output tokens. The docs quote $3.5-$7.7 for Seedance 2.0 without
  * video input (and a cheaper $2.1-$4.7 WITH video input, which is why an
  * image/frame-anchored shot is both more consistent and cheaper), varying by
@@ -136,6 +294,12 @@ const SEEDANCE_25_LIMITS: RateLimits = { concurrency: 1, rpm: 60 };
 const STANDARD_USD_PER_MTOKEN = 7.7;
 /** The `fast` variant is ~27% cheaper per token than standard. */
 const FAST_USD_PER_MTOKEN = 5.6;
+/**
+ * Last-resort per-second rate for a per-second model whose registry entry
+ * prices no resolution at all. That is a bug in this file, and the only safe
+ * way to be wrong about it is expensively.
+ */
+const DEAREST_KNOWN_USD_PER_SECOND = 0.13;
 
 /** CONFIRMED for the individual account tier. Enterprise gets 600 rpm / 10 concurrent. */
 const INDIVIDUAL_LIMITS: RateLimits = { concurrency: 3, rpm: 180 };
@@ -171,7 +335,42 @@ type RegistryEntry = Omit<ModelCapabilities, "family" | "id" | "known">;
  * validation, or cost code needs to change.
  */
 export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
+  "minimax-h3": {
+    ...MINIMAX_H3_AUTHORING,
+    aspectRatios: ASPECT_RATIOS,
+    // Native stereo audio (score, dialogue, foley) is generated jointly with
+    // the picture and cannot be switched off, so `generate_audio: false` is
+    // meaningless here and `validateShotAgainstModel` warns that it is ignored.
+    audio: "always",
+    billing: {
+      // First 5 reference images free, then $0.04 each.
+      freeReferenceImages: 5,
+      // Flat per SECOND of output, not per token: unlike Seedance this does
+      // not scale with frame area, which is how 2K here undercuts 720p there.
+      kind: "perSecond",
+      // The docs give the per-task minimum as "the cheapest valid request",
+      // which is ambiguous: 768P x 4s is $0.32, but 768P is reportedly closed
+      // beta, so on most accounts the cheapest REACHABLE request is 2K x 4s at
+      // $0.52. Quote the higher one. Over-quoting a floor is survivable;
+      // under-quoting it is a bill, and this is the guard `--max-cost` leans on.
+      minimumTaskUsd: 0.52,
+      usdPerExtraReferenceImage: 0.04,
+      // Official paygo page. Several third-party trackers list 768P at $0.09;
+      // if a bill ever disagrees, that discrepancy is the first thing to check.
+      usdPerSecondByResolution: { "2k": 0.13, "768p": 0.08 },
+    },
+    confidence: "inferred",
+    durations: MINIMAX_H3_DURATIONS,
+    fps: DEFAULT_FPS,
+    limits: MINIMAX_H3_LIMITS,
+    notes:
+      "Direct MiniMax v2 API. 768P is reportedly closed beta, so budget on 2K. H3 is unavailable in the UK, EU, US, and South Korea, and a wrong-region key fails as a confusing `1004 not authorized`. Confidence stays `inferred` until a live create-task succeeds.",
+    provider: "minimax",
+    referenceSlots: MINIMAX_H3_REFERENCE_SLOTS,
+    resolutions: ["768p", "2k"],
+  },
   "seedance-1-0-pro": {
+    ...SEEDANCE_20_AUTHORING,
     aspectRatios: ASPECT_RATIOS,
     audio: "optional",
     billing: {
@@ -188,10 +387,12 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
     limits: INDIVIDUAL_LIMITS,
     notes:
       "Pre-2.0 release. Capabilities carried over from the 2.0 envelope and NOT confirmed against 1.x docs, so problems are reported as warnings.",
+    provider: "ark",
     referenceSlots: {},
     resolutions: ["480p", "720p", "1080p"],
   },
   "seedance-1-5-pro": {
+    ...SEEDANCE_20_AUTHORING,
     aspectRatios: ASPECT_RATIOS,
     audio: "optional",
     billing: {
@@ -208,10 +409,12 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
     limits: INDIVIDUAL_LIMITS,
     notes:
       "Pre-2.0 release. Capabilities carried over from the 2.0 envelope and NOT confirmed against 1.x docs, so problems are reported as warnings.",
+    provider: "ark",
     referenceSlots: {},
     resolutions: ["480p", "720p", "1080p"],
   },
   "seedance-2-0": {
+    ...SEEDANCE_20_AUTHORING,
     aspectRatios: ASPECT_RATIOS,
     audio: "optional",
     billing: {
@@ -227,10 +430,12 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
     durations: SEEDANCE_DURATIONS,
     fps: DEFAULT_FPS,
     limits: { ...INDIVIDUAL_LIMITS, byResolution: { "4k": FOUR_K_LIMITS } },
+    provider: "ark",
     referenceSlots: SEEDANCE_REFERENCE_SLOTS,
     resolutions: RESOLUTIONS,
   },
   "seedance-2-0-fast": {
+    ...SEEDANCE_20_AUTHORING,
     aspectRatios: ASPECT_RATIOS,
     audio: "optional",
     billing: {
@@ -245,10 +450,12 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
     fps: DEFAULT_FPS,
     limits: INDIVIDUAL_LIMITS,
     notes: "480p/720p only, the draft-pass model. ~27% cheaper than standard.",
+    provider: "ark",
     referenceSlots: SEEDANCE_REFERENCE_SLOTS,
     resolutions: ["480p", "720p"],
   },
   "seedance-2-0-mini": {
+    ...SEEDANCE_20_AUTHORING,
     aspectRatios: ASPECT_RATIOS,
     audio: "optional",
     billing: {
@@ -265,10 +472,12 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
     fps: DEFAULT_FPS,
     limits: INDIVIDUAL_LIMITS,
     notes: "480p/720p only. Pricing not published; quoted at the fast rate.",
+    provider: "ark",
     referenceSlots: SEEDANCE_REFERENCE_SLOTS,
     resolutions: ["480p", "720p"],
   },
   "seedance-2-5": {
+    ...SEEDANCE_25_AUTHORING,
     aspectRatios: ASPECT_RATIOS,
     audio: "optional",
     billing: {
@@ -290,6 +499,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
     limits: SEEDANCE_25_LIMITS,
     notes:
       "Console id + rates published; API/Playground marked coming soon (docs 1520757). Console card lists 480p/720p; launch marketing claims up to 4K/10-bit, which is unconfirmed and not modelled here. Confidence stays `inferred` until a live create-task succeeds, which also means a 1080p request warns rather than being refused.",
+    provider: "ark",
     referenceSlots: SEEDANCE_25_REFERENCE_SLOTS,
     resolutions: ["480p", "720p"],
   },
@@ -299,13 +509,23 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
  * Vendor prefixes seen on the same underlying models. Stripped before lookup
  * so one registry entry covers BytePlus, Volcengine, and bare ids.
  */
+/** Explicit `provider:` prefixes, stripped before anything else so that
+ * `minimax:MiniMax-H3` and a bare `MiniMax-H3` resolve to the same registry
+ * entry. Without this a prefixed id would miss the registry entirely and fall
+ * through to the permissive fallback, which for a per-second model means a
+ * $0.00 quote. */
+const PROVIDER_PREFIX = /^(?:ark|minimax):/u;
 const VENDOR_PREFIXES = ["dreamina-", "doubao-", "dola-"] as const;
 /** Trailing release stamp, e.g. `-260128`. */
 const RELEASE_SUFFIX = /-\d{6,}$/u;
 
 /** `Dreamina-Seedance-2.0-fast-260128` -> `seedance-2-0-fast`. */
 export function normalizeModelId(modelId: string): string {
-  let id = modelId.trim().toLowerCase().replaceAll(".", "-");
+  let id = modelId
+    .trim()
+    .toLowerCase()
+    .replace(PROVIDER_PREFIX, "")
+    .replaceAll(".", "-");
   for (const prefix of VENDOR_PREFIXES) {
     if (id.startsWith(prefix)) {
       id = id.slice(prefix.length);
@@ -322,6 +542,13 @@ export function normalizeModelId(modelId: string): string {
  */
 function fallbackCapabilities(modelId: string): ModelCapabilities {
   return {
+    // The narrower authoring envelope of the two, deliberately. An unknown model
+    // gets a PERMISSIVE capability envelope (`known: false` skips the checks
+    // outright) but the CONSERVATIVE authoring one, because these two flags fail
+    // in opposite directions: guessing `framesExcludeReferences: false` lets a
+    // payload the API will reject go out and be billed, while guessing `true`
+    // only produces a warning the author can read and ignore.
+    ...SEEDANCE_20_AUTHORING,
     aspectRatios: ASPECT_RATIOS,
     audio: "optional",
     billing: {
@@ -347,6 +574,7 @@ function fallbackCapabilities(modelId: string): ModelCapabilities {
     limits: INDIVIDUAL_LIMITS,
     notes:
       "Unknown model id: capabilities are a permissive guess and the API is the authority. Cost is quoted at the dearest known rate.",
+    provider: "ark",
     referenceSlots: {},
     resolutions: RESOLUTIONS,
   };
@@ -383,6 +611,47 @@ export function modelRateLimits(
 }
 
 /**
+ * A rate for a resolution, falling back to the DEAREST listed rate rather than
+ * to zero. Shared by both billing kinds, because both fail the same way: a
+ * resolution nobody priced must over-quote, never silently cost nothing.
+ */
+function rateFor(
+  table: Partial<Record<Resolution, number>>,
+  resolution: Resolution,
+  fallback: number
+): number {
+  const listed = table[resolution];
+  if (listed !== undefined) {
+    return listed;
+  }
+  const rates = Object.values(table).filter(
+    (rate): rate is number => rate !== undefined
+  );
+  return rates.length > 0 ? Math.max(...rates) : fallback;
+}
+
+/**
+ * USD per second of output for a per-second-billed model. Returns 0 for a
+ * token-billed one, so callers must check `billing.kind` first — see
+ * `usdForClip` in src/cost.ts, which is the only intended caller.
+ */
+export function usdPerSecond(
+  capabilities: ModelCapabilities,
+  resolution: Resolution
+): number {
+  if (capabilities.billing.kind !== "perSecond") {
+    return 0;
+  }
+  return rateFor(
+    capabilities.billing.usdPerSecondByResolution,
+    resolution,
+    // No published rate at any resolution is a registry bug, not a free clip.
+    // Quote the dearest per-second rate this file knows about.
+    DEAREST_KNOWN_USD_PER_SECOND
+  );
+}
+
+/**
  * USD per 1M output tokens at a resolution. An unlisted resolution falls back
  * to the dearest listed rate rather than to zero, so an unpriced combination
  * over-quotes instead of silently costing nothing.
@@ -404,14 +673,11 @@ export function usdPerMToken(
   // 1080p run, and an empty one `{}` survives `??` and collapses to the global
   // rate rather than this model's dearest. Both under-quote, in a function
   // whose whole job is to never do that.
-  const listed = withVideo?.[resolution] ?? base[resolution];
+  const listed = withVideo?.[resolution];
   if (listed !== undefined) {
     return listed;
   }
-  const rates = Object.values(base).filter(
-    (rate): rate is number => rate !== undefined
-  );
-  return rates.length > 0 ? Math.max(...rates) : STANDARD_USD_PER_MTOKEN;
+  return rateFor(base, resolution, STANDARD_USD_PER_MTOKEN);
 }
 
 export interface CapabilityProblem {

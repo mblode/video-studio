@@ -135,7 +135,7 @@ export {
 } from "./paths.js";
 export type { Pass } from "./paths.js";
 export {
-  buildTaskPayload,
+  buildCallOptions,
   DEFAULT_VIDEO_MODEL,
   DRAFT_VIDEO_MODEL,
   effectiveShotParams,

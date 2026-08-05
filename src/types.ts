@@ -1,3 +1,5 @@
+import type { ProviderId } from "./models.js";
+
 /**
  * CONFIRMED from the ModelArk docs. `adaptive` is the odd one out: instead of a
  * fixed frame it asks the model to derive the aspect from the reference image,
@@ -38,7 +40,14 @@ export const ASPECT_RATIO_VALUE: Record<AspectRatio, number | undefined> = {
  * the `fast` and `mini` variants only 480p/720p (per-model support lives in
  * src/models.ts, which is the authority; this list is just the wire enum).
  */
-export const RESOLUTIONS = ["480p", "720p", "1080p", "4k"] as const;
+export const RESOLUTIONS = [
+  "480p",
+  "720p",
+  "768p",
+  "1080p",
+  "2k",
+  "4k",
+] as const;
 export type Resolution = (typeof RESOLUTIONS)[number];
 export const DEFAULT_RESOLUTION: Resolution = "1080p";
 export const DRAFT_RESOLUTION: Resolution = "480p";
@@ -46,14 +55,20 @@ export const DRAFT_RESOLUTION: Resolution = "480p";
 /**
  * Short side (px) each resolution renders. CONFIRMED against the docs' worked
  * token examples at 16:9 (720p = 1280x720, 1080p = 1920x1080, 4K = 3840x2160).
- * Note 4K is named for its LONG side but, like the others, is pinned by its
- * short side here so one formula covers every aspect ratio.
+ *
+ * THE NAMING TRAP: `4k` and `2k` are named for their LONG sides (3840 and
+ * 2560) while every `NNNp` name is its short side. Both are pinned by their
+ * SHORT side here so one formula covers every aspect ratio, which is why `4k`
+ * reads 2160 and `2k` reads 1440 rather than the numbers in their names. `2k`
+ * is MiniMax H3's native output (2560x1440); `768p` is its cheaper tier.
  */
 export const RESOLUTION_SHORT_SIDE: Record<Resolution, number> = {
   "1080p": 1080,
+  "2k": 1440,
   "480p": 480,
   "4k": 2160,
   "720p": 720,
+  "768p": 768,
 };
 
 /** CONFIRMED: every Seedance model renders 24 fps. Token cost scales with it. */
@@ -93,9 +108,15 @@ export const TOKENS_PER_SECOND_1080P = 28_000;
  */
 export const RESOLUTION_TOKEN_FACTOR: Record<Resolution, number> = {
   "1080p": 1,
+  // (1440/1080)^2 and (768/1080)^2. Inert for the per-second models that
+  // actually render these two, but this record is total and a plausible-looking
+  // wrong number here would quietly misprice a token-billed model that adds
+  // them later.
+  "2k": 1.78,
   "480p": 0.2,
   "4k": 4,
   "720p": 0.44,
+  "768p": 0.51,
 };
 /**
  * USD per 1K output tokens (BytePlus ModelArk console, text-to-video rate).
@@ -401,6 +422,12 @@ export interface ManifestEntry {
   /** Generation parameter snapshot for the audit trail. */
   params?: {
     model: string;
+    /**
+     * Which backend answered. A fact about what went on the wire, same as
+     * every other field here: a bare task id says nothing about who holds it,
+     * so without this `vs status <taskId>` cannot know where to look.
+     */
+    provider?: ProviderId;
     duration: number;
     ratio: AspectRatio;
     /**

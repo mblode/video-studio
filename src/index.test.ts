@@ -45,7 +45,7 @@ const FUNCTION_EXPORTS = [
   "assertFfmpeg",
   "buildSharePlan",
   "buildStitchPlan",
-  "buildTaskPayload",
+  "buildCallOptions",
   "buildUpscalePlan",
   "checkCostCeiling",
   "clipTokens",

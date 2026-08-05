@@ -21,6 +21,27 @@ const streamsAndExit = [
   { message: USE_EXIT_CODE, object: "process", property: "exit" },
 ];
 
+const USE_SPEC =
+  "commands depend on the provider spec, never on an adapter: take a VideoModelV1 from createVideoModel() in ./context.js. See docs/adr/0001-video-provider-spec.md";
+const PROVIDERS_ARE_LEAVES =
+  "a provider adapter may not reach back into a command; it gets everything it needs through VideoModelV1CallOptions";
+
+/**
+ * The provider seam, which types alone cannot hold.
+ *
+ * `VideoModelV1` only buys vendor-blindness if no command can quietly reach
+ * past it, and the cheapest way to break it is one `import { createMinimax }`
+ * inside a command during a deadline. An unenforced boundary decays; an exit
+ * code in pre-commit does not.
+ */
+const providerBoundary = (
+  group: string[],
+  message: string
+): [string, { patterns: { group: string[]; message: string }[] }] => [
+  "error",
+  { patterns: [{ group, message }] },
+];
+
 const except = (...allowed: string[]) =>
   streamsAndExit.filter(
     (entry) => !allowed.includes(entry.property ?? entry.object)
@@ -47,6 +68,34 @@ export default defineConfig({
       files: ["src/cli.ts"],
       rules: {
         "eslint/no-restricted-properties": ["error", ...except("exit")],
+      },
+    },
+    {
+      // Commands talk to the spec, not to an adapter.
+      excludeFiles: [
+        // The ONE place a provider is constructed, which is what makes it the
+        // one place a key is read. Everything else asks it for a model.
+        "src/commands/context.ts",
+        // Tests build a real adapter on purpose, to assert that a command
+        // submits the bytes a real provider would have sent.
+        "**/*.test.ts",
+      ],
+      files: ["src/commands/**/*.ts"],
+      rules: {
+        "eslint/no-restricted-imports": providerBoundary(
+          ["**/providers/*", "../providers/*", "./providers/*"],
+          USE_SPEC
+        ),
+      },
+    },
+    {
+      // Adapters are leaves: they know the spec and the wire, nothing upward.
+      files: ["src/providers/**/*.ts"],
+      rules: {
+        "eslint/no-restricted-imports": providerBoundary(
+          ["**/commands/*", "../commands/*", "./commands/*"],
+          PROVIDERS_ARE_LEAVES
+        ),
       },
     },
     {

@@ -4,7 +4,6 @@ import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ArkClient } from "../ark.js";
 import type * as FfmpegModule from "../ffmpeg.js";
 import { MockVideoProvider } from "../provider.js";
 import { runDoctor } from "./doctor.js";
@@ -161,7 +160,7 @@ function stitchOptions(
 /** A film whose one shot has been generated and downloaded, no network. */
 async function generatedFilm(): Promise<string> {
   const shotsFile = await writeFilm();
-  const client = new MockVideoProvider() as unknown as ArkClient;
+  const client = new MockVideoProvider();
   await payloadOf(() => runGenerate(shotsFile, generateOptions(), { client }));
   return shotsFile;
 }
@@ -246,7 +245,7 @@ describe("--json payload contract", () => {
 
   it("vs generate emits { pass, pending, status } when there is nothing to do", async () => {
     const shotsFile = await generatedFilm();
-    const client = new MockVideoProvider() as unknown as ArkClient;
+    const client = new MockVideoProvider();
     const payload = await payloadOf(() =>
       runGenerate(shotsFile, generateOptions(), { client })
     );

@@ -1,6 +1,7 @@
 {
   "film": {
     "title": "The Last Watch",
+    "model": "dreamina-seedance-2-0-260128",
     "outputDir": "./output",
     "defaults": {
       "ratio": "1:1",

@@ -1,10 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import type { ArkClient } from "../ark.js";
-import { baseUrl, loadEnv } from "../env.js";
+import { baseUrl, loadEnv, minimaxBaseUrl } from "../env.js";
 import { formatError } from "../errors.js";
 import { assertBinary } from "../ffmpeg.js";
+import type { VideoProvider } from "../provider.js";
 import { TASK_STATUSES } from "../types.js";
 import { createArkClient, packageInfo } from "./context.js";
 import {
@@ -137,6 +137,21 @@ function keyChecks(): DoctorCheck[] {
           label: "ARK_API_KEY missing",
           status: "fail",
         },
+    process.env.MINIMAX_API_KEY
+      ? {
+          detail: `base URL: ${minimaxBaseUrl()}`,
+          label: "MINIMAX_API_KEY set (MiniMax H3)",
+          status: "ok",
+        }
+      : {
+          // The region caveat belongs HERE and not only in the docs: a
+          // wrong-region key fails as `1004 not authorized`, which reads as a
+          // bad key and sends you looking in the wrong place entirely.
+          detail:
+            "only needed for a film whose film.model is MiniMax-H3; note H3 is unavailable in the UK, EU, US, and South Korea",
+          label: "MINIMAX_API_KEY not set",
+          status: "skip",
+        },
     process.env.GEMINI_API_KEY
       ? {
           label: "GEMINI_API_KEY set (Nano Banana stills / Lyria score)",
@@ -200,7 +215,7 @@ async function cardChecks(): Promise<DoctorCheck[]> {
 
 async function endpointCheck(
   taskId: string,
-  client?: ArkClient
+  client?: VideoProvider
 ): Promise<DoctorCheck> {
   if (!(process.env.ARK_API_KEY || client)) {
     return {
@@ -262,7 +277,7 @@ function print(check: DoctorCheck): void {
 export async function runDoctor(
   taskId: string | undefined,
   _options: DoctorOptions = {},
-  injected: { client?: ArkClient } = {}
+  injected: { client?: VideoProvider } = {}
 ): Promise<DoctorCheck[]> {
   const envPath = loadEnv();
   const checks: DoctorCheck[] = [

@@ -158,3 +158,48 @@ describe("concatListContent", () => {
     );
   });
 });
+
+describe("--mute-clips", () => {
+  const muteClipsFixture: StitchClip[] = [
+    { duration: 10, path: "/a.mp4" },
+    { duration: 12, path: "/b.mp4" },
+  ];
+  const base = {
+    cardPaths: new Map<number, string>(),
+    concatListPath: "/list.txt",
+    font: "Helvetica",
+    musicGainDb: -12,
+    outputPath: "/out.mp4",
+    xfade: 0,
+  };
+
+  it("stays lossless, dropping the stream rather than re-encoding", () => {
+    // A model that bakes a full score into every clip produces N unrelated
+    // beds across a cut. Dropping them must not also cost a re-encode.
+    const plan = buildStitchPlan(muteClipsFixture, {
+      ...base,
+      muteClips: true,
+    });
+    const [step] = plan.steps;
+    expect(step?.args).toContain("-an");
+    expect(step?.args).toContain("copy");
+    expect(step?.description).toMatch(/clip audio dropped/u);
+  });
+
+  it("substitutes silence when a re-encode is happening anyway", () => {
+    const plan = buildStitchPlan(clips, {
+      ...base,
+      musicPath: "/score.mp3",
+      muteClips: true,
+    });
+    const args = plan.steps[0]?.args.join(" ") ?? "";
+    // The silent-source path that already existed for muted clips, reused.
+    expect(args).toContain("anullsrc");
+    expect(args).toContain("/score.mp3");
+  });
+
+  it("leaves clip audio alone by default", () => {
+    const plan = buildStitchPlan(muteClipsFixture, base);
+    expect(plan.steps[0]?.args).not.toContain("-an");
+  });
+});

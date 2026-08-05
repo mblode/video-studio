@@ -33,6 +33,17 @@ export interface StitchOptions {
   outputPath: string;
   /** Gain applied to the clips' own audio (SFX), in dB. */
   sfxGainDb?: number;
+  /**
+   * Drop the clips' own audio entirely.
+   *
+   * For a Seedance cut the clip track is SFX and ambience, and you almost
+   * always want it. For a MiniMax H3 cut it is a complete mix — score,
+   * dialogue, and foley — generated independently per clip, so N clips means N
+   * unrelated music beds colliding at every cut. Muting hands the soundtrack
+   * back to `vs score` / `vs narrate`, which lay ONE continuous bed across the
+   * whole timeline.
+   */
+  muteClips?: boolean;
   /** Apply a subtle filmic grade (contrast + saturation lift). */
   grade?: boolean;
   xfade: number;
@@ -208,6 +219,37 @@ function audioMixArgs(
 }
 
 /**
+ * The `-c copy` path: no filtergraph, no re-encode, no generation loss. Taken
+ * whenever nothing needs mixing, which on a model that bakes its own full mix
+ * into every clip is the NORMAL path rather than the empty-sounding one.
+ */
+function losslessPlan(clips: StitchClip[], options: StitchOptions): StitchPlan {
+  return {
+    concatList: concatListContent(clips),
+    steps: [
+      {
+        args: [
+          "-y",
+          "-f",
+          "concat",
+          "-safe",
+          "0",
+          "-i",
+          options.concatListPath,
+          "-c",
+          "copy",
+          // Dropping a stream is still a stream copy, so muting does not cost
+          // the lossless path.
+          ...(options.muteClips ? ["-an"] : []),
+          options.outputPath,
+        ],
+        description: `lossless concat of ${clips.length} clips${options.muteClips ? " (clip audio dropped)" : ""}`,
+      },
+    ],
+  };
+}
+
+/**
  * Build the executable plan. Two paths:
  * - xfade === 0 and no music/narration: lossless concat (-c copy).
  * - otherwise: single re-encode pass (concat or xfade graph) + audio mix.
@@ -220,7 +262,14 @@ export function buildStitchPlan(
     throw new Error("nothing to stitch — no downloaded clips found");
   }
 
-  const junctionFades = clips
+  // Muting is expressed as "this clip has no audio", which the input builder
+  // already handles by substituting a silent source. Reusing that path keeps
+  // one description of what a silent clip means instead of two.
+  const sourceClips = options.muteClips
+    ? clips.map((clip) => ({ ...clip, hasAudio: false }))
+    : clips;
+
+  const junctionFades = sourceClips
     .slice(1)
     .map((clip) => clip.transition ?? options.xfade);
   const anyFade = junctionFades.some((f) => f > 0);
@@ -228,26 +277,7 @@ export function buildStitchPlan(
     !anyFade && !options.musicPath && !options.narrationPath && !options.grade;
 
   if (lossless) {
-    return {
-      concatList: concatListContent(clips),
-      steps: [
-        {
-          args: [
-            "-y",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            options.concatListPath,
-            "-c",
-            "copy",
-            options.outputPath,
-          ],
-          description: `lossless concat of ${clips.length} clips`,
-        },
-      ],
-    };
+    return losslessPlan(sourceClips, options);
   }
 
   const {
@@ -255,22 +285,22 @@ export function buildStitchPlan(
     audioInputs,
     inputCount,
     videoInputs,
-  } = clipInputArgs(clips);
+  } = clipInputArgs(sourceClips);
   const filterParts: string[] = [];
   let videoLabel: string;
   let audioLabel: string;
 
-  if (anyFade && clips.length > 1) {
+  if (anyFade && sourceClips.length > 1) {
     const offsets = computeXfadeOffsets(
-      clips.map((clip) => clip.duration),
+      sourceClips.map((clip) => clip.duration),
       junctionFades
     );
     let v = `[${videoInputs[0]}:v]`;
     let a = `[${audioInputs[0]}:a]`;
-    for (let i = 1; i < clips.length; i += 1) {
+    for (let i = 1; i < sourceClips.length; i += 1) {
       const fade = Math.max(0.05, junctionFades[i - 1] ?? 0.05);
-      const vOut = i === clips.length - 1 ? "[vx]" : `[vx${i}]`;
-      const aOut = i === clips.length - 1 ? "[ax]" : `[ax${i}]`;
+      const vOut = i === sourceClips.length - 1 ? "[vx]" : `[vx${i}]`;
+      const aOut = i === sourceClips.length - 1 ? "[ax]" : `[ax${i}]`;
       filterParts.push(
         `${v}[${videoInputs[i]}:v]xfade=transition=fade:duration=${fade}:offset=${(offsets[i - 1] ?? 0).toFixed(3)}${vOut}`
       );
@@ -281,16 +311,18 @@ export function buildStitchPlan(
     videoLabel = "[vx]";
     audioLabel = "[ax]";
   } else {
-    const segments = clips
+    const segments = sourceClips
       .map((_, i) => `[${videoInputs[i]}:v][${audioInputs[i]}:a]`)
       .join("");
-    filterParts.push(`${segments}concat=n=${clips.length}:v=1:a=1[vx][ax]`);
+    filterParts.push(
+      `${segments}concat=n=${sourceClips.length}:v=1:a=1[vx][ax]`
+    );
     videoLabel = "[vx]";
     audioLabel = "[ax]";
   }
 
   const totalDuration =
-    clips.reduce((sum, clip) => sum + clip.duration, 0) -
+    sourceClips.reduce((sum, clip) => sum + clip.duration, 0) -
     junctionFades.reduce((sum, f) => sum + f, 0);
   if (options.grade) {
     filterParts.push(`${videoLabel}eq=contrast=1.04:saturation=1.1[vg]`);
@@ -329,7 +361,7 @@ export function buildStitchPlan(
           "256k",
           options.outputPath,
         ],
-        description: `re-encode stitch of ${clips.length} clips${anyFade ? " with per-junction transitions" : ""}${options.musicPath ? " + music bed" : ""}${options.narrationPath ? " + narration" : ""}${options.grade ? " + grade" : ""}`,
+        description: `re-encode stitch of ${sourceClips.length} clips${anyFade ? " with per-junction transitions" : ""}${options.musicPath ? " + music bed" : ""}${options.narrationPath ? " + narration" : ""}${options.grade ? " + grade" : ""}`,
       },
     ],
   };

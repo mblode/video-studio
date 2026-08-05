@@ -10,6 +10,13 @@ export const DEFAULT_GEMINI_BASE_URL =
   "https://generativelanguage.googleapis.com/v1beta";
 
 /**
+ * MiniMax global region. The mainland-China host is a different domain, and a
+ * key issued for one region fails against the other as `1004 not authorized`,
+ * which reads like a bad key rather than a wrong host.
+ */
+export const DEFAULT_MINIMAX_BASE_URL = "https://api.minimax.io";
+
+/**
  * Nearest `.env`, searching from `from` up to the filesystem root. A globally
  * installed `vs` is normally run from a film directory or anywhere inside the
  * repo, not from the directory holding the key, so a cwd-only lookup silently
@@ -51,6 +58,21 @@ export function requireApiKey(): string {
 
 export function baseUrl(): string {
   return process.env.ARK_BASE_URL ?? DEFAULT_BASE_URL;
+}
+
+/** MiniMax key — only needed for a film whose `film.model` resolves to MiniMax. */
+export function requireMinimaxApiKey(): string {
+  const key = process.env.MINIMAX_API_KEY;
+  if (!key) {
+    throw new VsError("missing_credential", "MINIMAX_API_KEY is not set", {
+      hint: "add `MINIMAX_API_KEY=...` to a .env file (see .env.example), or set film.model to a Seedance id to use BytePlus instead",
+    });
+  }
+  return key;
+}
+
+export function minimaxBaseUrl(): string {
+  return process.env.MINIMAX_BASE_URL ?? DEFAULT_MINIMAX_BASE_URL;
 }
 
 /** Google Gemini key — only needed to generate stills with Nano Banana (gemini-* models). */

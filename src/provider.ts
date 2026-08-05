@@ -2,16 +2,33 @@ import pLimit from "p-limit";
 import type { LimitFunction } from "p-limit";
 
 import type { PollOptions } from "./ark.js";
-import { modelRateLimits, normalizeModelId } from "./models.js";
+import {
+  DEFAULT_VIDEO_MODEL,
+  lookupModel,
+  modelRateLimits,
+  normalizeModelId,
+} from "./models.js";
+import type { ModelCapabilities } from "./models.js";
+import { createArk } from "./providers/ark.js";
+import { SPEC_VERSION } from "./spec/video-model.js";
+import type {
+  VideoModelV1,
+  VideoModelV1CallOptions,
+} from "./spec/video-model.js";
 import type { ArkTask, CreateTaskRequest, Resolution } from "./types.js";
 
 /**
  * The port between the commands and whatever actually generates video.
  *
- * `ArkClient` already satisfies this structurally, so no adapter exists and
- * none should: the port is the three methods the commands call, named exactly
- * as the client already names them. Its job is to let a test, `vs doctor`, or
- * a second provider stand in for a paid API without any command knowing.
+ * This used to be a hypothetical seam: `ArkClient` satisfied it structurally,
+ * nothing else implemented it, and the commands typed themselves against the
+ * concrete client anyway. MiniMax H3 is the second adapter, which is what makes
+ * the seam real — one adapter is a guess about where variation will appear,
+ * two is a measurement of where it did.
+ *
+ * The commands depend on this interface and never on a client class. What each
+ * one has to know is the four methods below; what none of them may learn is
+ * which vendor is behind it, what its wire body looks like, or how it bills.
  *
  * Stills are deliberately not part of this port. They already have two
  * backends (Ark Seedream and Gemini Nano Banana) routed by model id in
@@ -89,6 +106,8 @@ export interface MockProviderOptions {
   failTasks?: readonly string[];
   /** Billed tokens reported in `usage.completion_tokens`. */
   completionTokens?: number;
+  /** Model the mock claims to be, for capability-dependent assertions. */
+  modelId?: string;
 }
 
 /**
@@ -100,22 +119,42 @@ export interface MockProviderOptions {
  * running before it succeeds (so the poll loop is exercised, not skipped), and
  * a failed task carries an `error`, not a video url.
  */
-export class MockVideoProvider implements VideoProvider {
-  /** Every payload submitted, in order. Assert against this in tests. */
+export class MockVideoProvider implements VideoModelV1 {
+  readonly specificationVersion = SPEC_VERSION;
+  readonly provider = "ark" as const;
+  readonly modelId: string;
+  readonly capabilities: ModelCapabilities;
+
+  /** Every wire body submitted, in order. Assert against this in tests. */
   readonly requests: CreateTaskRequest[] = [];
 
   private readonly options: Required<MockProviderOptions>;
   private readonly reads = new Map<string, number>();
+  private readonly translate: VideoModelV1;
 
   constructor(options: MockProviderOptions = {}) {
     this.options = {
       completionTokens: options.completionTokens ?? 108_000,
       failTasks: options.failTasks ?? [],
+      modelId: options.modelId ?? DEFAULT_VIDEO_MODEL,
       pollsUntilDone: options.pollsUntilDone ?? 1,
     };
+    this.modelId = this.options.modelId;
+    this.capabilities = lookupModel(this.modelId);
+    // The REAL wire translation, so a test asserting on `requests` is asserting
+    // on what would genuinely be submitted. Only the network is fake.
+    this.translate = createArk({
+      apiKey: "mock",
+      baseUrl: "https://mock.invalid",
+    }).videoModel(this.modelId);
   }
 
-  createTask(request: CreateTaskRequest): Promise<ArkTask> {
+  toRequestBody(options: VideoModelV1CallOptions): CreateTaskRequest {
+    return this.translate.toRequestBody(options) as CreateTaskRequest;
+  }
+
+  createTask(options: VideoModelV1CallOptions): Promise<ArkTask> {
+    const request = this.toRequestBody(options);
     this.requests.push(request);
     const id = `task-${this.requests.length}`;
     this.reads.set(id, 0);

@@ -5,13 +5,14 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildTaskPayload,
+  buildCallOptions,
   effectiveShotParams,
   hashPayload,
   referenceCountsByType,
   referenceOrdinals,
   renderPayload,
 } from "./payload.js";
+import { createArk } from "./providers/ark.js";
 import { DEFAULT_RESOLUTION } from "./types.js";
 import type {
   CreateTaskRequest,
@@ -19,6 +20,33 @@ import type {
   ShotReference,
   ShotsFile,
 } from "./types.js";
+
+/**
+ * The composition every command performs: resolve a shot into neutral call
+ * options, then let the model that will actually submit it produce the wire
+ * body. These assertions are on the BYTES, which is the point — the Ark body
+ * must be byte-identical to what this CLI sent before the provider spec
+ * existed, because `payloadHash` in every existing film's manifest was
+ * computed over it.
+ */
+const ark = createArk({
+  apiKey: "test-key",
+  baseUrl: "https://example.invalid",
+});
+
+async function buildTaskPayload(
+  shot: Shot,
+  filmConfig: ShotsFile["film"],
+  shotsDir: string,
+  options?: Parameters<typeof buildCallOptions>[3]
+): Promise<CreateTaskRequest> {
+  const { model } = effectiveShotParams(shot, filmConfig, options?.overrides);
+  return ark
+    .videoModel(model)
+    .toRequestBody(
+      await buildCallOptions(shot, filmConfig, shotsDir, options)
+    ) as CreateTaskRequest;
+}
 
 const film: ShotsFile["film"] = {
   defaults: {
@@ -397,5 +425,37 @@ describe("referenceOrdinals is positional", () => {
       url: "./a.png",
     };
     expect(referenceOrdinals([r, r])).toEqual([1, 2]);
+  });
+});
+
+describe("payloadHash is an audit record, not a cache key", () => {
+  // A manifest records paid generations. Every existing film's `payloadHash`
+  // was computed over the Ark body this CLI produced BEFORE the provider spec
+  // existed, so routing that body through `buildCallOptions` +
+  // `ArkVideoModel.toRequestBody` has to reproduce it byte for byte. If this
+  // test ever fails, the fix is the code, not the constant.
+  it("still hashes the exact bytes it always has", async () => {
+    const shot: Shot = {
+      duration: 8,
+      id: "s01",
+      prompt: "a lighthouse in a storm",
+      seed: 42,
+    };
+    const payload = await buildTaskPayload(shot, film, "/tmp");
+    expect(payload).toEqual({
+      content: [{ text: "a lighthouse in a storm", type: "text" }],
+      duration: 8,
+      generate_audio: true,
+      model: "dreamina-seedance-2-0-260128",
+      ratio: "16:9",
+      seed: 42,
+      watermark: false,
+    });
+    // Derived from the PRE-SPEC algorithm, not copied from current output:
+    //   sha256(JSON.stringify({...body, content: body.content}))
+    // over the body above. That is what shipped, so that is the target.
+    expect(hashPayload(payload)).toBe(
+      "937b8a7e85a2d725a06652e15d5775938667ee87cca29f343df2c2ee7b930380"
+    );
   });
 });
