@@ -656,39 +656,40 @@ describe("loadJson failures", () => {
 });
 
 describe("lintStillsFile", () => {
-  it("warns on a missing seed and a bloated prompt", async () => {
+  it("warns on a bloated prompt but no longer demands a seed", async () => {
+    // The seed advice went with Seedream: Nano Banana rolls its own, so telling
+    // an author to set one was pointing at a field the model discards.
     const { lintStillsFile } = await import("./shots.js");
     const warnings = lintStillsFile({
       stills: [
-        { id: "seeded", prompt: "one clean composition", seed: 1 },
         { id: "unseeded", prompt: "one clean composition" },
         {
           id: "bloated",
           prompt: Array.from({ length: 220 }, () => "word").join(" "),
-          seed: 2,
         },
       ],
     });
-    expect(warnings.filter((w) => w.includes("no seed"))).toHaveLength(1);
+    expect(warnings.filter((w) => w.includes("no seed"))).toHaveLength(0);
     const long = warnings.find((w) => w.includes("220 words"));
     expect(long?.startsWith("bloated:")).toBe(true);
   });
 
-  it("warns that a gemini model ignores a pixel size", async () => {
+  it("warns that a pixel size is ignored, whatever the model", async () => {
+    // Stills run on Nano Banana, which takes a ratio rather than pixels. The
+    // warning used to be conditional because Seedream honoured `size`; that
+    // backend is gone, so a `size` anywhere is now dead config.
     const { lintStillsFile } = await import("./shots.js");
-    const gemini = lintStillsFile({
+    const warnings = lintStillsFile({
       model: "gemini-3-pro-image",
-      stills: [{ id: "a", prompt: "p", seed: 1, size: "2560x1440" }],
+      stills: [{ id: "a", prompt: "p", size: "2560x1440" }],
     });
+    expect(warnings.some((w) => w.includes("ignored"))).toBe(true);
     expect(
-      gemini.some((w) => w.includes("ignored by gemini-3-pro-image"))
-    ).toBe(true);
-    // Seedream does honour `size`, so the same file lints clean there.
-    const seedream = lintStillsFile({
-      model: "seedream-5-0-260128",
-      stills: [{ id: "a", prompt: "p", seed: 1, size: "2560x1440" }],
-    });
-    expect(seedream).toEqual([]);
+      lintStillsFile({
+        model: "gemini-3-pro-image",
+        stills: [{ id: "a", prompt: "p", ratio: "1:1" }],
+      })
+    ).toEqual([]);
   });
 
   it("warns only about local references that are not on disk", async () => {

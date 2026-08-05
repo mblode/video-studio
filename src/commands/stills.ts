@@ -6,17 +6,19 @@ import { generateImage } from "ai";
 import pLimit from "p-limit";
 
 import { formatError, VsError } from "../errors.js";
-import {
-  isGeminiModel,
-  resolveImageModel,
-  seedreamProviderOptions,
-} from "../images.js";
+import { GEMINI_PRO_IMAGE_MODEL, resolveImageModel } from "../images.js";
 import { safeJoin } from "../paths.js";
 import type { Still, StillsFile } from "../types.js";
 import { resolveStills } from "./context.js";
 import { emit, fail, heading, isVerbose, line, note, ok } from "./output.js";
 
-export const DEFAULT_IMAGE_MODEL = "seedream-5-0-260128";
+/**
+ * Nano Banana Pro. Stills run on Google through the AI SDK; the older Seedream
+ * default is gone with the hand-rolled Ark image client that served it. To use
+ * Seedream again, add `@ai-sdk/fal` and name a `fal-ai/bytedance/seedream/*`
+ * model (see src/images.ts).
+ */
+export const DEFAULT_IMAGE_MODEL = GEMINI_PRO_IMAGE_MODEL;
 
 export interface StillsOptions {
   concurrency: number;
@@ -89,7 +91,6 @@ function previewCall(
     ...(ratio ? { aspectRatio: ratio } : {}),
     ...(still.seed === undefined ? {} : { seed: still.seed }),
     ...(still.size === undefined ? {} : { size: still.size }),
-    ...(isGeminiModel(model) ? {} : seedreamProviderOptions()),
   };
 }
 
@@ -118,7 +119,6 @@ export async function runStills(
   });
   const stills = selectStills(file, options.still);
   const model = file.model ?? DEFAULT_IMAGE_MODEL;
-  const gemini = isGeminiModel(model);
 
   if (options.dryRun) {
     const payloads = stills.map((still) => ({
@@ -135,15 +135,11 @@ export async function runStills(
     return;
   }
 
-  // Nano Banana ignores Seedream's pixel `size` and image `seed`; flag it once
-  // so a film carried over from Seedream doesn't silently drop those fields.
-  if (
-    gemini &&
-    stills.some((s) => s.size !== undefined || s.seed !== undefined)
-  ) {
-    note("Nano Banana / Gemini ignores per-still seed and size");
+  // Nano Banana takes a ratio, not pixels, and rolls its own seed. Flag it once
+  // so a stills file carried over from Seedream does not silently drop them.
+  if (stills.some((s) => s.size !== undefined || s.seed !== undefined)) {
+    note("Nano Banana ignores per-still seed and size; use `ratio` instead");
   }
-
   // ONE path. The model is an `ImageModelV4` whichever backend answers, so
   // nothing below this line knows or cares which one it is.
   const imageModel = resolveImageModel(model);
@@ -159,7 +155,6 @@ export async function runStills(
       ...(still.size === undefined
         ? {}
         : { size: still.size as `${number}x${number}` }),
-      ...(gemini ? {} : { providerOptions: seedreamProviderOptions() }),
     });
     await writeFile(outputPath, image.uint8Array);
   }

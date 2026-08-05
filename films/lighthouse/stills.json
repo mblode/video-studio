@@ -1,88 +1,76 @@
 {
-  "model": "seedream-5-0-260128",
+  "model": "gemini-3-pro-image",
   "outputDir": "./stills-v2",
   "ratio": "1:1",
   "stills": [
     {
       "id": "s01-last-arrival",
       "prompt": "Photorealistic expressionist maritime black-and-white keyframe, exact 1.10:1 almost-square composition, orthochromatic tonal response, pale skin, chalky sky, wool and wet rock nearly black, hard practical light, silver halation, coarse 35mm grain, slight gate weave. Literal opening composition: remote white stone lighthouse rises vertically through pearl-grey dusk, lamp room dark, cottage compressed below, wet path entering at bottom; THE RELIEF is small on the path in a pale slick oilskin carrying a brown tool roll and distinct compact dark motor case. Subtitle-free, no lettering, logo or watermark.",
-      "size": "2200x2000",
-      "seed": 8201
+      "ratio": "1:1"
     },
     {
       "id": "s02-refusal",
       "prompt": "Photorealistic expressionist maritime black-and-white keyframe, exact 1.10:1 almost-square composition, orthochromatic tonal response, hard practical light, crushed shadows, silver halation, coarse 35mm grain. Literal opening composition: cramped lighthouse entrance divided vertically by an open iron door; THE KEEPER, lean late-sixties man with grey stubble, near-black wool coat and dark scarf, stands in white interior light; THE RELIEF, early-thirties woman with cropped dark curls, pale slick oilskin, black sweater and brown tool roll, stands in rain holding a compact dark motor case. Subtitle-free, no lettering, logo or watermark.",
-      "size": "2200x2000",
-      "seed": 8202
+      "ratio": "1:1"
     },
     {
       "id": "s03-worn-link-privacy-v2",
       "prompt": "Use the input image only to preserve the keepers' ages, hair silhouettes and outerwear; change their pose and setting completely. Photorealistic expressionist maritime black-and-white keyframe, exact 1.10:1 almost-square composition, absolutely monochrome with zero colour tint, hard overhead practical, deep blacks, silver halation, coarse 35mm grain. Literal opening composition: cramped machinery room, dominant tall guarded weight chain divides THE KEEPER in near-black wool from THE RELIEF in pale slick oilskin; both turn toward the chain in three-quarter rear view with faces hidden in hard shadow, and she grips a compact blank-faced grey vibration meter. Iron-and-steel clockwork looms vertically and every service key remains outside the frame. Visibly fictional figures, subtitle-free, no lettering, logo or watermark.",
       "references": ["./stills-v2/s02-refusal.png"],
-      "size": "2200x2000",
-      "seed": 8203
+      "ratio": "1:1"
     },
     {
       "id": "s04-boat-approaches",
       "prompt": "Use the input image only to preserve the exact faces, hair, ages and outerwear of both keepers; change their pose and setting completely. Photorealistic expressionist maritime black-and-white keyframe, exact 1.10:1 almost-square composition, orthochromatic tonal response, chalk-white rain and deep charcoal sea, hard practical light, silver halation, coarse 35mm grain. Literal opening composition: tiny lighthouse radio room, high sea window above both keepers, old radio and blank barometer below, storm fog swallowing the horizon; through wet glass a small anonymous work boat still makes a steady wake between black open water and a pale reef line. Keep it subtitle-free and free of flags, readable text, lettering, logos and watermarks.",
       "references": ["./stills-v2/s02-refusal.png"],
-      "size": "2200x2000",
-      "seed": 8204
+      "ratio": "1:1"
     },
     {
       "id": "s05-pride-breaks-drive-privacy-v3",
       "prompt": "Use the input image only to preserve the keepers' ages, hair silhouettes and outerwear; change their pose and setting completely. Photorealistic expressionist maritime black-and-white keyframe, exact 1.10:1 almost-square composition, absolutely monochrome, hard ambient storm light, crushed shadows, silver halation, coarse 35mm grain, slight gate weave. Literal opening composition: dark lighthouse lamp room with the entire Fresnel lamp completely unlit, cold and black; THE KEEPER fills the foreground in three-quarter rear view with one hand at the ignition and the dark iron service key ready; THE RELIEF stands farther back in rear silhouette behind the vertical rails, wet gallery glass and storm cloud beyond. Both faces fully hidden. Subtitle-free, no lettering, glow, beam, logo or watermark.",
       "references": ["./stills-v2/s02-refusal.png"],
-      "size": "2200x2000",
-      "seed": 8205
+      "ratio": "1:1"
     },
     {
       "id": "s06-reef-in-dark",
       "prompt": "Photorealistic expressionist maritime black-and-white keyframe, exact 1.10:1 almost-square composition, absolutely monochrome with zero colour tint, orthochromatic storm night, diffuse overhead storm exposure, white foam and rain against crushed black water, silver halation, coarse 35mm grain. Literal opening composition: sea-level geography forms a clear triangle, small anonymous working boat below left with propeller wash visible, breaking white reef above right, matte black open water between them, empty black rain sky filling the upper half. The anonymous skipper is only a silhouette behind wet glass. No flag, boat name, lettering, logo or watermark.",
-      "size": "2200x2000",
-      "seed": 8306
+      "ratio": "1:1"
     },
     {
       "id": "s07-hand-crank-fails-privacy-v2",
       "prompt": "Use the input image only to preserve the keepers' ages, hair silhouettes and outerwear; change their pose and setting completely. Photorealistic expressionist maritime black-and-white keyframe, exact 1.10:1 almost-square composition, absolutely monochrome, low hard practical, deep crushed shadows, silver halation, coarse 35mm grain. Literal opening composition: low cramped machinery-room frame, THE KEEPER bends over the manual hand-crank in three-quarter rear view with dark iron service key in his right hand and left palm still uninjured; THE RELIEF leans close behind ready to help, her face obscured by wet curls. Broken guarded weight chain hangs overhead, flywheel stopped, wet stone and steel nearly black. Mechanism and key sharply legible; subtitle-free, no lettering, logo, gore or watermark.",
       "references": ["./stills-v2/s02-refusal.png"],
-      "size": "2200x2000",
-      "seed": 8207
+      "ratio": "1:1"
     },
     {
       "id": "s08-motor-needs-key-privacy-v3",
       "prompt": "Use the input image only to preserve the keepers' ages, hair silhouettes and outerwear; change their pose and setting completely. Photorealistic expressionist maritime black-and-white keyframe, exact 1.10:1 almost-square composition, absolutely monochrome, hard stairwell practical, crushed shadows, silver halation, coarse 35mm grain. Literal opening composition: seen from behind, THE RELIEF in pale slick oilskin hauls the same compact dark motor case upward through a tight iron spiral stair; THE KEEPER is a rear silhouette on the upper landing beside the stopped drive, his large white-bandaged left hand on the rail and a heavy dark iron service key clearly isolated against pale wall below it. No face is visible; vertical rails press both figures into the frame. Subtitle-free, no lettering, logo or watermark.",
       "references": ["./stills-v2/s02-refusal.png"],
-      "size": "2200x2000",
-      "seed": 8208
+      "ratio": "1:1"
     },
     {
       "id": "s09-trust-turns-light-privacy-v2",
       "prompt": "Use the input image only to preserve the keepers' outerwear; change their pose and setting completely. Photorealistic expressionist maritime black-and-white keyframe, exact 1.10:1 almost-square composition, absolutely monochrome, one hard practical, crushed machinery shadows, silver halation, coarse 35mm grain. Literal opening composition: anonymous waist-and-hands close shot over the exposed service shaft with both faces outside frame; at left THE KEEPER's large white-bandaged hand and dark sleeve deliberately offer the heavy dark iron service key; at right THE RELIEF's pale oilskin sleeve and empty open palm receive it. The key is the dominant sharp subject, with compact emergency motor mounted beside the flywheel and guarded broken chain behind. Subtitle-free, no lettering, logo or watermark.",
       "references": ["./stills-v2/s02-refusal.png"],
-      "size": "2200x2000",
-      "seed": 8209
+      "ratio": "1:1"
     },
     {
       "id": "s10-safe-water",
       "prompt": "Use the input image only to preserve the exact boat, reef and open-water geography; change the moment from danger to rescue. Photorealistic expressionist maritime black-and-white keyframe, exact 1.10:1 almost-square composition, absolutely monochrome with zero colour tint, orthochromatic storm night, white reef against crushed black sea, silver halation, coarse 35mm grain. Literal opening composition: the same working boat remains below left and the same reef above right; one single lighthouse now stands visibly on the far upper-left cliff edge, and its lantern is the unmistakable visible origin of one pale diagonal beam that reaches the boat and reveals black open water to its left. Boat wake remains strong. No extra tower, flag, boat name, lettering, logo or watermark.",
       "references": ["./stills-v2/s06-reef-in-dark.png"],
-      "size": "2200x2000",
-      "seed": 8210
+      "ratio": "1:1"
     },
     {
       "id": "s11-duty-handed-over-privacy-v2",
       "prompt": "Use the input image only to preserve the keepers' outerwear; change their pose and setting completely. Photorealistic expressionist maritime black-and-white keyframe, exact 1.10:1 almost-square composition, absolutely monochrome silver dawn, hard window light, long crushed shadows, silver halation, coarse 35mm grain. Literal opening composition: low close view of a worn tower table, both people visible only from shoulders down with faces outside frame; two plain enamel mugs touch beside a blank closed logbook, THE KEEPER's wrapped left hand rests beside the large dark iron service key, and THE RELIEF's pale oilskin sleeve rests opposite; small dark suitcase near the open door. Subtitle-free, no readable text, logo or watermark.",
       "references": ["./stills-v2/s02-refusal.png"],
-      "size": "2200x2000",
-      "seed": 8211
+      "ratio": "1:1"
     },
     {
       "id": "s12-next-watch-privacy-v2",
       "prompt": "Use the input image only to preserve THE RELIEF's age, hair silhouette and outerwear; change her pose and setting completely and omit the keeper. Photorealistic expressionist maritime black-and-white keyframe, exact 1.10:1 almost-square composition, absolutely monochrome ink dusk, one hard side work lamp, deep blacks, silver halation, coarse 35mm grain, slight gate weave. Literal opening composition entirely inside the windowless machinery room: repaired iron clockwork with one clean chain link dominant in foreground, THE RELIEF alone beyond in pale slick oilskin and black sweater, turned away in three-quarter rear silhouette as she studies the drive; large dark iron service key and compact blank-faced grey vibration meter share a narrow stone ledge. Her face is hidden by wet curls and shadow. Subtitle-free, no lettering, logo or watermark.",
       "references": ["./stills-v2/s02-refusal.png"],
-      "size": "2200x2000",
-      "seed": 8212
+      "ratio": "1:1"
     }
   ]
 }

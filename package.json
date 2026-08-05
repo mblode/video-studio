@@ -55,7 +55,6 @@
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.34",
-    "@ai-sdk/openai-compatible": "^3.0.23",
     "@clack/prompts": "^1.7.0",
     "ai": "^7.0.52",
     "commander": "^15.0.0",

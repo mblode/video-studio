@@ -5,7 +5,6 @@ import { dirname, resolve } from "node:path";
 import { z } from "zod";
 
 import { fileReadError, VsError } from "./errors.js";
-import { isGeminiModel } from "./images.js";
 import {
   DEFAULT_VIDEO_MODEL,
   lookupModel,
@@ -526,7 +525,6 @@ export function lintStillsFile(
   options: { stillsDir?: string } = {}
 ): string[] {
   const warnings: string[] = [];
-  const gemini = isGeminiModel(file.model ?? "");
   const seen = new Set<string>();
   for (const still of file.stills) {
     // Unreachable via loadStillsFile (the schema rejects duplicates); reachable
@@ -537,20 +535,15 @@ export function lintStillsFile(
       );
     }
     seen.add(still.id);
-    if (still.seed === undefined) {
-      warnings.push(
-        `${still.id}: no seed — set one so a re-run reproduces this keyframe instead of rolling a new face and composition`
-      );
-    }
     const words = wordCount(still.prompt);
     if (words > MAX_STILL_PROMPT_WORDS) {
       warnings.push(
         `${still.id}: prompt is ${words} words — an image prompt dilutes past ~${MAX_STILL_PROMPT_WORDS}; describe one composition and move the shared look into the shots file's film.promptPreamble`
       );
     }
-    if (gemini && still.size !== undefined) {
+    if (still.size !== undefined) {
       warnings.push(
-        `${still.id}: size "${still.size}" is ignored by ${file.model} — Nano Banana takes an aspect ratio, not pixels; set \`ratio\` instead`
+        `${still.id}: size "${still.size}" is ignored — Nano Banana takes an aspect ratio, not pixels; set \`ratio\` instead`
       );
     }
     const { stillsDir } = options;

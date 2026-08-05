@@ -84,9 +84,7 @@ export { GeminiApiError, GeminiClient } from "./gemini.js";
 export {
   DEFAULT_GEMINI_IMAGE_MODEL,
   GEMINI_PRO_IMAGE_MODEL,
-  isGeminiModel,
   resolveImageModel,
-  seedreamProviderOptions,
 } from "./images.js";
 export {
   isComplete,
