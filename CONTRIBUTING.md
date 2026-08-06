@@ -70,7 +70,7 @@ purpose, so it will not reformat anything you did not touch.
 - ESM only. Relative imports carry a `.js` extension or the build fails.
 
 `AGENTS.md` carries the gotchas that are not visible from the code, and the
-skills under `.claude/skills/` carry the domain knowledge about prompting the
+skills under `skills/` carry the domain knowledge about prompting the
 models well. Both are worth a skim.
 
 ## Code of conduct

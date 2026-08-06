@@ -18,10 +18,10 @@ const DOC_FILES = [
   "README.md",
   "CONTRIBUTING.md",
   "films/lighthouse/README.md",
-  ...readdirSync(join(repoRoot, ".claude", "skills"), { recursive: true })
+  ...readdirSync(join(repoRoot, "skills"), { recursive: true })
     .map(String)
     .filter((entry) => entry.endsWith(".md"))
-    .map((entry) => join(".claude", "skills", entry)),
+    .map((entry) => join("skills", entry)),
 ].toSorted();
 
 interface Snippet {

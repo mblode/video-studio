@@ -80,9 +80,13 @@ Generated clips live at `output/clips/<shot>/vNNN.mp4` and finished cuts at `out
 
 ## Agent skills
 
+The four skills that drive this pipeline live in [`skills/`](skills/). Install them globally:
+
 ```bash
-npx skills add mblode/video-studio
+npx skills add mblode/video-studio -g --agent codex claude-code -y
 ```
+
+They also load straight from a clone, with no install step: `.claude/skills` and `.agents/skills` are symlinks into `skills/`.
 
 Works with Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, Goose, OpenCode, and Windsurf.
 

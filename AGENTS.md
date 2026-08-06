@@ -22,10 +22,10 @@ it, delete it.
 
 | Consult when | File |
 | --- | --- |
-| Writing or fixing a shot prompt, or touching the shots schema | `.claude/skills/seedance/` |
-| Writing a treatment, beat sheet, or shot list | `.claude/skills/storycraft/` |
-| Generating stills or keyframe boards | `.claude/skills/nano-banana-2/` |
-| Driving the CLI through a film, end to end | `.claude/skills/vs/` |
+| Writing or fixing a shot prompt, or touching the shots schema | `skills/seedance/` |
+| Writing a treatment, beat sheet, or shot list | `skills/storycraft/` |
+| Generating stills or keyframe boards | `skills/nano-banana-2/` |
+| Driving the CLI through a film, end to end | `skills/vs/` |
 | A worked, runnable example of every feature | `films/lighthouse/` |
 | Scope, non-goals, verification tiers | `CONTRIBUTING.md` |
 | Key handling, what lands in a manifest | `SECURITY.md` |
