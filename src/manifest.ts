@@ -11,10 +11,7 @@ import type {
   ManifestStatus,
 } from "./types.js";
 
-export function manifestPath(
-  shotsFilePath: string,
-  pass: Pass = "final"
-): string {
+function manifestPath(shotsFilePath: string, pass: Pass = "final"): string {
   return join(dirname(resolve(shotsFilePath)), `tasks${passSuffix(pass)}.json`);
 }
 
@@ -223,7 +220,13 @@ function updateRevisions(
     ? -1
     : versions.findLastIndex(
         (revision) =>
-          update.taskId === undefined || revision.taskId === update.taskId
+          update.taskId === undefined ||
+          revision.taskId === update.taskId ||
+          // A revision with no id yet is the pre-write `vs generate` lays down
+          // before it spends. The response carrying the real id belongs to that
+          // revision, not to a new one; without this it would push a duplicate
+          // of the same attempt and strand the selection on the older take.
+          revision.taskId === ""
       );
   if (revisionIndex < 0 && existing && versions.length === 0) {
     const revision = legacyRevision(existing);
@@ -356,4 +359,17 @@ export function isInFlight(entry: ManifestEntry | undefined): boolean {
       entry.status === "queued" ||
       entry.status === "running")
   );
+}
+
+/**
+ * A submit that was recorded but never got an id back: the process died, or the
+ * provider never answered, between writing this entry and reading the response.
+ *
+ * This is the one state the tool cannot resolve on its own. The provider either
+ * created a task or did not, and `isInFlight` cannot re-attach because there is
+ * no id to re-attach to. Resubmitting would pay twice whenever the task does
+ * exist, so `vs generate` refuses and hands it to the operator instead.
+ */
+export function isUnresolved(entry: ManifestEntry | undefined): boolean {
+  return entry?.status === "submitted" && entry.taskId === "";
 }

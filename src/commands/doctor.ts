@@ -1,10 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
+import type { ArkClient } from "../ark.js";
 import { baseUrl, loadEnv, minimaxBaseUrl } from "../env.js";
 import { formatError } from "../errors.js";
 import { assertBinary } from "../ffmpeg.js";
-import type { VideoProvider } from "../provider.js";
 import { TASK_STATUSES } from "../types.js";
 import { createArkClient, packageInfo } from "./context.js";
 import {
@@ -24,7 +24,7 @@ export interface DoctorOptions {
   ffmpeg?: boolean;
 }
 
-export type CheckStatus = "fail" | "ok" | "skip" | "warn";
+type CheckStatus = "fail" | "ok" | "skip" | "warn";
 
 export interface DoctorCheck {
   detail?: string;
@@ -67,7 +67,7 @@ export function validateTaskShape(task: unknown): string[] {
 }
 
 /** Lowest Node major the package claims to support (`engines.node`, e.g. ">=24"). */
-export function requiredNodeMajor(engines?: { node?: string }): number | null {
+function requiredNodeMajor(engines?: { node?: string }): number | null {
   const match = /(?<major>\d+)/u.exec(engines?.node ?? "");
   return match ? Number(match.groups?.major) : null;
 }
@@ -158,7 +158,8 @@ function keyChecks(): DoctorCheck[] {
           status: "ok",
         }
       : {
-          detail: "needed for gemini-* stills and `vs score`",
+          detail:
+            "needed for gemini-* stills, `vs score`, and `aisdk:google/*` video models",
           label: "GEMINI_API_KEY not set",
           status: "skip",
         },
@@ -213,9 +214,17 @@ async function cardChecks(): Promise<DoctorCheck[]> {
   return checks;
 }
 
+/**
+ * The probe reads ONE task by id, which needs no model and no film, so it is
+ * typed by the single method it calls rather than by a port. Video generation
+ * goes through `VideoModelV4` in src/spec; this is the raw status read that
+ * `vs doctor` uses to confirm the endpoint shape.
+ */
+type TaskReader = Pick<ArkClient, "getTask">;
+
 async function endpointCheck(
   taskId: string,
-  client?: VideoProvider
+  client?: TaskReader
 ): Promise<DoctorCheck> {
   if (!(process.env.ARK_API_KEY || client)) {
     return {
@@ -277,7 +286,7 @@ function print(check: DoctorCheck): void {
 export async function runDoctor(
   taskId: string | undefined,
   _options: DoctorOptions = {},
-  injected: { client?: VideoProvider } = {}
+  injected: { client?: TaskReader } = {}
 ): Promise<DoctorCheck[]> {
   const envPath = loadEnv();
   const checks: DoctorCheck[] = [

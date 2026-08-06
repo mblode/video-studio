@@ -5,12 +5,12 @@ import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { PollOptions } from "../ark.js";
 import { clipTokens } from "../cost.js";
 import { loadManifest } from "../manifest.js";
 import { lookupModel } from "../models.js";
+import type { PollOptions } from "../poll.js";
 import { createArk } from "../providers/ark.js";
-import type { VideoModelV1 } from "../spec/video-model.js";
+import type { VideoModelV4 } from "../spec/video-model.js";
 import { DEFAULT_RESOLUTION } from "../types.js";
 import type { ArkTask, CreateTaskRequest, ManifestEntry } from "../types.js";
 import type { GenerateOptions } from "./generate.js";
@@ -71,7 +71,7 @@ function lastPayload(): { cost?: RunCost } {
 
 const MODEL_ID = "dreamina-seedance-2-0-260128";
 /**
- * A `VideoModelV1` that spends nothing. The wire translation is the REAL Ark
+ * A `VideoModelV4` that spends nothing. The wire translation is the REAL Ark
  * one, so assertions about what was submitted stay assertions about what would
  * actually be submitted; only the network is faked.
  */
@@ -79,7 +79,7 @@ function fakeClient(
   failTaskIds: string[] = [],
   completionTokens?: number,
   modelId: string = MODEL_ID
-): VideoModelV1 {
+): VideoModelV4 {
   let n = 0;
   const fail = new Set(failTaskIds);
   const real = createArk({
@@ -88,11 +88,11 @@ function fakeClient(
   }).videoModel(modelId);
   return {
     capabilities: lookupModel(modelId),
-    createTask: vi.fn((): Promise<ArkTask> => {
+    doStart: vi.fn((): Promise<ArkTask> => {
       n += 1;
       return Promise.resolve({ id: `task-${n}`, status: "queued" });
     }),
-    getTask: vi.fn(),
+    doStatus: vi.fn(),
     modelId,
     pollTask: vi.fn(
       async (id: string, pollOpts: PollOptions): Promise<ArkTask> => {
@@ -120,9 +120,9 @@ function fakeClient(
       }
     ),
     provider: "ark",
-    specificationVersion: "v1",
+    specificationVersion: "v4",
     toRequestBody: real.toRequestBody.bind(real),
-  } as unknown as VideoModelV1;
+  } as unknown as VideoModelV4;
 }
 
 function opts(overrides?: Partial<GenerateOptions>): GenerateOptions {
@@ -212,7 +212,80 @@ describe("runGenerate", () => {
     expect(manifest.entries.a?.status).toBe("downloaded");
     expect(manifest.entries.b?.status).toBe("downloaded");
     expect(manifest.entries.a?.outputPath).toBe("output/clips/a/v001.mp4");
-    expect(client.createTask).toHaveBeenCalledTimes(2);
+    expect(client.doStart).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * The window between "the POST left" and "the id landed in the manifest" is
+   * the only place a paid task can be orphaned, because `isInFlight` has no id
+   * to re-attach to. These pin both halves of the guard.
+   */
+  it("records the attempt before it spends, so a dead submit leaves a trace", async () => {
+    const shotsPath = await scaffold([{ id: "a", prompt: "p" }]);
+    const client = fakeClient();
+    (client.doStart as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("socket hang up")
+    );
+
+    await runGenerate(shotsPath, opts(), { client });
+
+    const manifest = await loadManifest(shotsPath);
+    expect(manifest.entries.a).toMatchObject({
+      status: "submitted",
+      taskId: "",
+    });
+    // The payload hash is what identifies the orphan at the provider.
+    expect(manifest.entries.a?.payloadHash).toEqual(expect.any(String));
+  });
+
+  it("refuses to resubmit a shot whose task id was never returned", async () => {
+    const shotsPath = await scaffold([{ id: "a", prompt: "p" }], {
+      a: entry({ shotId: "a", status: "submitted", taskId: "" }),
+    });
+    const client = fakeClient();
+
+    await expect(
+      runGenerate(shotsPath, opts(), { client })
+    ).rejects.toMatchObject({ code: "task_uncertain" });
+    expect(client.doStart).not.toHaveBeenCalled();
+  });
+
+  it("submits again under --force, which is the operator saying they checked", async () => {
+    const shotsPath = await scaffold([{ id: "a", prompt: "p" }], {
+      a: entry({ shotId: "a", status: "submitted", taskId: "" }),
+    });
+    const client = fakeClient();
+
+    await runGenerate(shotsPath, opts({ force: true }), { client });
+
+    expect(client.doStart).toHaveBeenCalledTimes(1);
+    const manifest = await loadManifest(shotsPath);
+    expect(manifest.entries.a?.status).toBe("downloaded");
+  });
+
+  it("warns before --force pays twice, rather than waiving it silently", async () => {
+    // `--force` is habitually passed for its ordinary meaning (retake a
+    // finished shot). Waiving a possible double charge has to be visible.
+    const shotsPath = await scaffold([{ id: "a", prompt: "p" }], {
+      a: entry({ shotId: "a", status: "submitted", taskId: "" }),
+    });
+
+    await runGenerate(shotsPath, opts({ force: true }), {
+      client: fakeClient(),
+    });
+
+    expect(reported.lines.join("\n")).toContain("twice");
+  });
+
+  it("fills in the pre-written revision rather than duplicating it", async () => {
+    const shotsPath = await scaffold([{ id: "a", prompt: "p" }]);
+    const client = fakeClient();
+    await runGenerate(shotsPath, opts(), { client });
+
+    const manifest = await loadManifest(shotsPath);
+    expect(manifest.entries.a?.versions).toHaveLength(1);
+    expect(manifest.entries.a?.attempts).toBe(1);
+    expect(manifest.entries.a?.versions?.[0]?.taskId).toBe("task-1");
   });
 
   it("skips a shot already downloaded on disk", async () => {
@@ -237,7 +310,7 @@ describe("runGenerate", () => {
     await runGenerate(shotsPath, opts(), { client });
 
     // only b is submitted; a was skipped
-    expect(client.createTask).toHaveBeenCalledTimes(1);
+    expect(client.doStart).toHaveBeenCalledTimes(1);
     const manifest = await loadManifest(shotsPath);
     expect(manifest.entries.b?.status).toBe("downloaded");
   });
@@ -249,7 +322,7 @@ describe("runGenerate", () => {
     const client = fakeClient();
     await runGenerate(shotsPath, opts(), { client });
 
-    expect(client.createTask).not.toHaveBeenCalled();
+    expect(client.doStart).not.toHaveBeenCalled();
     expect(client.pollTask).toHaveBeenCalledWith(
       "task-live",
       expect.anything()
@@ -265,7 +338,7 @@ describe("runGenerate", () => {
     const client = fakeClient();
     await runGenerate(shotsPath, opts({ force: true }), { client });
 
-    expect(client.createTask).not.toHaveBeenCalled();
+    expect(client.doStart).not.toHaveBeenCalled();
     expect(client.pollTask).toHaveBeenCalledWith(
       "task-live",
       expect.anything()
@@ -285,7 +358,7 @@ describe("runGenerate", () => {
 
     expect((failure as Error & { code?: string }).code).toBe("not_interactive");
     expect((failure as Error & { hint?: string }).hint).toContain("--yes");
-    expect(client.createTask).not.toHaveBeenCalled();
+    expect(client.doStart).not.toHaveBeenCalled();
   });
 
   it("lists the valid ids when --shot names an unknown shot", async () => {
@@ -531,7 +604,7 @@ describe("runGenerate --max-cost", () => {
     expect(failure.code).toBe("cost_ceiling");
     expect(failure.message).toContain("--max-cost");
     expect(failure.hint).toContain("--max-cost");
-    expect(client.createTask).not.toHaveBeenCalled();
+    expect(client.doStart).not.toHaveBeenCalled();
   });
 
   /**
@@ -559,7 +632,7 @@ describe("runGenerate --max-cost", () => {
     expect(failure.hint).toContain("--yes --max-cost");
     // and the estimate for THIS run, so the ceiling is a number you can paste
     expect(failure.hint).toMatch(/estimated at \$\d+\.\d\d/u);
-    expect(client.createTask).not.toHaveBeenCalled();
+    expect(client.doStart).not.toHaveBeenCalled();
   });
 
   it("submits when the estimate is under the ceiling", async () => {
@@ -567,7 +640,7 @@ describe("runGenerate --max-cost", () => {
     const client = fakeClient();
     await runGenerate(shotsPath, opts({ maxCost: 1000 }), { client });
 
-    expect(client.createTask).toHaveBeenCalledTimes(1);
+    expect(client.doStart).toHaveBeenCalledTimes(1);
   });
 
   it("enforces the ceiling in --dry-run, so a budget can be checked for free", async () => {
@@ -580,7 +653,7 @@ describe("runGenerate --max-cost", () => {
     ).catch((error: unknown) => error)) as Error & { code?: string };
 
     expect(failure.code).toBe("cost_ceiling");
-    expect(client.createTask).not.toHaveBeenCalled();
+    expect(client.doStart).not.toHaveBeenCalled();
   });
 
   it("passes a --dry-run that stays under the ceiling", async () => {

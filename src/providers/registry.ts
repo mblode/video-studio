@@ -17,6 +17,12 @@ import type { ProviderId } from "../models.js";
  * backend for a model this codebase does not know about, which is the same
  * "the API is the authority, the registry is advisory" stance src/models.ts
  * already takes about capabilities.
+ *
+ * `aisdk:` is the same idea one level up. It routes to the bridge in
+ * `src/providers/aisdk.ts`, and the id AFTER the prefix names the upstream
+ * provider and model together, e.g. `aisdk:google/veo-3.1-fast-generate-preview`.
+ * That second segment is what `createVideoModel` splits on to pick the
+ * `@ai-sdk/*` package, so a bare `aisdk:veo-3.1` is not resolvable and says so.
  */
 export interface ResolvedModelId {
   provider: ProviderId;
@@ -24,7 +30,7 @@ export interface ResolvedModelId {
   modelId: string;
 }
 
-const PROVIDER_PREFIXES: readonly ProviderId[] = ["ark", "minimax"];
+const PROVIDER_PREFIXES: readonly ProviderId[] = ["aisdk", "ark", "minimax"];
 
 export function resolveModelId(configured: string): ResolvedModelId {
   const separator = configured.indexOf(":");

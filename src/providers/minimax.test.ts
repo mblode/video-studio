@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { isVsError } from "../errors.js";
-import type { VideoModelV1CallOptions } from "../spec/video-model.js";
+import type { VideoModelV4CallOptions } from "../spec/video-model.js";
 import { createMinimax } from "./minimax.js";
 
 const H3 = "MiniMax-H3";
@@ -19,11 +19,11 @@ function model(fetchImpl: typeof fetch) {
 }
 
 function callOptions(
-  overrides: Partial<VideoModelV1CallOptions> = {}
-): VideoModelV1CallOptions {
+  overrides: Partial<VideoModelV4CallOptions> = {}
+): VideoModelV4CallOptions {
   return {
     aspectRatio: "16:9",
-    durationSeconds: 6,
+    duration: 6,
     prompt: "a lighthouse in a storm",
     references: [],
     resolution: "2k",
@@ -91,9 +91,7 @@ describe("H3 wire body", () => {
   });
 
   it("rounds a fractional duration, which the API requires to be an integer", () => {
-    const body = model(vi.fn()).toRequestBody(
-      callOptions({ durationSeconds: 6.4 })
-    );
+    const body = model(vi.fn()).toRequestBody(callOptions({ duration: 6.4 }));
     expect(body.duration).toBe(6);
   });
 
@@ -116,7 +114,7 @@ describe("H3 responses", () => {
     const fetchImpl = vi.fn(() =>
       Promise.resolve(jsonResponse({ task_id: "t-1" }))
     );
-    const task = await model(fetchImpl as unknown as typeof fetch).createTask(
+    const task = await model(fetchImpl as unknown as typeof fetch).doStart(
       callOptions()
     );
     expect(task).toEqual({ id: "t-1", model: H3, status: "queued" });
@@ -138,7 +136,7 @@ describe("H3 responses", () => {
         })
       )
     );
-    const task = await model(fetchImpl as unknown as typeof fetch).getTask(
+    const task = await model(fetchImpl as unknown as typeof fetch).doStatus(
       "t-1"
     );
     expect(task.content?.video_url).toBe("https://cdn/out.mp4");
@@ -160,7 +158,7 @@ describe("H3 responses", () => {
       const fetchImpl = vi.fn(() =>
         Promise.resolve(jsonResponse({ task: { status: wire } }))
       );
-      const task = await model(fetchImpl as unknown as typeof fetch).getTask(
+      const task = await model(fetchImpl as unknown as typeof fetch).doStatus(
         "t"
       );
       expect(task.status).toBe(expected);
@@ -173,7 +171,9 @@ describe("H3 responses", () => {
     const fetchImpl = vi.fn(() =>
       Promise.resolve(jsonResponse({ task: { status: "some_new_state" } }))
     );
-    const task = await model(fetchImpl as unknown as typeof fetch).getTask("t");
+    const task = await model(fetchImpl as unknown as typeof fetch).doStatus(
+      "t"
+    );
     expect(task.status).toBe("running");
   });
 });
@@ -186,7 +186,7 @@ describe("H3 errors name the cause, which the raw message does not", () => {
       )
     );
     const failure = await model(fetchImpl as unknown as typeof fetch)
-      .getTask("t")
+      .doStatus("t")
       .catch((error: unknown) => error);
     expect(isVsError(failure)).toBe(true);
     expect((failure as { hint?: string }).hint).toMatch(/region/u);
@@ -199,7 +199,7 @@ describe("H3 errors name the cause, which the raw message does not", () => {
       )
     );
     const failure = await model(fetchImpl as unknown as typeof fetch)
-      .createTask(callOptions())
+      .doStart(callOptions())
       .catch((error: unknown) => error);
     expect(isVsError(failure)).toBe(true);
     expect((failure as { hint?: string }).hint).toMatch(/--dry-run/u);
@@ -210,7 +210,7 @@ describe("H3 errors name the cause, which the raw message does not", () => {
       Promise.resolve(jsonResponse({ error: { message: "bad" } }, 400))
     );
     await model(fetchImpl as unknown as typeof fetch)
-      .createTask(callOptions())
+      .doStart(callOptions())
       .catch(() => {});
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });

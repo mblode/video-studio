@@ -155,7 +155,7 @@ export function buildProgram(): Command {
     .option("--no-wait", "submit only; do not poll")
     .option(
       "--force",
-      "submit a new numbered revision for shots that already succeeded",
+      "submit a new numbered revision for shots that already succeeded; also resubmits a shot whose last submit never returned a task id, which may pay for it twice",
       false
     )
     .option(

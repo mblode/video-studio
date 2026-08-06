@@ -2,6 +2,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import type { z } from "zod";
 
+import { VsError } from "./errors.js";
+
 /**
  * The retry and boundary-validation policy every provider shares.
  *
@@ -14,6 +16,59 @@ import type { z } from "zod";
 
 const MAX_RETRIES = 3;
 const BACKOFF_MS = [1000, 4000, 16_000];
+
+/**
+ * Failures raised before any byte of the request reached the server, so a
+ * replay cannot produce a second task. Anything else on a POST is AMBIGUOUS:
+ * a reset mid-response, a read timeout, or a gateway 502 can all mean the
+ * upstream accepted and started billing a generation whose id we never saw.
+ *
+ * `ECONNRESET`/`ETIMEDOUT` are deliberately absent. They are the common case
+ * for a connection dropped after the request was written, which is exactly the
+ * case that must not be replayed.
+ */
+const PRE_SEND_ERROR_CODES = new Set([
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+
+/** node:fetch wraps the real cause, so walk the chain rather than the top. */
+function isPreSendError(error: unknown): boolean {
+  let current: unknown = error;
+  while (current instanceof Error) {
+    const { code } = current as Error & { code?: unknown };
+    if (typeof code === "string" && PRE_SEND_ERROR_CODES.has(code)) {
+      return true;
+    }
+    current = current.cause;
+  }
+  return false;
+}
+
+/**
+ * A request that spends money and did not come back with an answer.
+ *
+ * The operator has to resolve this by hand, because we cannot: the provider
+ * either created a task or did not, and we hold no id either way. Retrying is
+ * the one thing that is certainly wrong, so this throws instead.
+ */
+function ambiguousRequestError(
+  provider: string,
+  what: string | undefined,
+  cause: Error
+): VsError {
+  const operation = what ?? "a request";
+  return new VsError(
+    "task_uncertain",
+    `${provider} did not answer ${operation}, which may still have been accepted and billed`,
+    {
+      cause,
+      hint: "nothing was retried, because replaying a paid request bills twice; check the provider console for a task created just now, adopt it with `vs status <shots-file> --refresh`, and only then re-run `vs generate`",
+    }
+  );
+}
 /** Characters of the offending body echoed in a validation error. */
 const BODY_EXCERPT_CHARS = 400;
 
@@ -75,7 +130,7 @@ export class ResponseShapeError extends Error {
   }
 }
 
-export function parseOrThrow<T>(
+function parseOrThrow<T>(
   provider: string,
   what: string,
   schema: z.ZodType<T>,
@@ -99,11 +154,12 @@ export interface RequestOptions {
   /** Provider name, for error messages only. */
   provider: string;
   url: string;
+  /** Operation name, for error messages only, e.g. "createTask". */
+  what?: string;
 }
 
 export interface JsonRequestOptions<T> extends RequestOptions {
   schema: z.ZodType<T>;
-  /** Operation name, for error messages only, e.g. "createTask". */
   what: string;
 }
 
@@ -117,17 +173,27 @@ export interface JsonRequestOptions<T> extends RequestOptions {
  * second later. Splitting transport from parsing is what lets all four share
  * the second decision while keeping the first.
  *
- * Retries 429/5xx/network errors with exponential backoff, honouring
- * `Retry-After`. Every other 4xx fails immediately.
+ * Retries 429 and, on a GET, 5xx and network errors, with exponential backoff
+ * honouring `Retry-After`. Every other 4xx fails immediately.
+ *
+ * A POST is never replayed after an ambiguous failure. Every POST this CLI
+ * sends spends money — it creates a generation task, a score, or a narration
+ * line — so a 502 from a gateway that already forwarded the request, or a
+ * socket reset after the body was written, may mean a paid task exists whose id
+ * we will never see. Replaying that pays twice and orphans the first task,
+ * which no amount of `isInFlight` re-attaching can recover, because nothing was
+ * ever written to the manifest. 429 is exempt: it means the request was
+ * rejected at the gate, so nothing was accepted and a replay is free.
  */
 export async function requestWithRetry(
   options: RequestOptions
 ): Promise<Response> {
-  const { body, fetchImpl, headers, method, provider, url } = options;
+  const { body, fetchImpl, headers, method, provider, url, what } = options;
   const init: RequestInit = { headers, method };
   if (body !== undefined) {
     init.body = JSON.stringify(body);
   }
+  const replayable = method === "GET";
   let lastError: Error = new Error("unreachable");
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
     let response: Response;
@@ -135,6 +201,9 @@ export async function requestWithRetry(
       response = await fetchImpl(url, init);
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+      if (!(replayable || isPreSendError(lastError))) {
+        throw ambiguousRequestError(provider, what, lastError);
+      }
       await sleep(backoffMs(attempt));
       continue;
     }
@@ -142,8 +211,12 @@ export async function requestWithRetry(
       return response;
     }
     const text = await response.text();
-    if (response.status === 429 || response.status >= 500) {
+    const retryable = response.status === 429 || response.status >= 500;
+    if (retryable) {
       lastError = new ApiError(provider, response.status, text);
+      if (response.status !== 429 && !replayable) {
+        throw ambiguousRequestError(provider, what, lastError);
+      }
       const retryAfter = Number(response.headers.get("retry-after"));
       await sleep(
         Number.isFinite(retryAfter) && retryAfter > 0

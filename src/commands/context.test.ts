@@ -129,7 +129,7 @@ describe("createVideoModel resolves credentials lazily", () => {
       const model = createVideoModel(modelId);
       const body = model.toRequestBody({
         aspectRatio: "16:9",
-        durationSeconds: 6,
+        duration: 6,
         prompt: "a lighthouse",
         references: [],
       }) as Record<string, unknown>;
@@ -141,7 +141,9 @@ describe("createVideoModel resolves credentials lazily", () => {
     // The other half of lazy: the key is not optional, only deferred. Losing
     // this would turn a clear missing_credential into a 401 from the provider.
     const model = createVideoModel(MODEL_IDS.minimaxH3);
-    const failure = await model.getTask("t-1").catch((error: unknown) => error);
+    const failure = await model
+      .doStatus("t-1")
+      .catch((error: unknown) => error);
     expect(isVsError(failure)).toBe(true);
     expect((failure as { code?: string }).code).toBe("missing_credential");
   });

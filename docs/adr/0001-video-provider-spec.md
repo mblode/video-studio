@@ -10,6 +10,8 @@
 MiniMax H3 makes that two, and the shape of the codebase assumed one:
 
 - `src/provider.ts` declared a `VideoProvider` port, but no command used it.
+  (It has since been deleted: `VideoModelV4` is the port, and `vs doctor`'s
+  raw status probe is typed by the one method it calls.)
   `generate.ts`, `status.ts`, and `doctor.ts` all typed the client as
   `ArkClient`. Its own doc comment said no adapter existed "and none should".
 - `CreateTaskRequest` in `src/types.ts` is simultaneously **the canonical
@@ -61,7 +63,7 @@ Recovered from the code, not invented. These are the names to use.
 commands/          knows: Shot, Film, cost, manifest
    |               never knows: which vendor, what the body looks like
    v
-spec/              VideoModelV1 — the versioned contract
+spec/              VideoModelV4 — the versioned contract
    |
    +-- providers/ark/       Seedance   (translate, HTTP, errors, statuses)
    +-- providers/minimax/   H3         (translate, HTTP, errors, statuses)
@@ -70,16 +72,16 @@ models.ts          capabilities + billing as DATA (no network, no key)
 cost.ts            pure pricing, branches on the billing union
 ```
 
-**1. `src/spec/` — the contract.** A `VideoModelV1` carries
-`specificationVersion: "v1"`, `provider`, `modelId`, `capabilities`, and the
+**1. `src/spec/` — the contract.** A `VideoModelV4` carries
+`specificationVersion: "v4"`, `provider`, `modelId`, `capabilities`, and the
 methods the commands call. Provider-neutral **call options** replace the Ark
 body as the thing callers construct:
 
 ```ts
-export interface VideoModelV1CallOptions {
+export interface VideoModelV4CallOptions {
   prompt: string;
   references: readonly ShotReference[];
-  durationSeconds: number;
+  duration: number;
   aspectRatio: AspectRatio;
   resolution?: Resolution;    // undefined = let the provider default
   seed?: number;
@@ -133,11 +135,27 @@ already takes.
 
 ### Why the interface is versioned
 
-`specificationVersion: "v1"` is cheap now and is the only thing that makes a
-future breaking change tractable: a `V2` adapter can be added beside `V1` and
+`specificationVersion: "v4"` is cheap now and is the only thing that makes a
+future breaking change tractable: a `V5` adapter can be added beside `V4` and
 providers migrated one at a time, rather than every provider changing in one
 commit. This is the single most valuable thing the AI SDK shape provides and it
 costs one literal field.
+
+The number is `v4` rather than `v1` because it tracks the AI SDK's own
+generation. `@ai-sdk/provider` ships `VideoModelV4` next to the `ImageModelV4`
+that `src/images.ts` already consumes, and the two describe the same thing:
+`duration`, `aspectRatio`, `seed`, `generateAudio`, `providerOptions`, and the
+`first_frame`/`last_frame` frame roles are all upstream's names, arrived at
+independently here first. `doStart`/`doStatus` mirror upstream's asynchronous
+lifecycle. Numbering this port independently would have claimed a compatibility
+relationship it does not have; numbering it `v4` says which dialect it speaks.
+What it does not take from upstream is in the deferral table below.
+
+One difference is load-bearing. Upstream splits references into `frameImages`
+(role-tagged) and `inputReferences` (everything else); this port keeps ONE
+array in authored order, because that interleaving is the `@Image N` ordinal
+contract. A frame role consumes an image ordinal like any other image, so
+splitting the array and rejoining it would move every binding.
 
 ### `payloadHash` stays stable
 
@@ -171,8 +189,11 @@ promote it.
 | Not doing | Why | Promote when |
 | --- | --- | --- |
 | Separate npm packages per provider (`packages/ark`, `packages/minimax`) | One binary, one consumer. A package split buys independent versioning nobody needs and couples release cycles. | Someone outside this repo implements the spec. |
+| Adopting the AI SDK's `experimental_generateVideo` in place of this port | `@ai-sdk/provider` ships `VideoModelV4`, and this port now takes its version number and field names from it. What upstream does not carry is `capabilities` (so `--dry-run` and cost estimation would need a key and a network call), `toRequestBody` (so `payloadHash` could not be a byte-stable audit record), and any billing model at all. `generateVideo` also polls inside a single call, where `tasks.json` has to resume across processes. | Upstream exposes a capability or billing surface, or `payloadHash` stops being a pinned audit record. |
+| A `--flex` flag for BytePlus offline inference | The wire field is real (`service_tier: "flex"`, plus `execution_expires_after`) and the discount is a flat 50% on the token rate, so the existing estimator would just take a 0.5 multiplier. But offline inference is unsupported on the whole Seedance 2.0 series AND 2.5, which is every model this repo generates on; it exists only for 1.0/1.5-pro. It is also incompatible with `--draft` (last-frame return is disabled under it). | BytePlus enables offline inference on 2.5 or the 2.0 series. Then it is a capability bit in `src/models.ts` plus a rate multiplier, so `--dry-run` can refuse it with no key. |
+| Widening the task handle to upstream's opaque `operation: JSONValue` | `ManifestEntry.taskId` is a string that `vs status <task-id>` and the `--json` key contract both depend on, and both shipped providers key on an id. Widening it is a manifest migration for no present gain. | A provider whose resumption handle is not expressible as a string. |
 | Middleware / `wrapVideoModel` | No current requirement. Retry and rate limiting already live at the seam (`ModelLimiter`, the shared HTTP loop). | A cross-cutting concern appears that is not retry or concurrency. |
-| A plugin loader for third-party providers | Providers are compiled in; a dynamic loader is an attack surface for a tool that spends money. | Never, unless `vs` becomes a library. |
+| A plugin loader for third-party providers | Providers are compiled in; a dynamic loader is an attack surface for a tool that spends money. `vs` ships no library entry at all now, so there is nothing for a plugin to link against. | Never, unless `vs` becomes a library. |
 | Streaming | Video generation is submit-then-poll. There is no token stream. | A provider ships partial-frame streaming. |
 | Unifying the stills backends (Seedream, Gemini) behind the spec | Stills cost cents, not dollars, and are already routed by model id in `stills.ts`. `src/provider.ts` already documents this as deliberate. | A third stills backend, or stills start costing dollars. |
 | Extracting the model registry into its own package | Same reason as the provider split. | Same trigger. |
@@ -188,6 +209,10 @@ An unenforced contract decays. Each rule names its check:
 | Providers never import commands | Same rule, reversed |
 | Every registry entry is complete | Type check: `RegistryEntry` is a total `Omit<ModelCapabilities, …>` |
 | A per-second model never quotes $0 | Unit test in `src/cost.test.ts` |
+| A rate table prices exactly the resolutions its model accepts | Ratchet test in `src/models.test.ts` |
+| A paid POST is never replayed after an ambiguous failure | Unit tests in `src/ark.test.ts`; `requestWithRetry` splits its retry predicate by method |
+| A submit that never returned an id is not silently resubmitted | `isUnresolved` guard in `vs generate`, tested in `src/commands/generate.test.ts` |
+| `--max-cost` is checked against the ceiling, not the low end | Unit test in `src/cost.test.ts` |
 | Ark payload bytes are unchanged | Pinned-hash test |
 | Documented commands and flags are real | `src/docs-drift.test.ts` (already exists) |
 | Shipped example films lint clean | `src/examples.test.ts` (already exists) |

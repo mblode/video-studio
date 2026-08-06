@@ -38,7 +38,23 @@ be committed by accident.
 money quickly. `--dry-run` makes no network calls, `vs generate` asks for
 confirmation with a cost estimate, and `--max-cost` refuses a run whose estimate
 exceeds a ceiling you set. Estimates are estimates; treat them as guardrails
-rather than guarantees.
+rather than guarantees. Where a shot binds a reference video, whose billed
+duration cannot be known before submitting, the estimate is a range and the
+ceiling is enforced against its top.
+
+**A request that may already have been paid for is never repeated.** Every POST
+this tool sends creates billable work, so a create-task request that fails
+without an answer — a dropped socket, a gateway 5xx — is not retried. It fails
+with the code `task_uncertain`, and `vs generate` records the attempt in the
+manifest *before* it submits, so a crash mid-submit leaves a trace rather than
+nothing. When you see `task_uncertain`, or a shot the tool refuses to resubmit:
+
+1. Check the provider's console for a task created around that time.
+2. If one exists, let it finish and re-run the same command; it re-attaches.
+3. Only if none exists, pass `--force` to submit again.
+
+Passing `--force` on a shot in that state is you accepting the risk of paying
+twice, so do step 1 first.
 
 ## Scope
 

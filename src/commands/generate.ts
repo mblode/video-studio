@@ -16,6 +16,7 @@ import { formatError, isVsError, VsError } from "../errors.js";
 import {
   isComplete,
   isInFlight,
+  isUnresolved,
   loadManifest,
   saveManifest,
   upsertEntry,
@@ -35,7 +36,7 @@ import {
 } from "../payload.js";
 import type { PayloadOverrides } from "../payload.js";
 import { lintShotsFile } from "../shots.js";
-import type { VideoModelV1 } from "../spec/video-model.js";
+import type { VideoModelV4 } from "../spec/video-model.js";
 import { DRAFT_RESOLUTION } from "../types.js";
 import type { ArkTask, Manifest, Shot, ShotsFile } from "../types.js";
 import { clipRevisionPath } from "../versions.js";
@@ -97,7 +98,7 @@ function draftOverrides(
 }
 
 function describeEstimate(estimate: CostEstimate): string {
-  return formatEstimate(estimate.tokens, estimate.usd);
+  return formatEstimate(estimate.tokens, estimate.usd, estimate.usdMax);
 }
 
 async function dryRun(
@@ -107,7 +108,7 @@ async function dryRun(
   pass: Pass,
   overrides: PayloadOverrides | undefined,
   estimate: CostEstimate,
-  model: VideoModelV1
+  model: VideoModelV4
 ): Promise<void> {
   // The PROVIDER'S body, not a canonical one: --dry-run is the "will this work
   // before I spend" gate, so it has to print what actually goes on the wire.
@@ -160,6 +161,10 @@ function clipSpec(
     // providers, so it has to reach the estimator either way.
     referenceImages: shot.references?.filter((ref) => ref.type === "image")
       .length,
+    // Drives the RANGE, not the point estimate: a bound video's billed length
+    // is unknowable up front, so the ceiling quotes the model's worst case.
+    referenceVideos: shot.references?.filter((ref) => ref.type === "video")
+      .length,
     resolution: params.resolution,
   };
 }
@@ -182,7 +187,7 @@ function warnUnpricedInput(shots: Shot[]): void {
     return;
   }
   warn(
-    `${withVideo.length} shot(s) bind a reference video (${withVideo.map((shot) => shot.id).join(", ")}); the provider bills its duration too, and the estimate below excludes it because a remote clip's length is not knowable before submitting`
+    `${withVideo.length} shot(s) bind a reference video (${withVideo.map((shot) => shot.id).join(", ")}); the provider bills its duration too, and a remote clip's length is not knowable before submitting, so the estimate below is a range and \`--max-cost\` is checked against its top`
   );
 }
 
@@ -262,7 +267,7 @@ function effectiveConcurrency(
  */
 /** The smallest `--max-cost` value, in whole cents, that lets this run through. */
 function smallestCeiling(estimate: CostEstimate): number {
-  return Math.ceil(estimate.usd * 100) / 100;
+  return Math.ceil(estimate.usdMax * 100) / 100;
 }
 
 function assertCostCeiling(estimate: CostEstimate, maxCost?: number): void {
@@ -320,7 +325,7 @@ async function confirmCost(
   return !isCancel(answer) && answer === true;
 }
 
-export interface BillingReport {
+interface BillingReport {
   actualTokens: number;
   actualUsd: number;
   estimatedTokens: number;
@@ -444,7 +449,7 @@ function reportBilling(report: BillingReport): void {
 }
 
 async function settleTask(options: {
-  client: VideoModelV1;
+  client: VideoModelV4;
   download: boolean;
   generateOptions: GenerateOptions;
   manifest: Manifest;
@@ -530,7 +535,7 @@ async function settleTask(options: {
 export async function runGenerate(
   shotsFilePath: string,
   options: GenerateOptions,
-  injected: { client?: VideoModelV1 } = {}
+  injected: { client?: VideoModelV4 } = {}
 ): Promise<void> {
   const pass: Pass = options.draft ? "draft" : "final";
   const { file, outputDir, shotsDir } = await resolveFilm(shotsFilePath, {
@@ -590,6 +595,32 @@ export async function runGenerate(
     return;
   }
 
+  // Before anything is priced or sent: a shot whose last submit never came back
+  // with an id may already have a paid task at the provider. Resubmitting is
+  // the one move that is certainly wrong, so stop and make the operator resolve
+  // it. `--force` is the acknowledgement that they have.
+  const unresolved = pending.filter((shot) =>
+    isUnresolved(manifest.entries[shot.id])
+  );
+  if (unresolved.length > 0) {
+    const ids = unresolved.map((shot) => shot.id).join(", ");
+    if (!options.force) {
+      throw new VsError(
+        "task_uncertain",
+        `${unresolved.length} shot(s) were submitted but never returned a task id: ${ids}`,
+        {
+          hint: `a paid task may exist for each; check the provider console, and either wait for it and re-run, or pass \`--force\` to submit again and accept paying twice`,
+        }
+      );
+    }
+    // Say it out loud. `--force` is habitually passed by scripts and agents for
+    // its ordinary meaning (retake a finished shot), and waiving a possible
+    // double charge is a much bigger thing to do by accident.
+    warn(
+      `--force is resubmitting ${unresolved.length} shot(s) whose previous submit never returned a task id (${ids}); if the provider did create those tasks, they are already billed and this pays for them twice`
+    );
+  }
+
   const toSubmit = pending.filter(
     (shot) => !isInFlight(manifest.entries[shot.id])
   );
@@ -626,11 +657,22 @@ export async function runGenerate(
     const callOptions = await buildCallOptions(shot, file.film, shotsDir, {
       overrides,
     });
-    const task = await client.createTask(callOptions);
+    const payloadHash = hashPayload(client.toRequestBody(callOptions));
+    // Record the intent to spend BEFORE spending. If the process dies between
+    // here and the response, this entry (status "submitted", no task id) is
+    // what stops the next run from silently submitting and paying a second
+    // time. Without it a Ctrl-C in this window leaves no trace at all.
     upsertEntry(manifest, {
       newAttempt: true,
+      payloadHash,
+      shotId: shot.id,
+      status: "submitted",
+    });
+    await saveManifest(shotsFilePath, manifest, pass);
+    const task = await client.doStart(callOptions);
+    upsertEntry(manifest, {
       params: {
-        duration: callOptions.durationSeconds,
+        duration: callOptions.duration,
         generateAudio: callOptions.generateAudio ?? true,
         model: client.modelId,
         provider: client.provider,
@@ -642,10 +684,10 @@ export async function runGenerate(
         seed: callOptions.seed,
         watermark: callOptions.watermark ?? false,
       },
-      // Hash the PROVIDER'S body, which is what was actually submitted. For
-      // Ark that is byte-identical to what this CLI has always hashed, so no
-      // existing film's audit trail churns.
-      payloadHash: hashPayload(client.toRequestBody(callOptions)),
+      // Hashed once, above, from the PROVIDER'S body, which is what was
+      // actually submitted. For Ark that is byte-identical to what this CLI has
+      // always hashed, so no existing film's audit trail churns.
+      payloadHash,
       shotId: shot.id,
       status: "submitted",
       taskId: task.id,

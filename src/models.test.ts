@@ -206,10 +206,18 @@ describe("Seedance 2.5 dual billing rate", () => {
   });
 
   it("leaves models with no with-video table on their single rate", () => {
-    const model20 = lookupModel("dreamina-seedance-2-0-260128");
-    expect(usdPerMToken(model20, "720p", { videoInput: true })).toBe(
-      usdPerMToken(model20, "720p")
+    // 2.0-fast publishes one rate, unlike 2.0 and 2.0-mini which both have a
+    // cheaper with-video tier.
+    const fast = lookupModel("dreamina-seedance-2-0-fast-260128");
+    expect(usdPerMToken(fast, "720p", { videoInput: true })).toBe(
+      usdPerMToken(fast, "720p")
     );
+  });
+
+  it("gives Seedance 2.0 its own cheaper with-video rate", () => {
+    const model20 = lookupModel("dreamina-seedance-2-0-260128");
+    expect(usdPerMToken(model20, "720p")).toBe(7);
+    expect(usdPerMToken(model20, "720p", { videoInput: true })).toBe(4.3);
   });
 });
 
@@ -292,5 +300,95 @@ describe("authoring limits are capability data, not model names", () => {
     for (const family of Object.keys(MODEL_REGISTRY)) {
       expect(lookupModel(family).provider).toBeDefined();
     }
+  });
+});
+
+/**
+ * The rate table and the resolution list describe the same model from two
+ * directions, so they have to agree. A resolution with no rate quotes the
+ * dearest listed one, which is safe but wrong; a rate for a resolution the
+ * model does not accept is a rate nobody will ever be billed, which means it
+ * went unreviewed. Both are how a stale entry hides.
+ *
+ * This is the analogue of ComfyUI validating a price badge's `depends_on`
+ * against real input ids at schema-build time. It is also what would have
+ * caught `seedance-2-0` advertising 768p and 2k, which belong to MiniMax H3.
+ */
+const rates = (billing: (typeof MODEL_REGISTRY)[string]["billing"]) =>
+  billing.kind === "tokens"
+    ? billing.usdPerMTokenByResolution
+    : billing.usdPerSecondByResolution;
+
+describe("registry rate tables", () => {
+  it.each(Object.keys(MODEL_REGISTRY))(
+    "%s prices exactly the resolutions it accepts",
+    (family) => {
+      const entry = MODEL_REGISTRY[family];
+      if (!entry) {
+        throw new Error(`no registry entry for ${family}`);
+      }
+      expect(Object.keys(rates(entry.billing)).toSorted()).toEqual(
+        [...entry.resolutions].toSorted()
+      );
+    }
+  );
+
+  it.each(Object.keys(MODEL_REGISTRY))(
+    "%s prices nothing at zero",
+    (family) => {
+      const entry = MODEL_REGISTRY[family];
+      if (!entry) {
+        throw new Error(`no registry entry for ${family}`);
+      }
+      for (const rate of Object.values(rates(entry.billing))) {
+        expect(rate).toBeGreaterThan(0);
+      }
+    }
+  );
+
+  it("keeps the cheaper with-video rates strictly below the base rates", () => {
+    for (const [family, entry] of Object.entries(MODEL_REGISTRY)) {
+      if (entry.billing.kind !== "tokens") {
+        continue;
+      }
+      const { usdPerMTokenByResolution: base, usdPerMTokenWithVideoInput } =
+        entry.billing;
+      for (const [resolution, rate] of Object.entries(
+        usdPerMTokenWithVideoInput ?? {}
+      )) {
+        expect(rate, `${family} ${resolution} with video input`).toBeLessThan(
+          base[resolution as keyof typeof base] ?? 0
+        );
+      }
+    }
+  });
+});
+
+describe("Seedance 2.0 rates", () => {
+  // The published range is $3.5-$7.7 without video input and $2.1-$4.7 with it.
+  // Pinning the endpoints is what keeps the recovered per-resolution breakdown
+  // honest against the only numbers BytePlus actually publishes.
+  it("spans exactly the range BytePlus publishes", () => {
+    const withoutVideo = [
+      usdPerMToken(lookupModel(MODEL_IDS.seedance20Mini), "720p"),
+      usdPerMToken(lookupModel(MODEL_IDS.seedance20), "1080p"),
+    ];
+    expect(withoutVideo).toEqual([3.5, 7.7]);
+  });
+
+  it("prices 4K BELOW 1080p per token, which is the 4K trap", () => {
+    // Lower per-token rate, ~4x the tokens. A flat rate cannot express this.
+    expect(usdPerMToken(lookupModel(MODEL_IDS.seedance20), "4k")).toBeLessThan(
+      usdPerMToken(lookupModel(MODEL_IDS.seedance20), "1080p")
+    );
+  });
+
+  it("prices mini below fast below standard at the same resolution", () => {
+    expect(
+      usdPerMToken(lookupModel(MODEL_IDS.seedance20Mini), "720p")
+    ).toBeLessThan(usdPerMToken(lookupModel(MODEL_IDS.seedance20Fast), "720p"));
+    expect(
+      usdPerMToken(lookupModel(MODEL_IDS.seedance20Fast), "720p")
+    ).toBeLessThan(usdPerMToken(lookupModel(MODEL_IDS.seedance20), "720p"));
   });
 });

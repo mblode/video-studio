@@ -6,13 +6,6 @@ export const LYRIA_PRO_MODEL = "lyria-3-pro-preview";
 /** Lyria 3 Clip — fixed 30s, cheaper prompt iteration. */
 export const LYRIA_CLIP_MODEL = "lyria-3-clip-preview";
 
-export interface ScoreRequest {
-  model: string;
-  prompt: string;
-  /** Hint embedded in the prompt when targeting a program length. */
-  durationSeconds?: number;
-}
-
 export interface ScorePlan {
   model: string;
   body: unknown;

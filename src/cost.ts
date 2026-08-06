@@ -6,7 +6,6 @@ import {
   DEFAULT_RESOLUTION,
   DURATION_AUTO,
   RESOLUTION_SHORT_SIDE,
-  VIDEO_USD_PER_KTOKEN,
 } from "./types.js";
 import type { AspectRatio, Resolution } from "./types.js";
 
@@ -44,13 +43,45 @@ export interface FrameSize {
 
 function roundLongSide(value: number): number {
   // 720p/1080p/4K at 16:9 come out exact (1280, 1920, 3840) and are left alone.
-  // 480p at 16:9 does not (853.33), and BytePlus renders 864x480, the next
-  // macroblock boundary, which is also what the 0.2 token factor implies.
-  // Confirm against a real 480p clip's ffprobe if a bill ever disagrees.
+  // Anything else rounds up to the next macroblock boundary. This is a DERIVED
+  // guess; where a real clip has been measured, `OBSERVED_FRAME_SIZE` overrides
+  // it, because the guess is demonstrably wrong at 480p.
   return Number.isInteger(value)
     ? value
     : Math.ceil(value / MACROBLOCK) * MACROBLOCK;
 }
+
+/**
+ * Frame sizes MEASURED off real generated clips, keyed `<resolution>|<ratio>`.
+ *
+ * A resolution tier is not a short-side pin. BytePlus targets a pixel budget
+ * and fits the aspect ratio into it, so 480p at 16:9 renders 864x496 rather
+ * than the 864x480 this file derived: the derivation under-counts frame area
+ * by 3.2%, and the token formula multiplies by it.
+ *
+ * `adaptive` is the bigger correction, because it has no ratio to derive from
+ * at all and fell through to a 16:9 guess. It is also the one entry here that
+ * is genuinely input-dependent: the model reads the shape off the bound
+ * keyframe, and 640x640 is what films/lighthouse's 2200x2000 stills produce.
+ * A film whose keyframes are a different shape will land somewhere else, so
+ * this is a calibrated default rather than a fact about `adaptive`.
+ *
+ * Every entry below reproduces its clip's billed `usage.completion_tokens`
+ * EXACTLY via `duration x w x h x fps / 1024`, across all 18 draft clips of
+ * films/lighthouse. The formula was never wrong; the geometry fed to it was.
+ *
+ * ADDING AN ENTRY is how you fix an estimate that drifts: generate one clip at
+ * the pairing, `ffprobe` its width and height, and confirm the formula
+ * reproduces the manifest's `tokensUsed` before writing it down. Unmeasured
+ * pairings fall through to the derivation above, so treat those as provisional.
+ * Notably absent: every 720p, 1080p and 4K pairing, and an explicit `1:1`.
+ */
+const OBSERVED_FRAME_SIZE: Readonly<Record<string, FrameSize>> = {
+  // 6 draft clips, 80,770 billed tokens each at 8.041667s.
+  "480p|16:9": { height: 496, width: 864 },
+  // 12 draft clips, 77,200 billed tokens each at 8.041667s.
+  "480p|adaptive": { height: 640, width: 640 },
+};
 
 /**
  * Pixel dimensions the model renders for a resolution/ratio pair. The short
@@ -60,6 +91,10 @@ export function frameSize(
   resolution: Resolution = DEFAULT_RESOLUTION,
   ratio: AspectRatio = "16:9"
 ): FrameSize {
+  const observed = OBSERVED_FRAME_SIZE[`${resolution}|${ratio}`];
+  if (observed) {
+    return observed;
+  }
   const shortSide = RESOLUTION_SHORT_SIDE[resolution];
   const value = ASPECT_RATIO_VALUE[ratio] ?? FALLBACK_RATIO_VALUE;
   return value >= 1
@@ -109,6 +144,12 @@ export interface ClipSpec {
    * allowance on some per-second providers.
    */
   referenceImages?: number;
+  /**
+   * Reference VIDEOS bound to the shot, whose durations are unknown. Used only
+   * to decide whether a clip needs a range rather than a point quote; the
+   * length itself comes from the model's `maxInputVideoSeconds`.
+   */
+  referenceVideos?: number;
   modelId?: string;
 }
 
@@ -117,7 +158,14 @@ export interface CostEstimate {
   /** Billable output seconds, auto-duration resolved to the default length. */
   seconds: number;
   tokens: number;
+  /** The low end: what the run costs if every reference video is negligible. */
   usd: number;
+  /**
+   * The high end, and the number `--max-cost` enforces. Equal to `usd` unless
+   * a shot binds a reference video whose billed duration cannot be known
+   * before submitting.
+   */
+  usdMax: number;
 }
 
 export function clipTokens(spec: ClipSpec): number {
@@ -129,29 +177,6 @@ export function clipTokens(spec: ClipSpec): number {
     seconds: billableSeconds(spec.duration) + (spec.inputVideoSeconds ?? 0),
     width,
   });
-}
-
-/**
- * Estimated output tokens for one clip.
- *
- * The two-argument form is the original signature and still works; pass
- * `ratio` whenever the shot is not 16:9, since the frame area (and therefore
- * the bill) changes with it.
- */
-export function estimateTokens(
-  duration: number,
-  resolution: Resolution,
-  options?: Omit<ClipSpec, "duration" | "resolution">
-): number {
-  return clipTokens({ ...options, duration, resolution });
-}
-
-/** USD for a token count at the given model tier. Prefer `usdForTokens`. */
-export function estimateCostUsd(
-  tokens: number,
-  tier: "standard" | "fast"
-): number {
-  return (tokens / 1000) * VIDEO_USD_PER_KTOKEN[tier];
 }
 
 /**
@@ -201,6 +226,41 @@ export function usdForClip(spec: ClipSpec): number {
   return Math.max(usd, billing.minimumTaskUsd ?? 0);
 }
 
+/**
+ * The most this clip can cost, given that a bound reference video's duration
+ * is not knowable before submitting.
+ *
+ * Both schemes bill input seconds alongside output, so a shot with a reference
+ * video costs strictly more than its own length. `vs` used to exclude the
+ * input entirely and print a warning, which meant `--max-cost` was enforcing a
+ * number it knew was too low. Quoting the worst case instead keeps the ceiling
+ * honest, and the low end still shows what a short reference would cost.
+ *
+ * Token billing gets a second correction: input-bound requests bill at the
+ * CHEAPER with-video rate. Applying that discount to an under-counted token
+ * base would have under-quoted twice, which is why it went unused until there
+ * was a real input figure to apply it to.
+ */
+export function usdCeilingForClip(spec: ClipSpec): number {
+  const capabilities = lookupModel(spec.modelId);
+  const maxInput = capabilities.maxInputVideoSeconds;
+  const unknownInput =
+    (spec.referenceVideos ?? 0) > 0 && spec.inputVideoSeconds === undefined;
+  if (!(unknownInput && maxInput)) {
+    return usdForClip(spec);
+  }
+  const worstCase: ClipSpec = { ...spec, inputVideoSeconds: maxInput };
+  if (capabilities.billing.kind === "perSecond") {
+    return usdForClip(worstCase);
+  }
+  return usdForTokens(
+    clipTokens(worstCase),
+    spec.modelId,
+    spec.resolution ?? DEFAULT_RESOLUTION,
+    { videoInput: true }
+  );
+}
+
 export function estimateClip(spec: ClipSpec): CostEstimate {
   // Tokens are meaningless for a per-second model, and reporting a made-up
   // figure would put a number in the audit trail nobody was ever billed for.
@@ -212,18 +272,26 @@ export function estimateClip(spec: ClipSpec): CostEstimate {
     seconds: billableSeconds(spec.duration),
     tokens,
     usd: usdForClip(spec),
+    usdMax: usdCeilingForClip(spec),
   };
 }
 
 /** Total for a batch of shots, e.g. everything a `vs generate` run would submit. */
 export function estimateClips(specs: readonly ClipSpec[]): CostEstimate {
-  const total: CostEstimate = { clips: 0, seconds: 0, tokens: 0, usd: 0 };
+  const total: CostEstimate = {
+    clips: 0,
+    seconds: 0,
+    tokens: 0,
+    usd: 0,
+    usdMax: 0,
+  };
   for (const spec of specs) {
     const clip = estimateClip(spec);
     total.clips += 1;
     total.seconds += clip.seconds;
     total.tokens += clip.tokens;
     total.usd += clip.usd;
+    total.usdMax += clip.usdMax;
   }
   return total;
 }
@@ -246,7 +314,15 @@ export function checkCostCeiling(
   if (maxUsd === undefined || !Number.isFinite(maxUsd) || maxUsd <= 0) {
     return { allowed: true };
   }
-  const usd = typeof estimate === "number" ? estimate : estimate.usd;
+  // The HIGH end, deliberately. A ceiling that lets a run through on its
+  // best case and then bills the worst is not a ceiling.
+  //
+  // Falls back to `usd` because `usdMax` is newer than this function and this
+  // is the one place that must never throw: an estimate built before the range
+  // existed would otherwise crash with a bare TypeError out of the guard whose
+  // entire job is refusing to overspend.
+  const usd =
+    typeof estimate === "number" ? estimate : (estimate.usdMax ?? estimate.usd);
   if (usd <= maxUsd) {
     return { allowed: true };
   }
@@ -271,8 +347,16 @@ function formatTokens(tokens: number): string {
  * broken estimate rather than a different billing scheme. The dollars are the
  * number that matters in both cases, so they are the only one always shown.
  */
-export function formatEstimate(tokens: number, usd: number): string {
-  const dollars = `$${usd.toFixed(2)}`;
+export function formatEstimate(
+  tokens: number,
+  usd: number,
+  usdMax = usd
+): string {
+  // A range only when the two ends genuinely differ, so the common case reads
+  // exactly as it always has. Rounding first, so "$1.20-$1.20" is impossible.
+  const low = usd.toFixed(2);
+  const high = usdMax.toFixed(2);
+  const dollars = low === high ? `$${low}` : `$${low}-$${high}`;
   return tokens > 0 ? `${formatTokens(tokens)} tokens ≈ ${dollars}` : dollars;
 }
 

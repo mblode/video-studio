@@ -10,7 +10,7 @@ export interface StitchClip {
   transition?: number;
 }
 
-export interface StitchStep {
+interface StitchStep {
   args: string[];
   description: string;
 }

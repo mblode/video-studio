@@ -67,7 +67,7 @@ commands.
   rate.
 - **A Seedance 2.5 run is strictly serial.** 1 concurrent task regardless of
   `--concurrency`, and a 30s generation takes 10 to 15 minutes, so a six-act
-  film is 60 to 90 minutes. It is also about 39% dearer than 2.0 for the same
+  film is 60 to 90 minutes. It is also about 53% dearer than 2.0 for the same
   runtime. What it buys is coherence, not price or speed.
 - **A 2.5 film sets no `film.draftModel`.** There is no 2.5-fast, and 2.0-fast
   caps at 15s, so a 30s film pointed at it is refused rather than drafted.

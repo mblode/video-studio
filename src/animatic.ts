@@ -6,7 +6,7 @@ import type { AspectRatio, Shot } from "./types.js";
 /** Default frame rate for animatic / fallback segments. */
 export const ANIMATIC_FPS = 24;
 /** Default short side (px) — a light 720-class preview, never full res. */
-export const ANIMATIC_SHORT_SIDE = 720;
+const ANIMATIC_SHORT_SIDE = 720;
 
 export interface Dimensions {
   height: number;

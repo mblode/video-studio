@@ -1,5 +1,5 @@
-import type { PollOptions } from "../ark.js";
 import type { ModelCapabilities, ProviderId } from "../models.js";
+import type { PollOptions } from "../poll.js";
 import type {
   ArkTask,
   AspectRatio,
@@ -24,12 +24,19 @@ import type {
  * Bumped when this interface changes shape.
  *
  * The single cheapest thing that makes a future breaking change tractable: a
- * `v2` adapter can be added beside `v1` and providers migrated one at a time,
+ * `v5` adapter can be added beside `v4` and providers migrated one at a time,
  * instead of every provider having to change in one commit. It costs one
  * literal field and is the reason this is a spec rather than an interface.
+ *
+ * `v4` rather than `v1` because it tracks the AI SDK's own generation number.
+ * `@ai-sdk/provider` ships `VideoModelV4` alongside the `ImageModelV4` that
+ * src/images.ts already consumes, and the two describe the same thing; a port
+ * that numbered itself independently would claim a compatibility relationship
+ * it does not have. See docs/adr/0001 for what upstream does not cover and why
+ * this port still exists.
  */
-export const SPEC_VERSION = "v1" as const;
-export type SpecVersion = typeof SPEC_VERSION;
+export const SPEC_VERSION = "v4" as const;
+type SpecVersion = typeof SPEC_VERSION;
 
 /**
  * One generation request, in provider-neutral terms.
@@ -40,15 +47,26 @@ export type SpecVersion = typeof SPEC_VERSION;
  * Ark body whether it knew it or not. Translating to the wire is the adapter's
  * job and happens in exactly one place per provider.
  */
-export interface VideoModelV1CallOptions {
+export interface VideoModelV4CallOptions {
   /** Already composed: the film's preamble joined to the shot's prompt. */
   prompt: string;
   /**
    * References in AUTHORED ORDER, which is the ordinal contract every
    * `@Image N` binding depends on. Adapters must not reorder them.
+   *
+   * ONE array where upstream has two. `VideoModelV4CallOptions` splits the same
+   * information into `frameImages` (role-tagged `first_frame`/`last_frame`) and
+   * `inputReferences` (everything else), which loses the interleaving. That
+   * interleaving IS the contract here: `@Image 2` counts images in authored
+   * order across both groups, and a frame role consumes an ordinal like any
+   * other image. Splitting them and rejoining would put the ordinals somewhere
+   * the author did not write. `referenceOrdinals()` in src/payload.ts states
+   * the rule; an adapter targeting upstream must re-derive both groups from
+   * this array without reordering it.
    */
   references: readonly ShotReference[];
-  durationSeconds: number;
+  /** Seconds. Named to match upstream, which also measures in seconds. */
+  duration: number;
   aspectRatio: AspectRatio;
   /**
    * Undefined means "let the provider apply its own default", which is a
@@ -87,8 +105,17 @@ export type GeneratedVideoTask = ArkTask;
 /**
  * One model, ready to call. Obtained from a provider, never constructed
  * directly by a command.
+ *
+ * `doStart`/`doStatus` are upstream's names for the asynchronous lifecycle,
+ * and the shapes line up: upstream's `doStart` returns an opaque
+ * JSON-serialisable `operation` handle and its `doStatus` reports
+ * `pending | completed | error`. This port keeps the handle a plain string,
+ * because `ManifestEntry.taskId` is a string that `vs status <task-id>` and the
+ * `--json` key contract both depend on; widening it would be a manifest
+ * migration for no gain while both providers key on an id. An adapter whose
+ * provider hands back something richer serialises it into that string.
  */
-export interface VideoModelV1 {
+export interface VideoModelV4 {
   readonly specificationVersion: SpecVersion;
   readonly provider: ProviderId;
   /** The id exactly as the caller supplied it, for the audit trail. */
@@ -107,9 +134,15 @@ export interface VideoModelV1 {
    * content or inject a nondeterministic field: the hash is an audit record
    * and churning it silently invalidates every existing film's history.
    */
-  toRequestBody: (options: VideoModelV1CallOptions) => unknown;
-  createTask: (options: VideoModelV1CallOptions) => Promise<GeneratedVideoTask>;
-  getTask: (taskId: string) => Promise<GeneratedVideoTask>;
+  toRequestBody: (options: VideoModelV4CallOptions) => unknown;
+  doStart: (options: VideoModelV4CallOptions) => Promise<GeneratedVideoTask>;
+  doStatus: (taskId: string) => Promise<GeneratedVideoTask>;
+  /**
+   * Poll to a terminal state. Kept beyond upstream's surface because resumption
+   * here crosses process boundaries: `tasks.json` holds the id so a later run,
+   * or a different machine, re-attaches to a task already paid for. Upstream's
+   * polling lives inside one `generateVideo` call and cannot.
+   */
   pollTask: (
     taskId: string,
     pollOptions: PollOptions
@@ -137,8 +170,8 @@ export function resolveApiKey(source: ApiKeySource): string {
  * or `vs doctor` can construct one without reaching for globals, and so the
  * key is supplied once rather than per call.
  */
-export interface ProviderV1 {
+export interface ProviderV4 {
   readonly specificationVersion: SpecVersion;
   readonly providerId: ProviderId;
-  videoModel: (modelId: string) => VideoModelV1;
+  videoModel: (modelId: string) => VideoModelV4;
 }

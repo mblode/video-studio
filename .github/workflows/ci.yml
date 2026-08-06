@@ -54,6 +54,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Same gate `npm run check` runs locally. Pre-commit hooks are not
+      # guaranteed installed in a fresh clone or a worktree, which is exactly
+      # where agents run, so the merge gate has to carry it too.
+      - name: Unused code and dependencies
+        run: npm run knip
+
       - name: Test
         run: npm run test
 

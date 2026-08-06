@@ -82,7 +82,7 @@ export function cardSvg(
  * and fast, but it ships with fontconfig rather than macOS — returns null when
  * it is absent, so a missing checker never blocks a render.
  */
-export async function fontIsAvailable(family: string): Promise<boolean | null> {
+async function fontIsAvailable(family: string): Promise<boolean | null> {
   try {
     await execFileAsync("fc-list", ["-q", family]);
     return true;

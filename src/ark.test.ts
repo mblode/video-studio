@@ -10,6 +10,13 @@ function fail(status: number, headers?: Record<string, string>): Response {
   return new Response("boom", { headers, status });
 }
 
+/** node:fetch wraps the real socket error, so tests have to nest it too. */
+function connectError(code: string): Error {
+  return new TypeError("fetch failed", {
+    cause: Object.assign(new Error(code), { code }),
+  });
+}
+
 function makeClient(fetchImpl: ReturnType<typeof vi.fn>): ArkClient {
   return new ArkClient({
     apiKey: "k",
@@ -31,12 +38,12 @@ describe("ArkClient.request", () => {
     expect(f).toHaveBeenCalledTimes(2);
   });
 
-  it("retries a 5xx then succeeds", async () => {
+  it("retries a 5xx on a GET then succeeds", async () => {
     const f = vi.fn();
     f.mockResolvedValueOnce(fail(503));
     f.mockResolvedValueOnce(ok({ id: "t2", status: "running" }));
     const client = makeClient(f);
-    await expect(client.createTask({} as never)).resolves.toEqual({
+    await expect(client.getTask("t2")).resolves.toEqual({
       id: "t2",
       status: "running",
     });
@@ -50,6 +57,60 @@ describe("ArkClient.request", () => {
       ArkApiError
     );
     expect(f).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * A create-task POST that may already have been accepted must never be
+ * replayed: the task would be billed twice and the first id is lost, so
+ * `isInFlight` can never re-attach to it.
+ */
+describe("ArkClient.createTask ambiguous failures", () => {
+  it("does not retry a 5xx, and reports it as uncertain", async () => {
+    const f = vi.fn().mockResolvedValue(fail(503));
+    await expect(makeClient(f).createTask({} as never)).rejects.toMatchObject({
+      code: "task_uncertain",
+      name: "VsError",
+    });
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it("still retries a 429, which was rejected at the gate", async () => {
+    const f = vi.fn();
+    f.mockResolvedValueOnce(fail(429, { "retry-after": "0.01" }));
+    f.mockResolvedValueOnce(ok({ id: "t3", status: "queued" }));
+    await expect(makeClient(f).createTask({} as never)).resolves.toEqual({
+      id: "t3",
+      status: "queued",
+    });
+    expect(f).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a socket reset, which can land after the body is sent", async () => {
+    const f = vi.fn().mockRejectedValue(connectError("ECONNRESET"));
+    await expect(makeClient(f).createTask({} as never)).rejects.toMatchObject({
+      code: "task_uncertain",
+    });
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it("does retry a connect-phase failure, which never reached the server", async () => {
+    const f = vi.fn();
+    f.mockRejectedValueOnce(connectError("ECONNREFUSED"));
+    f.mockResolvedValueOnce(ok({ id: "t4", status: "queued" }));
+    await expect(makeClient(f).createTask({} as never)).resolves.toEqual({
+      id: "t4",
+      status: "queued",
+    });
+    expect(f).toHaveBeenCalledTimes(2);
+  });
+
+  it("names the operation and the next step", async () => {
+    const f = vi.fn().mockResolvedValue(fail(502));
+    await expect(makeClient(f).createTask({} as never)).rejects.toMatchObject({
+      hint: expect.stringContaining("bills twice"),
+      message: expect.stringContaining("createTask"),
+    });
   });
 });
 

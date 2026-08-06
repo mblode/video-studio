@@ -1,24 +1,23 @@
-import { setTimeout as sleep } from "node:timers/promises";
-
 import { z } from "zod";
 
-import type { PollOptions } from "../ark.js";
 import { VsError } from "../errors.js";
 import { ApiError, requestJson } from "../http.js";
 import { lookupModel } from "../models.js";
 import type { ModelCapabilities } from "../models.js";
+import { pollUntilTerminal } from "../poll.js";
+import type { PollOptions } from "../poll.js";
 import { resolveApiKey, SPEC_VERSION } from "../spec/video-model.js";
 import type {
   ApiKeySource,
   GeneratedVideoTask,
-  ProviderV1,
-  VideoModelV1,
-  VideoModelV1CallOptions,
+  ProviderV4,
+  VideoModelV4,
+  VideoModelV4CallOptions,
 } from "../spec/video-model.js";
 import type { Resolution, ShotReference, TaskStatus } from "../types.js";
 
 /**
- * MiniMax H3, as a `VideoModelV1`.
+ * MiniMax H3, as a `VideoModelV4`.
  *
  * EVERY H3 QUIRK LIVES IN THIS FILE. The content array happens to be shaped
  * almost exactly like Ark's — same `type` discriminants, same `{url}`
@@ -39,14 +38,6 @@ import type { Resolution, ShotReference, TaskStatus } from "../types.js";
  */
 
 const MIN_POLL_INTERVAL_MS = 10_000;
-const MAX_CONSECUTIVE_POLL_ERRORS = 5;
-const TERMINAL_STATUSES = new Set<TaskStatus>([
-  "succeeded",
-  "failed",
-  "cancelled",
-  "expired",
-]);
-
 const PROVIDER = "MiniMax";
 const CREATE_PATH = "/v2/video_generation";
 const QUERY_PATH = "/v2/query/video_generation";
@@ -160,7 +151,7 @@ function enrich(error: unknown): unknown {
   return error;
 }
 
-class MinimaxVideoModel implements VideoModelV1 {
+class MinimaxVideoModel implements VideoModelV4 {
   readonly specificationVersion = SPEC_VERSION;
   readonly provider = "minimax" as const;
   readonly modelId: string;
@@ -178,7 +169,7 @@ class MinimaxVideoModel implements VideoModelV1 {
     this.fetchImpl = config.fetchImpl;
   }
 
-  toRequestBody(options: VideoModelV1CallOptions): Record<string, unknown> {
+  toRequestBody(options: VideoModelV4CallOptions): Record<string, unknown> {
     const content: Record<string, unknown>[] = [
       { text: options.prompt, type: "text" },
     ];
@@ -189,7 +180,7 @@ class MinimaxVideoModel implements VideoModelV1 {
     // must be a whole number of seconds.
     return {
       content,
-      duration: Math.round(options.durationSeconds),
+      duration: Math.round(options.duration),
       model: this.modelId,
       ratio: options.aspectRatio,
       ...(options.resolution
@@ -199,9 +190,7 @@ class MinimaxVideoModel implements VideoModelV1 {
     };
   }
 
-  async createTask(
-    options: VideoModelV1CallOptions
-  ): Promise<GeneratedVideoTask> {
+  async doStart(options: VideoModelV4CallOptions): Promise<GeneratedVideoTask> {
     const { task_id } = await this.request(
       "createTask",
       "POST",
@@ -212,7 +201,7 @@ class MinimaxVideoModel implements VideoModelV1 {
     return { id: task_id, model: this.modelId, status: "queued" };
   }
 
-  async getTask(taskId: string): Promise<GeneratedVideoTask> {
+  async doStatus(taskId: string): Promise<GeneratedVideoTask> {
     const { task } = await this.request(
       "getTask",
       "GET",
@@ -233,47 +222,21 @@ class MinimaxVideoModel implements VideoModelV1 {
   }
 
   /**
-   * Identical in shape to Ark's poll loop, and duplicated rather than shared
-   * for one reason: MiniMax recommends a 10s floor and documents video
-   * generation at 5 RPM, so the interval is clamped here. Sharing the loop
-   * would mean a provider-specific clamp inside a provider-agnostic function.
+   * A 10s floor, because MiniMax documents video generation at 5 RPM and asks
+   * for it. That floor is the only thing that differs from the other adapters'
+   * polling, which is why it is a parameter rather than a second loop.
    */
-  async pollTask(
+  pollTask(
     taskId: string,
     pollOptions: PollOptions
   ): Promise<GeneratedVideoTask> {
-    const intervalMs = Math.max(MIN_POLL_INTERVAL_MS, pollOptions.intervalMs);
-    const deadline = Date.now() + pollOptions.timeoutMs;
-    let consecutiveErrors = 0;
-    for (;;) {
-      if (Date.now() > deadline) {
-        const minutes = pollOptions.timeoutMs / 60_000;
-        throw new VsError(
-          "timeout",
-          `task ${taskId} timed out after ${Math.round(minutes * 10) / 10} minute(s)`,
-          {
-            hint: `the task is still running at MiniMax and has already been billed, so re-running the same command re-attaches to it instead of paying twice; pass \`--timeout ${Math.max(2, Math.ceil(minutes * 2))}\` to wait longer`,
-          }
-        );
-      }
-      let task: GeneratedVideoTask;
-      try {
-        task = await this.getTask(taskId);
-        consecutiveErrors = 0;
-      } catch (error) {
-        consecutiveErrors += 1;
-        if (consecutiveErrors >= MAX_CONSECUTIVE_POLL_ERRORS) {
-          throw error;
-        }
-        await sleep(intervalMs);
-        continue;
-      }
-      await pollOptions.onUpdate?.(task);
-      if (TERMINAL_STATUSES.has(task.status)) {
-        return task;
-      }
-      await sleep(intervalMs);
-    }
+    return pollUntilTerminal({
+      minIntervalMs: MIN_POLL_INTERVAL_MS,
+      options: pollOptions,
+      provider: PROVIDER,
+      read: (id) => this.doStatus(id),
+      taskId,
+    });
   }
 
   private async request<T>(
@@ -310,7 +273,7 @@ export interface MinimaxProviderConfig {
 }
 
 /** Configure the MiniMax backend once; take models off it as needed. */
-export function createMinimax(config: MinimaxProviderConfig): ProviderV1 {
+export function createMinimax(config: MinimaxProviderConfig): ProviderV4 {
   const resolved: Required<MinimaxProviderConfig> = {
     ...config,
     fetchImpl: config.fetchImpl ?? fetch,

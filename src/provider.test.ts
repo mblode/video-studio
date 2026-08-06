@@ -1,18 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { ArkClient } from "./ark.js";
 import { DEFAULT_VIDEO_MODEL } from "./models.js";
 import { createModelLimiter, MockVideoProvider } from "./provider.js";
-import type { VideoProvider } from "./provider.js";
-import type { VideoModelV1CallOptions } from "./spec/video-model.js";
+import type { VideoModelV4CallOptions } from "./spec/video-model.js";
 
 const STANDARD = "dreamina-seedance-2-0-260128";
 
 /** A minimal neutral request. The mock translates it with the real Ark rules. */
-function request(): VideoModelV1CallOptions {
+function request(): VideoModelV4CallOptions {
   return {
     aspectRatio: "16:9",
-    durationSeconds: 5,
+    duration: 5,
     generateAudio: false,
     prompt: "a shot",
     references: [],
@@ -20,22 +18,10 @@ function request(): VideoModelV1CallOptions {
   };
 }
 
-describe("VideoProvider port", () => {
-  it("is satisfied by ArkClient without an adapter", () => {
-    // The legacy port, kept for the doctor probe: the raw client still fits it,
-    // so a task-status check needs no model and no film.
-    const client: VideoProvider = new ArkClient({
-      apiKey: "k",
-      baseUrl: "https://ark.test/api/v3",
-    });
-    expect(client).toBeInstanceOf(ArkClient);
-  });
-});
-
 describe("MockVideoProvider", () => {
   it("runs a task through running to succeeded with a usage figure", async () => {
     const provider = new MockVideoProvider({ pollsUntilDone: 2 });
-    const created = await provider.createTask(request());
+    const created = await provider.doStart(request());
     expect(created).toMatchObject({ id: "task-1", status: "queued" });
 
     const seen: string[] = [];
@@ -56,8 +42,8 @@ describe("MockVideoProvider", () => {
       failTasks: ["task-2"],
       pollsUntilDone: 0,
     });
-    await provider.createTask(request());
-    const second = await provider.createTask(request());
+    await provider.doStart(request());
+    const second = await provider.doStart(request());
     const final = await provider.pollTask(second.id, {
       intervalMs: 0,
       timeoutMs: 0,
@@ -69,7 +55,7 @@ describe("MockVideoProvider", () => {
 
   it("records every submitted payload for assertions", async () => {
     const provider = new MockVideoProvider();
-    await provider.createTask(request());
+    await provider.doStart(request());
     expect(provider.requests).toHaveLength(1);
     // The mock claims the CLI's default model, so this also pins what an
     // unconfigured film generates on.

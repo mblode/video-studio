@@ -1,11 +1,10 @@
-import { setTimeout as sleep } from "node:timers/promises";
-
 import { z } from "zod";
 
-import { VsError } from "./errors.js";
 import { requestJson } from "./http.js";
+import { pollUntilTerminal } from "./poll.js";
+import type { PollOptions } from "./poll.js";
 import { TASK_STATUSES } from "./types.js";
-import type { ArkTask, CreateTaskRequest, TaskStatus } from "./types.js";
+import type { ArkTask, CreateTaskRequest } from "./types.js";
 
 /**
  * CONFIRMED (ModelArk docs page 1520757/1521675): tasks live at
@@ -15,18 +14,7 @@ import type { ArkTask, CreateTaskRequest, TaskStatus } from "./types.js";
 /** Name used in error messages, e.g. "Ark API 429: ...". */
 const PROVIDER = "Ark";
 
-export const TASKS_PATH = "/contents/generations/tasks";
-
-const MAX_CONSECUTIVE_POLL_ERRORS = 5;
-
-const TERMINAL_STATUSES = new Set<TaskStatus>([
-  "succeeded",
-  "failed",
-  "cancelled",
-  // Terminal like a failure: the task outlived execution_expires_after (or the
-  // 7-day record retention) and will never produce a clip, so stop polling.
-  "expired",
-]);
+const TASKS_PATH = "/contents/generations/tasks";
 
 const taskStatusSchema = z.enum(TASK_STATUSES);
 
@@ -93,18 +81,6 @@ const createTaskResponseSchema = arkTaskSchema.extend({
 });
 
 /**
- * Poll timeouts are reported in the unit the operator typed (`--timeout` is in
- * minutes); "1200000ms" makes them do the arithmetic. Sub-minute waits still
- * read in seconds rather than rounding to a useless "0 minutes".
- */
-function formatTimeout(ms: number): string {
-  const minutes = ms / 60_000;
-  return minutes >= 1
-    ? `${Math.round(minutes * 10) / 10} minute(s)`
-    : `${Math.max(1, Math.round(ms / 1000))}s`;
-}
-
-/**
  * Historical names for the shared provider errors. They are the SAME classes,
  * not subclasses: `ArkApiError` was this codebase's only provider error before
  * a second provider existed, and a lot of call sites and tests name it.
@@ -113,12 +89,6 @@ export {
   ApiError as ArkApiError,
   ResponseShapeError as ArkResponseError,
 } from "./http.js";
-
-export interface PollOptions {
-  intervalMs: number;
-  onUpdate?: (task: ArkTask) => void | Promise<void>;
-  timeoutMs: number;
-}
 
 export class ArkClient {
   private readonly apiKey: string;
@@ -154,42 +124,13 @@ export class ArkClient {
     });
   }
 
-  async pollTask(taskId: string, options: PollOptions): Promise<ArkTask> {
-    const deadline = Date.now() + options.timeoutMs;
-    let consecutiveErrors = 0;
-    for (;;) {
-      if (Date.now() > deadline) {
-        const minutes = options.timeoutMs / 60_000;
-        throw new VsError(
-          "timeout",
-          `task ${taskId} timed out after ${formatTimeout(options.timeoutMs)}`,
-          {
-            hint: `the task is still running at the provider and has already been billed, so re-running the same command re-attaches to it instead of paying twice; pass \`--timeout ${Math.max(2, Math.ceil(minutes * 2))}\` to wait longer`,
-          }
-        );
-      }
-      let task: ArkTask;
-      try {
-        task = await this.getTask(taskId);
-        consecutiveErrors = 0;
-      } catch (error) {
-        consecutiveErrors += 1;
-        if (consecutiveErrors >= MAX_CONSECUTIVE_POLL_ERRORS) {
-          throw error;
-        }
-        await sleep(options.intervalMs);
-        continue;
-      }
-      // Awaited and OUTSIDE the getTask try/catch: a failed manifest write
-      // surfaces here (aborting this shot's poll) instead of becoming an
-      // unhandled rejection or being miscounted as a transient API error.
-      // Callers isolate per-shot failures via Promise.allSettled.
-      await options.onUpdate?.(task);
-      if (TERMINAL_STATUSES.has(task.status)) {
-        return task;
-      }
-      await sleep(options.intervalMs);
-    }
+  pollTask(taskId: string, options: PollOptions): Promise<ArkTask> {
+    return pollUntilTerminal({
+      options,
+      provider: "the provider",
+      read: (id) => this.getTask(id),
+      taskId,
+    });
   }
 
   /**

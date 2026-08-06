@@ -36,15 +36,6 @@ export interface PlacedLine {
   path: string;
 }
 
-export interface AssemblePlan {
-  segments: AssembleSegment[];
-  shotStarts: Record<string, number>;
-  totalRuntime: number;
-  placed: PlacedLine[];
-  /** ffmpeg args after `-y -loglevel error` (inputs + filter + map + bitrate). */
-  ffmpegArgs: string[];
-}
-
 const MIN_GAP = 0.25;
 
 /**
@@ -240,7 +231,7 @@ export function buildAssembleFfmpegArgs(
   return args;
 }
 
-export const SCRATCH_NARRATION_FILENAME = "narration-scratch.mp3";
+const SCRATCH_NARRATION_FILENAME = "narration-scratch.mp3";
 
 export function scratchAudioPath(
   textFilePath: string,

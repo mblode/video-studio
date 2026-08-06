@@ -102,50 +102,8 @@ export const DURATION_AUTO = -1;
 /** Fallback clip length when neither the shot nor the film sets one. */
 export const DEFAULT_DURATION = 8;
 
-/**
- * Legacy per-second token heuristic, kept only for callers that still import
- * it. DO NOT use it for new estimates: the official ModelArk formula is
- * `(input_seconds + output_seconds) × width × height × fps / 1024`, which puts
- * 1080p24 at 48,600 tokens/second, not 28,000. The 28k figure came from one
- * mixed calibration batch (22,446,900 tokens across 101 calls, most of them
- * image-conditioned and below 1080p) so it silently under-quoted. src/cost.ts
- * now derives tokens from real pixel dimensions instead.
- *
- * @deprecated Use `estimateTokens` from src/cost.ts.
- */
-export const TOKENS_PER_SECOND_1080P = 28_000;
-/**
- * Token cost of a resolution relative to 1080p. These are pure pixel-area
- * ratios (they fall straight out of the official formula), so they stay exact:
- * 4K really is ~4x 1080p. That is the 4K trap: its per-token RATE is lower
- * than 1080p's, which reads like a discount but is swamped by 4x the tokens.
- */
-export const RESOLUTION_TOKEN_FACTOR: Record<Resolution, number> = {
-  "1080p": 1,
-  // (1440/1080)^2 and (768/1080)^2. Inert for the per-second models that
-  // actually render these two, but this record is total and a plausible-looking
-  // wrong number here would quietly misprice a token-billed model that adds
-  // them later.
-  "2k": 1.78,
-  "480p": 0.2,
-  "4k": 4,
-  "720p": 0.44,
-  "768p": 0.51,
-};
-/**
- * USD per 1K output tokens (BytePlus ModelArk console, text-to-video rate).
- * Conditioned input (reference still / chained first_frame) is cheaper still
- * (~0.0047 standard / 0.0033 fast); we quote the t2v ceiling so estimates
- * never undersell. The `fast` model (Dreamina-Seedance-2.0-fast) is ~27%
- * cheaper — opt in per film via `film.draftModel`.
- */
-export const VIDEO_USD_PER_KTOKEN: Record<"standard" | "fast", number> = {
-  fast: 0.0056,
-  standard: 0.0077,
-};
-
 /** The five roles this CLI knows how to build a payload for. */
-export const REFERENCE_ROLES = [
+const REFERENCE_ROLES = [
   "reference_image",
   "reference_video",
   "reference_audio",
@@ -153,7 +111,7 @@ export const REFERENCE_ROLES = [
   "last_frame",
 ] as const;
 
-export type KnownReferenceRole = (typeof REFERENCE_ROLES)[number];
+type KnownReferenceRole = (typeof REFERENCE_ROLES)[number];
 
 /**
  * Open on purpose for TypeScript call sites. Autocomplete covers the five
@@ -233,7 +191,7 @@ export interface FilmDefaults {
   watermark: boolean;
 }
 
-export interface FilmConfig {
+interface FilmConfig {
   title: string;
   /**
    * Style/continuity block auto-prepended to every shot's prompt (a "color

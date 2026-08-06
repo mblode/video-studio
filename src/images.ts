@@ -21,14 +21,6 @@ import { requireGeminiApiKey } from "./env.js";
  * Flux, and most of the rest, at a broker's markup.
  */
 
-/**
- * The two Nano Banana image models, named for what they are rather than for
- * which one is the default. `DEFAULT_IMAGE_MODEL` in src/commands/stills.ts is
- * the single answer to "what do stills use", and it is Pro: the keyframe
- * workflow wants legible in-frame text, which is what Pro is for.
- */
-/** Nano Banana 2 — the high-efficiency Gemini 3.1 Flash Image model. */
-export const NANO_BANANA_IMAGE_MODEL = "gemini-3.1-flash-image";
 /** Nano Banana Pro — the professional-asset Gemini 3 Pro Image model. */
 export const GEMINI_PRO_IMAGE_MODEL = "gemini-3-pro-image";
 

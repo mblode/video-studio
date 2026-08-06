@@ -3,10 +3,8 @@ import { requestWithRetry } from "./http.js";
 
 /** Best expressive model for film narration (Aug 2026). */
 export const ELEVEN_V3_MODEL = "eleven_v3";
-/** Stable long-form fallback when retake consistency matters more than drama. */
-export const ELEVEN_MULTILINGUAL_V2_MODEL = "eleven_multilingual_v2";
 
-export const DEFAULT_ELEVEN_BASE_URL = "https://api.elevenlabs.io";
+const DEFAULT_ELEVEN_BASE_URL = "https://api.elevenlabs.io";
 
 /** Name used in error messages, e.g. "ElevenLabs API 401: ...". */
 const PROVIDER = "ElevenLabs";
@@ -27,9 +25,6 @@ export interface ElevenLabsSpeechRequest {
     use_speaker_boost?: boolean;
   };
 }
-
-/** Historical name for the shared provider error; same class, not a subclass. */
-export { ApiError as ElevenLabsApiError } from "./http.js";
 
 /** Default film-VO settings: warm, slightly slow, speaker-boosted. */
 export function defaultVoiceSettings(): NonNullable<

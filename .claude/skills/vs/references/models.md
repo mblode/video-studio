@@ -26,9 +26,9 @@ Confirmed on BytePlus ModelArk:
 
 | Model            | Id                                | Notes                                          |
 | ---------------- | --------------------------------- | ---------------------------------------------- |
-| Seedance 2.0     | `dreamina-seedance-2-0-260128`    | 4-15s, 480p to 4K                              |
-| Seedance 2.0 fast | `dreamina-seedance-2-0-fast-260128` | 4-15s, 480p/720p only. About 27% cheaper per token |
-| Seedance 2.0 mini | `dreamina-seedance-2-0-mini-260615` | 4-15s, 480p/720p only. Pricing not published |
+| Seedance 2.0     | `dreamina-seedance-2-0-260128`    | 4-15s, 480p/720p/1080p/4K. $7.0/M at 720p      |
+| Seedance 2.0 fast | `dreamina-seedance-2-0-fast-260128` | 4-15s, 480p/720p only. $5.6/M, about 20% cheaper than standard |
+| Seedance 2.0 mini | `dreamina-seedance-2-0-mini-260615` | 4-15s, 480p/720p only. $3.5/M, the cheapest Seedance |
 | Seedance 2.5     | `dreamina-seedance-2-5-260628`    | **The default.** 4-30s, 480p/720p, $10.7/M. **1 concurrent, 60 RPM** |
 
 And on MiniMax, a different provider entirely:
@@ -37,10 +37,29 @@ And on MiniMax, a different provider entirely:
 | --- | --- | --- |
 | MiniMax H3 | `MiniMax-H3` | 4-15s, 768P/2K, **billed per second** ($0.08 / $0.13). Native stereo audio always. 5 RPM |
 
-`film.model` also accepts an explicit `provider:id` form (`minimax:MiniMax-H3`).
-A bare id is resolved through the registry, so the prefix is only needed for a
-model this repo has not learned yet: without it an unknown id falls back to
-Ark and gets POSTed to BytePlus.
+And through the AI SDK bridge, which reaches any model with an `@ai-sdk/*`
+provider without a hand-written adapter here:
+
+| Model | Id | Notes |
+| --- | --- | --- |
+| Veo 3.1 | `aisdk:google/veo-3.1-generate` | **4/6/8s only**, 720p/1080p, $0.40/sec, audio always on |
+| Veo 3.1 Fast | `aisdk:google/veo-3.1-fast-generate-preview` | Same envelope, $0.10/sec |
+| Veo 3.1 Lite | `aisdk:google/veo-3.1-lite-generate-preview` | Same envelope, $0.05/sec |
+
+Veo runs on the `GEMINI_API_KEY` you already need for stills and `vs score`, so
+there is nothing new to install or configure. The catch is the duration enum: a
+film written in 8s beats fits, one written in 30s acts does not.
+
+`film.model` also accepts an explicit `provider:id` form (`minimax:MiniMax-H3`,
+`aisdk:google/...`). A bare id is resolved through the registry, so the prefix
+is only needed for a model this repo has not learned yet: without it an unknown
+id falls back to Ark and gets POSTed to BytePlus. An `aisdk:` id always needs
+its `<vendor>/` segment, because that is what selects the upstream package.
+
+A bridged model is weaker in two ways worth knowing before you pick one. Its
+`payloadHash` records the normalised request rather than the literal wire body,
+because the AI SDK offers no way to render a body without sending it; and its
+cost comes from the registry alone, since the SDK carries no billing data.
 
 The three Seedance models also ship on Volcengine with a `doubao-` prefix. Pre-2.0 releases
 (`seedance-1-0-pro-250528`, `seedance-1-5-pro-251215`) are in the registry with
@@ -183,6 +202,12 @@ on every Seedance model. Dollar rates per model and resolution live in
 `src/models.ts`; an unlisted combination quotes the dearest known rate, so an
 unpriced pairing over-quotes rather than silently costing nothing.
 
+The rate VARIES BY RESOLUTION, which is easy to miss because BytePlus publishes
+only a range ($3.5-$7.7/M without video input, $2.1-$4.7 with it). Seedance 2.0
+is $7.0/M at 480p and 720p, $7.7/M at 1080p, and $4.0/M at 4K; fast is $5.6/M
+and mini $3.5/M. 4K's rate being the LOWEST is the trap named below: it burns
+about 4x the tokens, so it is far and away the dearest option.
+
 One 30s clip at 16:9 on Seedance 2.5, at the $10.7/M rate:
 
 | Resolution      | Tokens    | USD    |
@@ -215,7 +240,7 @@ The 120s film, three ways:
 
 | | Shape | USD | Concurrency | Native audio |
 | --- | --- | --- | --- | --- |
-| Seedance 2.0, 720p | 15 x 8s | $19.96 | 3 | SFX only |
+| Seedance 2.0, 720p | 15 x 8s | $18.14 | 3 | SFX only |
 | Seedance 2.5, 720p | 4 x 30s | $27.73 | **1** | SFX only |
 | MiniMax H3, 768P | 8 x 15s | **$9.60** | 3 | full mix |
 | MiniMax H3, 2K | 8 x 15s | $15.60 | 3 | full mix |
@@ -238,10 +263,10 @@ on 2.5.** Identical pixels, identical token count. Only the rate differs:
 
 | Same 120s at 720p | Tokens    | Rate     | USD    | Concurrency | Wall clock |
 | ----------------- | --------- | -------- | ------ | ----------- | ---------- |
-| 2.0, 15 x 8s      | 2,592,000 | $7.7/M   | $19.96 | 3           | baseline   |
+| 2.0, 15 x 8s      | 2,592,000 | $7.0/M   | $18.14 | 3           | baseline   |
 | 2.5, 4 x 30s      | 2,592,000 | $10.7/M  | $27.73 | **1**       | **~4x**    |
 
-So 2.5 is about **39% dearer** for the same runtime and roughly **four times
+So 2.5 is about **53% dearer** for the same runtime and roughly **four times
 the wall clock**, because it runs one task at a time. What you buy for that is
 coherence inside a 30s act and far fewer retakes. You do not buy price, and you
 do not buy speed. Decide on that basis.

@@ -28,7 +28,7 @@ export interface ScoreOptions {
 }
 
 /** Allocate `score-vNNN.mp3` (or .wav) next to the film, never overwriting. */
-export function nextScorePath(filmDir: string, extension = ".mp3"): string {
+function nextScorePath(filmDir: string, extension = ".mp3"): string {
   for (let version = 1; ; version += 1) {
     const candidate = join(
       filmDir,

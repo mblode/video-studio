@@ -1,7 +1,6 @@
 import pLimit from "p-limit";
 import type { LimitFunction } from "p-limit";
 
-import type { PollOptions } from "./ark.js";
 import {
   DEFAULT_VIDEO_MODEL,
   lookupModel,
@@ -9,37 +8,14 @@ import {
   normalizeModelId,
 } from "./models.js";
 import type { ModelCapabilities } from "./models.js";
+import type { PollOptions } from "./poll.js";
 import { createArk } from "./providers/ark.js";
 import { SPEC_VERSION } from "./spec/video-model.js";
 import type {
-  VideoModelV1,
-  VideoModelV1CallOptions,
+  VideoModelV4,
+  VideoModelV4CallOptions,
 } from "./spec/video-model.js";
 import type { ArkTask, CreateTaskRequest, Resolution } from "./types.js";
-
-/**
- * The port between the commands and whatever actually generates video.
- *
- * This used to be a hypothetical seam: `ArkClient` satisfied it structurally,
- * nothing else implemented it, and the commands typed themselves against the
- * concrete client anyway. MiniMax H3 is the second adapter, which is what makes
- * the seam real — one adapter is a guess about where variation will appear,
- * two is a measurement of where it did.
- *
- * The commands depend on this interface and never on a client class. What each
- * one has to know is the four methods below; what none of them may learn is
- * which vendor is behind it, what its wire body looks like, or how it bills.
- *
- * Stills are deliberately not part of this port. They already have two
- * backends (Ark Seedream and Gemini Nano Banana) routed by model id in
- * src/commands/stills.ts, and they are cents rather than dollars, so the
- * abstraction earns nothing there yet.
- */
-export interface VideoProvider {
-  createTask: (request: CreateTaskRequest) => Promise<ArkTask>;
-  getTask: (taskId: string) => Promise<ArkTask>;
-  pollTask: (taskId: string, options: PollOptions) => Promise<ArkTask>;
-}
 
 /**
  * Concurrency gate keyed by (model, resolution).
@@ -119,7 +95,7 @@ export interface MockProviderOptions {
  * running before it succeeds (so the poll loop is exercised, not skipped), and
  * a failed task carries an `error`, not a video url.
  */
-export class MockVideoProvider implements VideoModelV1 {
+export class MockVideoProvider implements VideoModelV4 {
   readonly specificationVersion = SPEC_VERSION;
   readonly provider = "ark" as const;
   readonly modelId: string;
@@ -130,7 +106,7 @@ export class MockVideoProvider implements VideoModelV1 {
 
   private readonly options: Required<MockProviderOptions>;
   private readonly reads = new Map<string, number>();
-  private readonly translate: VideoModelV1;
+  private readonly translate: VideoModelV4;
 
   constructor(options: MockProviderOptions = {}) {
     this.options = {
@@ -149,11 +125,11 @@ export class MockVideoProvider implements VideoModelV1 {
     }).videoModel(this.modelId);
   }
 
-  toRequestBody(options: VideoModelV1CallOptions): CreateTaskRequest {
+  toRequestBody(options: VideoModelV4CallOptions): CreateTaskRequest {
     return this.translate.toRequestBody(options) as CreateTaskRequest;
   }
 
-  createTask(options: VideoModelV1CallOptions): Promise<ArkTask> {
+  doStart(options: VideoModelV4CallOptions): Promise<ArkTask> {
     const request = this.toRequestBody(options);
     this.requests.push(request);
     const id = `task-${this.requests.length}`;
@@ -161,7 +137,7 @@ export class MockVideoProvider implements VideoModelV1 {
     return Promise.resolve({ id, model: request.model, status: "queued" });
   }
 
-  getTask(taskId: string): Promise<ArkTask> {
+  doStatus(taskId: string): Promise<ArkTask> {
     const seen = (this.reads.get(taskId) ?? 0) + 1;
     this.reads.set(taskId, seen);
     if (seen <= this.options.pollsUntilDone) {
@@ -191,7 +167,7 @@ export class MockVideoProvider implements VideoModelV1 {
    */
   async pollTask(taskId: string, options: PollOptions): Promise<ArkTask> {
     for (;;) {
-      const task = await this.getTask(taskId);
+      const task = await this.doStatus(taskId);
       await options.onUpdate?.(task);
       if (task.status !== "queued" && task.status !== "running") {
         return task;

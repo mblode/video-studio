@@ -230,12 +230,15 @@ describe("--json payload contract", () => {
     );
 
     expect(keys(payload)).toEqual(["dryRun", "estimate", "pass", "payloads"]);
-    // The quote an agent budgets against.
+    // The quote an agent budgets against. `usdMax` is the one `--max-cost`
+    // enforces and equals `usd` unless a shot binds a reference video whose
+    // billed duration cannot be known before submitting.
     expect(keys(payload.estimate)).toEqual([
       "clips",
       "seconds",
       "tokens",
       "usd",
+      "usdMax",
     ]);
     // The request body inside `payload` is the provider's contract, pinned by
     // payload.test.ts; this only pins the envelope around it.

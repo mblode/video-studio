@@ -10,9 +10,11 @@ import {
   selectedRevision,
   upsertEntry,
 } from "../manifest.js";
+import { DEFAULT_VIDEO_MODEL } from "../models.js";
 import type { Pass } from "../paths.js";
 import { filmFileNotFound } from "../shots.js";
-import { createArkClient } from "./context.js";
+import type { VideoModelV4 } from "../spec/video-model.js";
+import { createArkClient, createVideoModel } from "./context.js";
 import { color, emit, line, note } from "./output.js";
 
 export interface StatusOptions {
@@ -35,6 +37,9 @@ export async function runStatus(
   options: StatusOptions
 ): Promise<void> {
   if (positional && !looksLikeShotsFile(positional)) {
+    // A bare task id carries no film, so there is no recorded model to route
+    // off and this assumes Ark. Pass the shots file instead of the id to look
+    // up a MiniMax or bridged task.
     const client = createArkClient();
     const task = await client.getTask(positional);
     line(JSON.stringify(task, null, 2));
@@ -61,9 +66,25 @@ export async function runStatus(
   }
 
   if (options.refresh) {
-    const client = createArkClient();
+    // Routed PER ENTRY off the model recorded at submit time, not off one Ark
+    // client for the whole film. A MiniMax or bridged task id sent to BytePlus
+    // comes back as a baffling 4xx, and a film that changed `film.model` between
+    // passes has entries belonging to two different backends at once. Legacy
+    // entries predate `params`, so they fall back to the default model, which is
+    // exactly what they were generated on.
+    const clients = new Map<string, VideoModelV4>();
+    const clientFor = (modelId: string): VideoModelV4 => {
+      const existing = clients.get(modelId);
+      if (existing) {
+        return existing;
+      }
+      const created = createVideoModel(modelId);
+      clients.set(modelId, created);
+      return created;
+    };
     for (const entry of entries.filter((candidate) => isInFlight(candidate))) {
-      const task = await client.getTask(entry.taskId);
+      const client = clientFor(entry.params?.model ?? DEFAULT_VIDEO_MODEL);
+      const task = await client.doStatus(entry.taskId);
       upsertEntry(manifest, {
         shotId: entry.shotId,
         status: task.status,

@@ -5,7 +5,7 @@ import { extname } from "node:path";
 import { VsError } from "./errors.js";
 import { DEFAULT_VIDEO_MODEL } from "./models.js";
 import { safeJoin } from "./paths.js";
-import type { VideoModelV1CallOptions } from "./spec/video-model.js";
+import type { VideoModelV4CallOptions } from "./spec/video-model.js";
 import { DEFAULT_DURATION, DEFAULT_RESOLUTION } from "./types.js";
 import type {
   AspectRatio,
@@ -15,15 +15,6 @@ import type {
   ShotReference,
   ShotsFile,
 } from "./types.js";
-
-/**
- * Re-exported so this module's public surface is unchanged; the constant itself
- * lives beside the registry in src/models.ts, where `lintShotsFile` can reach
- * it without importing this file.
- */
-export { DEFAULT_VIDEO_MODEL } from "./models.js";
-/** Confirmed fast variant (~27% cheaper). Opt in per film via `film.draftModel`. */
-export const DRAFT_VIDEO_MODEL = "dreamina-seedance-2-0-fast-260128";
 
 const BASE_DEFAULTS: FilmDefaults = {
   cameraFixed: false,
@@ -136,7 +127,7 @@ function isRemote(url: string): boolean {
  * Seedance 2.5 (the schema refuses it elsewhere) and is capped at
  * `MAX_INLINE_BYTES`. An https URL is always the supported path.
  */
-export async function resolveReferenceUrl(
+async function resolveReferenceUrl(
   url: string,
   shotsDir: string,
   skipInline: boolean
@@ -259,7 +250,7 @@ export async function buildCallOptions(
   film: ShotsFile["film"],
   shotsDir: string,
   options?: { skipInline?: boolean; overrides?: PayloadOverrides }
-): Promise<VideoModelV1CallOptions> {
+): Promise<VideoModelV4CallOptions> {
   const params = effectiveShotParams(shot, film, options?.overrides);
   const skipInline = options?.skipInline ?? false;
 
@@ -274,7 +265,7 @@ export async function buildCallOptions(
   return {
     aspectRatio: params.ratio,
     cameraFixed: params.cameraFixed,
-    durationSeconds: params.duration,
+    duration: params.duration,
     generateAudio: params.generateAudio,
     prompt: composePrompt(film, shot),
     references,

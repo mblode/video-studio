@@ -1,14 +1,14 @@
 import { ArkClient } from "../ark.js";
-import type { PollOptions } from "../ark.js";
 import { lookupModel } from "../models.js";
 import type { ModelCapabilities } from "../models.js";
+import type { PollOptions } from "../poll.js";
 import { resolveApiKey, SPEC_VERSION } from "../spec/video-model.js";
 import type {
   ApiKeySource,
   GeneratedVideoTask,
-  ProviderV1,
-  VideoModelV1,
-  VideoModelV1CallOptions,
+  ProviderV4,
+  VideoModelV4,
+  VideoModelV4CallOptions,
 } from "../spec/video-model.js";
 import type {
   ArkContentItem,
@@ -17,7 +17,7 @@ import type {
 } from "../types.js";
 
 /**
- * BytePlus ModelArk (Seedance), as a `VideoModelV1`.
+ * BytePlus ModelArk (Seedance), as a `VideoModelV4`.
  *
  * This adapter is thin on purpose: Ark's task vocabulary IS the internal one,
  * because the internal one was derived from it. That is a historical accident,
@@ -39,7 +39,7 @@ function toContentItem(reference: ShotReference): ArkContentItem {
   return { audio_url: { url }, role, type: "audio_url" };
 }
 
-class ArkVideoModel implements VideoModelV1 {
+class ArkVideoModel implements VideoModelV4 {
   readonly specificationVersion = SPEC_VERSION;
   readonly provider = "ark" as const;
   readonly modelId: string;
@@ -81,14 +81,14 @@ class ArkVideoModel implements VideoModelV1 {
    * omits it, so an unconfigured film never risks an unknown-field reject, and
    * an unsent field cannot be rejected at all.
    */
-  toRequestBody(options: VideoModelV1CallOptions): CreateTaskRequest {
+  toRequestBody(options: VideoModelV4CallOptions): CreateTaskRequest {
     const content: ArkContentItem[] = [{ text: options.prompt, type: "text" }];
     for (const reference of options.references) {
       content.push(toContentItem(reference));
     }
     return {
       content,
-      duration: options.durationSeconds,
+      duration: options.duration,
       generate_audio: options.generateAudio ?? true,
       model: this.modelId,
       ratio: options.aspectRatio,
@@ -100,11 +100,11 @@ class ArkVideoModel implements VideoModelV1 {
     };
   }
 
-  createTask(options: VideoModelV1CallOptions): Promise<GeneratedVideoTask> {
+  doStart(options: VideoModelV4CallOptions): Promise<GeneratedVideoTask> {
     return this.clientOrCreate().createTask(this.toRequestBody(options));
   }
 
-  getTask(taskId: string): Promise<GeneratedVideoTask> {
+  doStatus(taskId: string): Promise<GeneratedVideoTask> {
     return this.clientOrCreate().getTask(taskId);
   }
 
@@ -123,7 +123,7 @@ export interface ArkProviderConfig {
 }
 
 /** Configure the Ark backend once; take models off it as needed. */
-export function createArk(config: ArkProviderConfig): ProviderV1 {
+export function createArk(config: ArkProviderConfig): ProviderV4 {
   return {
     providerId: "ark",
     specificationVersion: SPEC_VERSION,

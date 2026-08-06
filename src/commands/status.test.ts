@@ -15,6 +15,12 @@ vi.mock("./context.js", async (importOriginal) => {
     createArkClient: vi.fn(() => {
       throw new Error("createArkClient must not be called");
     }),
+    createVideoModel: vi.fn((modelId: string) => ({
+      doStatus: vi.fn(() =>
+        Promise.resolve({ id: "t", model: modelId, status: "running" })
+      ),
+      modelId,
+    })),
   };
 });
 
@@ -109,5 +115,63 @@ describe("runStatus", () => {
         shots: "./shots.json",
       })
     ).resolves.toBeUndefined();
+  });
+});
+
+const inFlight = (shotId: string, model: string) => ({
+  attempts: 1,
+  params: { duration: 8, generateAudio: true, model, ratio: "16:9" },
+  shotId,
+  status: "running",
+  submittedAt: "2026-01-01T00:00:00.000Z",
+  taskId: `task-${shotId}`,
+  updatedAt: "2026-01-01T00:00:00.000Z",
+});
+
+/**
+ * `--refresh` used to build ONE `ArkClient` for the whole film, so refreshing a
+ * MiniMax or bridged film sent its task ids to BytePlus with an ARK_API_KEY and
+ * came back as a baffling 4xx. Routing is per entry, off the model recorded at
+ * submit time, because a film that changed `film.model` between passes has
+ * entries belonging to two backends at once.
+ */
+describe("vs status --refresh routing", () => {
+  it("asks each entry's own backend, not one Ark client for the film", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vs-status-refresh-"));
+    const shotsPath = join(dir, "shots.json");
+    await writeFile(
+      shotsPath,
+      JSON.stringify({
+        film: { title: "T" },
+        shots: [
+          { id: "a", prompt: "p" },
+          { id: "b", prompt: "p" },
+        ],
+      })
+    );
+    await writeFile(
+      join(dir, "tasks.json"),
+      JSON.stringify({
+        entries: {
+          a: inFlight("a", "dreamina-seedance-2-0-260128"),
+          b: inFlight("b", "MiniMax-H3"),
+        },
+        shotsFile: shotsPath,
+        version: 2,
+      })
+    );
+
+    const context = await import("./context.js");
+    await runStatus(shotsPath, {
+      draft: false,
+      refresh: true,
+      shots: shotsPath,
+    });
+
+    const asked = vi
+      .mocked(context.createVideoModel)
+      .mock.calls.map(([modelId]) => modelId);
+    expect(asked).toContain("dreamina-seedance-2-0-260128");
+    expect(asked).toContain("MiniMax-H3");
   });
 });

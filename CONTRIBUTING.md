@@ -38,7 +38,7 @@ Requires Node >= 24 and ffmpeg.
 
 ```bash
 npm install          # runs the build and installs git hooks
-npm run verify       # lint + typecheck + tests, the tier that gates a commit
+npm run verify       # lint + typecheck + knip + tests, the tier that gates a commit
 ```
 
 Narrower tiers when you want a faster loop:
@@ -48,8 +48,9 @@ Narrower tiers when you want a faster loop:
 | `npm run lint` | formatting and lint only |
 | `npm run typecheck` | types only |
 | `npm run test` | tests only |
-| `npm run check` | lint + typecheck |
-| `npm run verify` | lint + typecheck + tests |
+| `npm run check` | lint + typecheck + knip |
+| `npm run knip` | unused files, exports, and dependencies |
+| `npm run verify` | lint + typecheck + knip + tests |
 
 A pre-commit hook formats your staged files. It is scoped to staged files on
 purpose, so it will not reformat anything you did not touch.

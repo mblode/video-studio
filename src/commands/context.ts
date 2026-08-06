@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+
 import { ArkClient } from "../ark.js";
 import {
   baseUrl,
@@ -15,11 +17,12 @@ import { VsError } from "../errors.js";
 import { GeminiClient } from "../gemini.js";
 import { passSuffix, resolveOutput } from "../paths.js";
 import type { Pass } from "../paths.js";
+import { createAiSdk } from "../providers/aisdk.js";
 import { createArk } from "../providers/ark.js";
 import { createMinimax } from "../providers/minimax.js";
 import { resolveModelId } from "../providers/registry.js";
 import { loadShotsFile, loadStillsFile } from "../shots.js";
-import type { VideoModelV1 } from "../spec/video-model.js";
+import type { VideoModelV4 } from "../spec/video-model.js";
 import type { ShotsFile, StillsFile } from "../types.js";
 
 /**
@@ -36,17 +39,52 @@ export function createArkClient(): ArkClient {
 }
 
 /**
+ * Build an upstream `VideoModelV4` from an `aisdk:<vendor>/<model>` id.
+ *
+ * Vendors are listed explicitly rather than resolved dynamically. A dynamic
+ * import keyed on user input is an attack surface for a tool that spends money,
+ * which is the same reason ADR 0001 rules out a plugin loader.
+ */
+function createBridgedModel(
+  configuredModelId: string,
+  modelId: string
+): VideoModelV4 {
+  const separator = modelId.indexOf("/");
+  const vendor = separator > 0 ? modelId.slice(0, separator) : "";
+  const upstreamId = modelId.slice(separator + 1);
+  if (vendor === "google") {
+    return createAiSdk({
+      model: () =>
+        createGoogleGenerativeAI({ apiKey: requireGeminiApiKey() }).video(
+          upstreamId
+        ),
+      modelId: configuredModelId,
+    });
+  }
+  throw new VsError(
+    "invalid_input",
+    `no AI SDK provider is wired up for "${vendor || modelId}"`,
+    {
+      hint: "ids look like `aisdk:google/veo-3.1-fast-generate-preview`; only `google` is compiled in today, and adding one is an `@ai-sdk/*` dependency plus a branch here",
+    }
+  );
+}
+
+/**
  * The one place a video model is constructed, and the one place a key is read
  * for one.
  *
  * Routing is registry data, not a branch that grows per provider: see
  * `resolveModelId` in src/providers/registry.ts. A command passes the id its
- * film configured and gets back something satisfying `VideoModelV1`; it never
+ * film configured and gets back something satisfying `VideoModelV4`; it never
  * learns which backend answered.
  */
-export function createVideoModel(configuredModelId: string): VideoModelV1 {
+export function createVideoModel(configuredModelId: string): VideoModelV4 {
   loadEnv();
   const { modelId, provider } = resolveModelId(configuredModelId);
+  if (provider === "aisdk") {
+    return createBridgedModel(configuredModelId, modelId);
+  }
   if (provider === "minimax") {
     return createMinimax({
       // The FUNCTION, not its result: a dry-run builds a model to render a

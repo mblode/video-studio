@@ -18,7 +18,7 @@ import { emit, fail, heading, isVerbose, line, note, ok } from "./output.js";
  * Seedream again, add `@ai-sdk/fal` and name a `fal-ai/bytedance/seedream/*`
  * model (see src/images.ts).
  */
-export const DEFAULT_IMAGE_MODEL = GEMINI_PRO_IMAGE_MODEL;
+const DEFAULT_IMAGE_MODEL = GEMINI_PRO_IMAGE_MODEL;
 
 export interface StillsOptions {
   concurrency: number;

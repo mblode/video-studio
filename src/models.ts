@@ -24,7 +24,7 @@ import type {
  * after this file was written should get a warning at worst, not a refusal.
  */
 
-export type DurationSupport =
+type DurationSupport =
   | { kind: "range"; min: number; max: number; auto: boolean }
   | { kind: "enum"; values: readonly number[] };
 
@@ -35,7 +35,7 @@ export interface RateLimits {
   concurrency: number;
 }
 
-export type Billing =
+type Billing =
   | {
       kind: "tokens";
       /** USD per 1M output tokens. Missing entries fall back to the dearest listed rate. */
@@ -75,7 +75,7 @@ export type Billing =
  * moving to a new backend, or a new backend arriving, should be an entry in this
  * file and nothing more.
  */
-export type ProviderId = "ark" | "minimax";
+export type ProviderId = "aisdk" | "ark" | "minimax";
 
 /**
  * What an authoring surface is allowed to do on a model.
@@ -140,6 +140,20 @@ export interface ModelCapabilities extends AuthoringLimits {
   audio: "always" | "optional" | "none";
   /** Empty = no published per-role maximum, so references go unpoliced. */
   referenceSlots: ReferenceSlots;
+  /**
+   * Longest reference video the model will accept, in seconds.
+   *
+   * Both billing schemes bill input duration alongside output, so a shot that
+   * binds a reference video costs more than its own length and the excess is
+   * unknowable up front (a remote URL has no probeable duration). This is the
+   * WORST CASE, which is what lets `usdCeilingForClip` quote a range with a
+   * real upper bound instead of excluding the input entirely.
+   *
+   * Undefined where the ceiling is not published: the estimate then falls back
+   * to output-only, which is the pre-existing under-quote, and
+   * `warnUnpricedInput` still says so out loud.
+   */
+  maxInputVideoSeconds?: number;
   billing: Billing;
   limits: RateLimits & {
     /** Per-resolution overrides, e.g. 4K is throttled far harder than 1080p. */
@@ -280,20 +294,46 @@ const MINIMAX_H3_REFERENCE_SLOTS: ReferenceSlots = {
 const MINIMAX_H3_LIMITS: RateLimits = { concurrency: 3, rpm: 5 };
 
 /**
- * USD per 1M output tokens. The docs quote $3.5-$7.7 for Seedance 2.0 without
- * video input (and a cheaper $2.1-$4.7 WITH video input, which is why an
- * image/frame-anchored shot is both more consistent and cheaper), varying by
- * resolution. The per-resolution breakdown is not published, so every entry
- * quotes the ceiling: an estimate that over-quotes is a survivable surprise,
- * one that under-quotes is a bill. Replace these with the console's real rates
- * once a run has been reconciled (see `reconcileTokens` in src/cost.ts).
+ * Last-resort per-token rate for a Seedance model whose breakdown we do not
+ * have. It is the DEAREST published rate, because the only safe way to be wrong
+ * about a bill is expensively. Same reasoning as
+ * `DEAREST_KNOWN_USD_PER_SECOND` below.
+ */
+const DEAREST_KNOWN_USD_PER_MTOKEN = 7.7;
+
+/**
+ * USD per 1M output tokens for Seedance 2.0, by resolution.
+ *
+ * BytePlus publishes only a RANGE: $3.5-$7.7 without video input, and a cheaper
+ * $2.1-$4.7 with it (which is why an image/frame-anchored shot is both more
+ * consistent and cheaper). This file used to quote the $7.7 ceiling for every
+ * resolution and every variant, because the breakdown was not published.
+ *
+ * The breakdown below is the real table, read out of ComfyUI's ByteDance
+ * partner node (`comfy_api_nodes/apis/bytedance.py`,
+ * `SEEDANCE2_PRICE_PER_1K_TOKENS`, x1000 for per-M), which resells Seedance at
+ * these rates x1.43. Every value sits inside the published range, and the
+ * range's two endpoints ($3.5 mini / $7.7 at 1080p, $2.1 / $4.7 with video) are
+ * hit exactly, which is what makes it trustworthy rather than a guess.
  *
  * Note the 4K trap: 4K's per-token rate is LOWER than 1080p's, which reads
  * like a discount and is not, because 4K burns ~4x the tokens.
  */
-const STANDARD_USD_PER_MTOKEN = 7.7;
-/** The `fast` variant is ~27% cheaper per token than standard. */
+const SEEDANCE_20_USD_PER_MTOKEN: Partial<Record<Resolution, number>> = {
+  "1080p": 7.7,
+  "480p": 7,
+  "4k": 4,
+  "720p": 7,
+};
+const SEEDANCE_20_USD_PER_MTOKEN_WITH_VIDEO: Partial<
+  Record<Resolution, number>
+> = { "1080p": 4.7, "480p": 4.3, "4k": 2.4, "720p": 4.3 };
+
+/** The `fast` variant is ~20% cheaper per token than standard, 480p/720p only. */
 const FAST_USD_PER_MTOKEN = 5.6;
+/** The `mini` variant, the cheapest Seedance there is. */
+const MINI_USD_PER_MTOKEN = 3.5;
+const MINI_USD_PER_MTOKEN_WITH_VIDEO = 2.1;
 /**
  * Last-resort per-second rate for a per-second model whose registry entry
  * prices no resolution at all. That is a bug in this file, and the only safe
@@ -329,6 +369,58 @@ const SEEDANCE_REFERENCE_SLOTS: ReferenceSlots = {
 };
 
 type RegistryEntry = Omit<ModelCapabilities, "family" | "id" | "known">;
+
+/**
+ * Google Veo 3.1, reached through the AI SDK bridge rather than a hand-written
+ * adapter (`aisdk:google/veo-3.1-fast-generate-preview`). Billed per second of
+ * output with audio included at every tier, so there is no `generate_audio` to
+ * turn off and `audio: "always"` says so.
+ *
+ * The catch worth reading before choosing it: Veo emits 4, 6 or 8 second clips
+ * only. That is an awkward fit for a film written in 30s acts, and
+ * `validateShotAgainstModel` will warn on anything else rather than refuse,
+ * because `confidence` is `inferred` until a live generation succeeds here.
+ */
+const VEO_31_DURATIONS: DurationSupport = { kind: "enum", values: [4, 6, 8] };
+const VEO_31_RATIOS: readonly AspectRatio[] = ["16:9", "9:16"];
+
+function veoEntry(usdPerSecondOfOutput: number, notes: string): RegistryEntry {
+  return {
+    ...SEEDANCE_20_AUTHORING,
+    aspectRatios: VEO_31_RATIOS,
+    audio: "always",
+    billing: {
+      kind: "perSecond",
+      usdPerSecondByResolution: {
+        "1080p": usdPerSecondOfOutput,
+        "720p": usdPerSecondOfOutput,
+      },
+    },
+    confidence: "inferred",
+    durations: VEO_31_DURATIONS,
+    fps: DEFAULT_FPS,
+    limits: INDIVIDUAL_LIMITS,
+    notes,
+    provider: "aisdk",
+    referenceSlots: { first_frame: 1, last_frame: 1 },
+    resolutions: ["720p", "1080p"],
+  };
+}
+
+const VEO_31_ENTRIES: Record<string, RegistryEntry> = {
+  "veo-3-1": veoEntry(
+    0.4,
+    "Google Veo 3.1 via the AI SDK bridge. 4/6/8s clips only, audio always on. Needs GEMINI_API_KEY."
+  ),
+  "veo-3-1-fast": veoEntry(
+    0.1,
+    "Veo 3.1 Fast: a quarter the price of standard at 720p, and the cheapest audio-native option here. 4/6/8s clips only."
+  ),
+  "veo-3-1-lite": veoEntry(
+    0.05,
+    "Veo 3.1 Lite: cheapest Veo tier, still audio-native. 4/6/8s clips only."
+  ),
+};
 
 /**
  * Keyed by normalised family id. Add a model by adding an entry: no lookup,
@@ -369,6 +461,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
     referenceSlots: MINIMAX_H3_REFERENCE_SLOTS,
     resolutions: ["768p", "2k"],
   },
+  ...VEO_31_ENTRIES,
   "seedance-1-0-pro": {
     ...SEEDANCE_20_AUTHORING,
     aspectRatios: ASPECT_RATIOS,
@@ -376,9 +469,9 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
     billing: {
       kind: "tokens",
       usdPerMTokenByResolution: {
-        "1080p": STANDARD_USD_PER_MTOKEN,
-        "480p": STANDARD_USD_PER_MTOKEN,
-        "720p": STANDARD_USD_PER_MTOKEN,
+        "1080p": DEAREST_KNOWN_USD_PER_MTOKEN,
+        "480p": DEAREST_KNOWN_USD_PER_MTOKEN,
+        "720p": DEAREST_KNOWN_USD_PER_MTOKEN,
       },
     },
     confidence: "inferred",
@@ -398,9 +491,9 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
     billing: {
       kind: "tokens",
       usdPerMTokenByResolution: {
-        "1080p": STANDARD_USD_PER_MTOKEN,
-        "480p": STANDARD_USD_PER_MTOKEN,
-        "720p": STANDARD_USD_PER_MTOKEN,
+        "1080p": DEAREST_KNOWN_USD_PER_MTOKEN,
+        "480p": DEAREST_KNOWN_USD_PER_MTOKEN,
+        "720p": DEAREST_KNOWN_USD_PER_MTOKEN,
       },
     },
     confidence: "inferred",
@@ -419,20 +512,23 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
     audio: "optional",
     billing: {
       kind: "tokens",
-      usdPerMTokenByResolution: {
-        "1080p": STANDARD_USD_PER_MTOKEN,
-        "480p": STANDARD_USD_PER_MTOKEN,
-        "4k": STANDARD_USD_PER_MTOKEN,
-        "720p": STANDARD_USD_PER_MTOKEN,
-      },
+      usdPerMTokenByResolution: SEEDANCE_20_USD_PER_MTOKEN,
+      usdPerMTokenWithVideoInput: SEEDANCE_20_USD_PER_MTOKEN_WITH_VIDEO,
     },
     confidence: "documented",
     durations: SEEDANCE_DURATIONS,
     fps: DEFAULT_FPS,
     limits: { ...INDIVIDUAL_LIMITS, byResolution: { "4k": FOUR_K_LIMITS } },
+    // Matches the `(15 + $dur)` worst case ComfyUI's ByteDance node uses to
+    // quote a range for the reference and first-last-frame variants, and equals
+    // 2.0's own maximum clip length.
+    maxInputVideoSeconds: 15,
     provider: "ark",
     referenceSlots: SEEDANCE_REFERENCE_SLOTS,
-    resolutions: RESOLUTIONS,
+    // NOT `RESOLUTIONS`: 768p and 2k belong to MiniMax H3, and advertising them
+    // here let a film author a resolution Seedance rejects, which costs a run
+    // to find out.
+    resolutions: ["480p", "720p", "1080p", "4k"],
   },
   "seedance-2-0-fast": {
     ...SEEDANCE_20_AUTHORING,
@@ -460,18 +556,21 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
     audio: "optional",
     billing: {
       kind: "tokens",
-      // No published rate. Quotes the `fast` rate as a floor-ish ceiling;
-      // mini should not cost MORE than fast, so this may over-quote.
       usdPerMTokenByResolution: {
-        "480p": FAST_USD_PER_MTOKEN,
-        "720p": FAST_USD_PER_MTOKEN,
+        "480p": MINI_USD_PER_MTOKEN,
+        "720p": MINI_USD_PER_MTOKEN,
+      },
+      usdPerMTokenWithVideoInput: {
+        "480p": MINI_USD_PER_MTOKEN_WITH_VIDEO,
+        "720p": MINI_USD_PER_MTOKEN_WITH_VIDEO,
       },
     },
     confidence: "documented",
     durations: SEEDANCE_DURATIONS,
     fps: DEFAULT_FPS,
     limits: INDIVIDUAL_LIMITS,
-    notes: "480p/720p only. Pricing not published; quoted at the fast rate.",
+    notes:
+      "480p/720p only, and the cheapest Seedance there is: $3.5/M against standard's $7.0 at the same resolution.",
     provider: "ark",
     referenceSlots: SEEDANCE_REFERENCE_SLOTS,
     resolutions: ["480p", "720p"],
@@ -514,18 +613,30 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
  * entry. Without this a prefixed id would miss the registry entirely and fall
  * through to the permissive fallback, which for a per-second model means a
  * $0.00 quote. */
-const PROVIDER_PREFIX = /^(?:ark|minimax):/u;
+const PROVIDER_PREFIX = /^(?:aisdk|ark|minimax):/u;
+/**
+ * The `<vendor>/` segment of a bridged id. Stripped so a family key stays a
+ * plain model name, the same way the Seedance vendor prefixes are stripped:
+ * `aisdk:google/veo-3.1-fast-generate-preview` -> `veo-3-1-fast`.
+ */
+const AISDK_VENDOR = /^[a-z0-9-]+\//u;
+/** Upstream decorates ids with a lifecycle stage that is not part of the model. */
+const AISDK_STAGE_SUFFIX = /-(?:generate|generate-preview|preview)$/u;
 const VENDOR_PREFIXES = ["dreamina-", "doubao-", "dola-"] as const;
 /** Trailing release stamp, e.g. `-260128`. */
 const RELEASE_SUFFIX = /-\d{6,}$/u;
 
 /** `Dreamina-Seedance-2.0-fast-260128` -> `seedance-2-0-fast`. */
 export function normalizeModelId(modelId: string): string {
-  let id = modelId
-    .trim()
-    .toLowerCase()
-    .replace(PROVIDER_PREFIX, "")
-    .replaceAll(".", "-");
+  const bare = modelId.trim().toLowerCase().replace(PROVIDER_PREFIX, "");
+  // The stage suffix is stripped only from a BRIDGED id (one carrying a
+  // `<vendor>/` segment). Applying it to every id would also eat the `-preview`
+  // that is a genuine part of ids elsewhere in this repo, e.g. `lyria-3-pro-preview`.
+  const bridged = AISDK_VENDOR.test(bare);
+  let id = bare.replace(AISDK_VENDOR, "").replaceAll(".", "-");
+  if (bridged) {
+    id = id.replace(AISDK_STAGE_SUFFIX, "");
+  }
   for (const prefix of VENDOR_PREFIXES) {
     if (id.startsWith(prefix)) {
       id = id.slice(prefix.length);
@@ -554,10 +665,10 @@ function fallbackCapabilities(modelId: string): ModelCapabilities {
     billing: {
       kind: "tokens",
       usdPerMTokenByResolution: {
-        "1080p": STANDARD_USD_PER_MTOKEN,
-        "480p": STANDARD_USD_PER_MTOKEN,
-        "4k": STANDARD_USD_PER_MTOKEN,
-        "720p": STANDARD_USD_PER_MTOKEN,
+        "1080p": DEAREST_KNOWN_USD_PER_MTOKEN,
+        "480p": DEAREST_KNOWN_USD_PER_MTOKEN,
+        "4k": DEAREST_KNOWN_USD_PER_MTOKEN,
+        "720p": DEAREST_KNOWN_USD_PER_MTOKEN,
       },
     },
     confidence: "inferred",
@@ -677,7 +788,7 @@ export function usdPerMToken(
   if (listed !== undefined) {
     return listed;
   }
-  return rateFor(base, resolution, STANDARD_USD_PER_MTOKEN);
+  return rateFor(base, resolution, DEAREST_KNOWN_USD_PER_MTOKEN);
 }
 
 export interface CapabilityProblem {

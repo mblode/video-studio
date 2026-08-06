@@ -2,7 +2,7 @@
  * Stable machine-readable failure codes. Agents and scripts branch on these
  * instead of parsing prose, so treat them as API: add freely, rename never.
  */
-export const VS_ERROR_CODES = [
+const VS_ERROR_CODES = [
   /** The target already exists and no --force was given. */
   "already_exists",
   /** The estimated spend for a run exceeds the --max-cost ceiling. */
@@ -35,6 +35,12 @@ export const VS_ERROR_CODES = [
   "stream_mismatch",
   /** A generation task ended in a non-succeeded state. */
   "task_failed",
+  /**
+   * A paid request was not acknowledged, so it may or may not have created a
+   * task. Nothing was retried and nothing was recorded; the operator has to
+   * check the provider console before re-running.
+   */
+  "task_uncertain",
   /** A task did not reach a terminal state before the poll deadline. */
   "timeout",
   /** An id passed on the command line matches nothing in the film. */
@@ -98,7 +104,7 @@ function apiStatus(error: unknown): number | undefined {
 }
 
 /** Turn a provider HTTP status into a next step, if we know one. */
-export function apiHint(error: unknown): string | undefined {
+function apiHint(error: unknown): string | undefined {
   const status = apiStatus(error);
   if (status === 401 || status === 403) {
     return AUTH_HINT;
