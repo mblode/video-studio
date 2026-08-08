@@ -1,0 +1,64 @@
+---
+title: Cost ladder
+description: Preview the edit for free, draft cheap, and only pay for the good version once.
+---
+
+AI video is expensive and unpredictable. `vs` works in cheap steps — borrowed from how animation studios stage a film — so each rung locks a decision before the next one spends.
+
+Skipping rungs is how a film gets regenerated three times.
+
+## The ladder
+
+| Rung | Command | Costs | Locks |
+| --- | --- | --- | --- |
+| 0 | `generate --dry-run` | $0 | Schema and lint |
+| 1 | `stills` | cents | The look |
+| 2 | `animatic` | $0 of video | Pacing and order |
+| 3 | `generate --draft` (480p) | ~45% of a final | Motion |
+| 4 | `generate` (720p) | the real spend | Quality |
+| 5 | `review`, `stitch`, `upscale` | free | The cut |
+
+On Seedance 2.5 the 480p ratio is unchanged, but the base is much larger per clip. **Rung 2 therefore carries more weight:** cut the film in the animatic until order and act boundaries are settled.
+
+## Guardrails
+
+- **Preview first** — watch the full edit from stills before paying for a clip
+- **Set a limit** — `--max-cost` refuses a run before it overspends, even under `--yes`
+- **Pick up where you left off** — finished and in-flight shots are never resubmitted
+- **Keep every version** — retakes, renders, animatics, and exports get numbered files
+
+## Draft beside final
+
+`--draft` forces 480p with audio off and namespaces every artifact so it never clobbers the final:
+
+| | Final | `--draft` |
+| --- | --- | --- |
+| Manifest | `tasks.json` | `tasks.draft.json` |
+| Clips | `output/clips/<shot>/vNNN.mp4` | `output-draft/clips/<shot>/vNNN.mp4` |
+| Review | `review/` | `review-draft/` |
+
+Promotion needs no new command. Seeds live in `shots.json` and are shared across passes, so re-running `generate` without `--draft` reproduces the approved draft's composition family at full quality.
+
+<Callout type="warning">
+  On a Seedance 2.5 film, leave `film.draftModel` unset. There is no 2.5-fast,
+  and pointing a 30s film at 2.0-fast hard-fails with `invalid_input`. Unset,
+  `--draft` runs the film's own model at 480p.
+</Callout>
+
+## Cost control
+
+`generate` prints an estimate and asks before submitting anything paid.
+
+- `--yes` skips the prompt — **required non-interactively**, or the command fails fast
+- `--max-cost <usd>` is a hard ceiling, enforced under `--yes` and `--dry-run` too
+
+Estimates come from the provider's token formula. Real billed usage is written back to the manifest so estimates self-correct. Treat them as guardrails, not guarantees.
+
+## Retakes
+
+```bash
+vs generate films/<slug>/shots.json --shot s06-drive-breaks --force
+vs use films/<slug>/shots.json s06-drive-breaks v001
+```
+
+`--force` creates a new immutable revision. A failed retake leaves the previous good take selected. Without `--force`, completed shots are skipped.

@@ -1,0 +1,62 @@
+---
+title: Contributing
+description: Scope, bug reports, and how to work on the code.
+---
+
+Please read the scope note before opening anything — it will save both of us time.
+
+## Scope
+
+`vs` turns a JSON shot list into generated clips and cuts them together. That is the whole job.
+
+**Non-goals**, deliberately and permanently:
+
+- A GUI
+- A timeline or non-linear editor
+- Hosting models
+- Proxying anyone's API keys
+- General-purpose video editing
+
+**Bug reports and provider-breakage reports are much more welcome than feature PRs.** A feature PR that expands the scope above is unlikely to be merged. If you are unsure whether something is in scope, open an issue first and ask.
+
+## Reporting a bug
+
+Use the Bug template. It asks for `vs doctor` output because most reports come down to a missing key, missing ffmpeg, or a Node version mismatch.
+
+If a provider changed its API out from under the tool, use the Provider breakage template. Include the request and response with your key redacted.
+
+Do not paste an unredacted `tasks.json` — result URLs are presigned and contain provider credentials. See [Security](/security).
+
+## Working on the code
+
+Requires Node >= 24 and ffmpeg.
+
+```bash
+npm install          # builds and installs git hooks
+npm run verify       # lint + typecheck + knip + tests — gates a commit
+```
+
+| Command | Checks |
+| --- | --- |
+| `npm run lint` | formatting and lint |
+| `npm run typecheck` | types |
+| `npm run test` | tests |
+| `npm run check` | lint + typecheck + knip |
+| `npm run knip` | unused files, exports, dependencies |
+| `npm run verify` | lint + typecheck + knip + tests |
+
+A pre-commit hook formats staged files only — it will not reformat anything you did not touch.
+
+### Things worth knowing
+
+- **The tool spends real money.** Anything touching `generate` or `stills` needs a `--dry-run` path that makes no network call. New cost-affecting parameters belong in the estimate.
+- **Never re-submit an in-flight task.** The manifest re-attaches by task id so a retry does not pay twice.
+- **Never overwrite generated video.** Paid takes and local renders use numbered revisions.
+- **Pure planners, thin commands.** Arg builders and planners in `src/` are pure and unit-tested; `commands/` does IO.
+- ESM only — relative imports need a `.js` extension.
+
+`AGENTS.md` carries gotchas that are not visible from the code. Skills under `skills/` carry domain knowledge about prompting the models.
+
+## Code of conduct
+
+Be decent. Anyone who is not will be removed.

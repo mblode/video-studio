@@ -1,0 +1,88 @@
+---
+title: Workflow
+description: Run a film end to end — ladder, draft/final, ceilings, retakes, and audio.
+---
+
+This is the operating guide for staging a film through `vs`. For the why behind each rung, see [Cost ladder](/cost-ladder).
+
+## Happy path
+
+```bash
+vs doctor
+vs generate films/<slug>/shots.json --dry-run
+vs stills   films/<slug>/stills.json
+vs animatic films/<slug>/shots.json
+vs generate films/<slug>/shots.json --draft
+vs review   films/<slug>/shots.json --draft
+vs generate films/<slug>/shots.json --max-cost 5
+vs score    "instrumental bed prompt" --shots films/<slug>/shots.json
+vs narrate  films/<slug>/lines.tsv
+vs narrate  assemble films/<slug>/shots.json --xfade 0.4
+vs stitch   films/<slug>/shots.json --xfade 0.4 \
+  --music score-v001.mp3 --narration narration.mp3
+```
+
+Commands run as `vs` after `npm link`, or as `node dist/cli.js <cmd>` from the repo root. Run `npm run build` first if `dist/` is stale.
+
+## Draft a Seedance 2.5 film
+
+Leave `film.draftModel` unset. With it unset, `--draft` runs the film's own model at 480p (45% of final).
+
+**Promote one act before drafting the rest.** The seed is portable across passes but the composition is not guaranteed to survive a resolution change. Compare one act at 480p vs 720p at the same seed. If it re-rolls, drafting the other acts teaches you nothing — go straight to finals.
+
+Catch envelope mismatches for free:
+
+```bash
+vs generate films/<slug>/shots.json --dry-run
+```
+
+## Retakes and resumption
+
+```bash
+vs generate films/<slug>/shots.json --shot s06-drive-breaks --force
+vs stills   films/<slug>/stills.json --still s06-drive-breaks --force
+vs status   films/<slug>/shots.json
+vs use      films/<slug>/shots.json s06-drive-breaks v001
+```
+
+An in-flight task is **never resubmitted** — the manifest re-attaches by task id. Result URLs expire in about 24 hours, so `generate` downloads immediately and drops the presigned URL from the manifest once the file is on disk.
+
+If a run was interrupted after submission:
+
+```bash
+vs status   films/<slug>/shots.json --refresh
+vs download films/<slug>/shots.json
+```
+
+`--no-wait` on `generate` submits without polling when you want to split submission from collection.
+
+## Audio mix
+
+Per-shot prompts only ask for SFX and ambience. Score and voiceover are mixed at stitch time:
+
+1. `vs score` → `score-vNNN.mp3`
+2. `vs narrate` from `lines.tsv` → `line-NN.mp3`
+3. `vs narrate assemble --xfade …` → `narration.mp3`
+4. `vs stitch --xfade … --music … --narration …`
+
+Re-stitch with both whenever a shot is regenerated. Match `--xfade` (and per-shot `transition` overrides) on assemble and stitch.
+
+## Concurrency
+
+`--concurrency` defaults to 3 for `generate` and 2 for `stills`. Seedance 2.5 is capped at **1 concurrent task at every resolution** — a 30s generation takes 10–15 minutes, so a six-act film is 60–90 minutes strictly serial. Plan the session around that.
+
+## Agent-driven runs
+
+- `--json` on every command (automatic when stdout is not a TTY)
+- `--verbose` for stack traces
+- Nothing prompts without a TTY — pair `--yes` with `--max-cost`
+- `--dry-run` exists on everything that spends money or shells out to ffmpeg
+- `--output` always resolves against the cwd, not the film directory
+
+## Cut whatever exists
+
+At any point, assemble the best available source per shot (final → draft → still):
+
+```bash
+vs stitch films/<slug>/shots.json --latest
+```

@@ -1,0 +1,86 @@
+---
+title: Lighthouse example
+description: The complete public demo film — 12 shots, cost ladder, and why it holds together.
+---
+
+**The Last Watch** is the complete public example: 12 shots, about 1 minute 42 seconds with title cards, in stark black-and-white and an exact 1.10:1 almost-square frame. Authored for Seedance **2.0** with short multi-beat prompts.
+
+On his final night at a remote lighthouse, a veteran keeper ignores the worn drive link found by the relief sent to replace him. When it breaks under load, he must surrender the service key that lets her emergency motor restore the beam before a boat loses the safe channel.
+
+The story is fictional and deliberately anonymous — no real people, families, companies, places, or dates.
+
+## Preproduction documents
+
+Documents progress from story decisions to build instructions:
+
+1. Treatment — premise, characters, synopsis, final image
+2. Style bible — visual, character, prop, and sound continuity
+3. Beat sheet — escalation, setups/payoffs, anchor map
+4. Screenplay — the silent story in scene order
+5. Shot list — camera, action, audio, continuity per generation
+6. `stills.json` — literal first-frame keyframes
+7. `shots.json` — validated Seedance requests
+
+If an idea changes upstream, update everything below it before paying for a generation. All of this lives in [`films/lighthouse/`](https://github.com/mblode/video-studio/tree/main/films/lighthouse).
+
+## Run it
+
+```bash
+vs generate films/lighthouse/shots.json --dry-run
+vs stills films/lighthouse/stills.json
+vs animatic films/lighthouse/shots.json
+
+# Draft motion at 480p
+vs generate films/lighthouse/shots.json --draft --max-cost 8
+vs review films/lighthouse/shots.json --draft
+vs stitch films/lighthouse/shots.json --draft --xfade 0.4
+
+# Finals
+vs generate films/lighthouse/shots.json --max-cost 18
+vs stitch films/lighthouse/shots.json --xfade 0.4
+```
+
+Those prices are estimates for 12 eight-second clips. `adaptive` framing is conservatively priced as 16:9; the real total should be lower. The CLI recalculates before charging.
+
+## Nothing gets overwritten
+
+```text
+output/
+  clips/
+    s01-last-arrival/
+      v001.mp4
+      v002.mp4
+  renders/
+    final/
+      v001.mp4
+  animatics/
+    v001.mp4
+```
+
+`--force` means “make a new revision,” not “replace the file.” A failed retake leaves the previous good take selected.
+
+```bash
+vs status films/lighthouse/shots.json
+vs use films/lighthouse/shots.json s05-pride-breaks-drive v001
+```
+
+## Why this example holds together
+
+- **One final image drives the film** — the old iron key and the relief’s modern meter share a ledge while the beam reaches an unknown boat
+- **One protagonist makes one costly choice** — the keeper’s flaw causes the failure; the climax forces the surrender
+- **Every solution is paid for** — worn link, spare, and motor case appear before they matter
+- **The frame carries pressure** — exact 2200×2000 keyframes, orthochromatic monochrome, crushed shadows
+- **Every generation is independently anchored** — dedicated `first_frame` + seed; no chains, so retakes never invalidate neighbours
+- **Text and score stay in post** — title cards, music, and narration are mixed at stitch time
+
+## Add sound
+
+```bash
+vs score "Sparse coastal underscore, low strings" --shots films/lighthouse/shots.json
+vs stitch films/lighthouse/shots.json \
+  --xfade 0.4 \
+  --music films/lighthouse/score-v001.mp3 \
+  --narration narration.mp3
+```
+
+Media, manifests, reviews, and generated outputs remain local and are ignored by git (except the committed demo sources).

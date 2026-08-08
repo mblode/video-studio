@@ -1,0 +1,58 @@
+---
+title: Installation
+description: Install vs, configure keys, and verify your environment.
+---
+
+You need [Node 24+](https://nodejs.org) and ffmpeg (`brew install ffmpeg` on macOS).
+
+## Install
+
+```bash
+git clone https://github.com/mblode/video-studio.git
+cd video-studio
+npm install
+npm link
+```
+
+`npm install` builds the CLI and installs git hooks. After `npm link`, `vs` is on your PATH.
+
+## Configure keys
+
+```bash
+cp .env.example .env
+```
+
+Paste your keys into `.env`. Keys are read from the environment only — never written to manifests or logs.
+
+| Variable | Required for |
+| --- | --- |
+| `ARK_API_KEY` | Seedance video and Seedream stills ([BytePlus console](https://console.byteplus.com)) |
+| `MINIMAX_API_KEY` | Films whose `film.model` is MiniMax-H3 |
+| `GEMINI_API_KEY` | Nano Banana stills and `vs score` (Lyria) |
+| `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` | `vs narrate` |
+
+<Callout type="warning">
+  MiniMax H3 is unavailable in the UK, EU, US, and South Korea. A key from the
+  wrong region fails as `1004 not authorized`, which looks exactly like a bad
+  key.
+</Callout>
+
+Optional base URL overrides (`ARK_BASE_URL`, `MINIMAX_BASE_URL`, `GEMINI_BASE_URL`) are documented in `.env.example`.
+
+## Verify
+
+```bash
+vs doctor
+```
+
+`doctor` reports missing Node, keys, ffmpeg, and title-card tools. Fix anything it flags before you spend.
+
+## Rebuild after pulls
+
+If `dist/` is stale:
+
+```bash
+npm run build
+```
+
+Then run `vs` (or `node dist/cli.js`) as usual.

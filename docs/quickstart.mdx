@@ -1,0 +1,51 @@
+---
+title: Quickstart
+description: Run the lighthouse example from dry-run to a finished cut.
+---
+
+[`films/lighthouse/`](https://github.com/mblode/video-studio/tree/main/films/lighthouse) is a complete 12-shot fictional short with a treatment, style bible, beat sheet, screenplay, shot list, keyframes, and generation-ready JSON. Run it top to bottom.
+
+## Prerequisites
+
+Follow [Installation](/installation) so `vs doctor` is clean and `ARK_API_KEY` is set.
+
+## Climb the ladder
+
+```bash
+vs generate films/lighthouse/shots.json --dry-run   # free: check it, price it
+vs stills   films/lighthouse/stills.json            # cents: the reference images
+vs animatic films/lighthouse/shots.json             # $0: watch the whole edit
+vs generate films/lighthouse/shots.json --max-cost 18
+vs stitch   films/lighthouse/shots.json --xfade 0.4
+```
+
+That path is the [cost ladder](/cost-ladder) in practice: validate for free, lock the look for cents, preview the cut for $0 of video, then pay for finals with a ceiling.
+
+## Your own film
+
+```bash
+vs init films/my-film
+```
+
+That writes a `shots.json`, a `stills.json`, and a README. The same commands apply. Everything for a film lives in its own folder; only the demo is committed to git.
+
+## After the cut
+
+A plain `vs stitch` has sound effects but no music or voiceover. Generate those, then re-stitch:
+
+```bash
+vs score "Sparse coastal underscore, low strings" --shots films/lighthouse/shots.json
+# optional: vs narrate … / vs narrate assemble …
+vs stitch films/lighthouse/shots.json \
+  --xfade 0.4 \
+  --music films/lighthouse/score-v001.mp3 \
+  --narration narration.mp3
+```
+
+Use the same `--xfade` on `narrate assemble` and `stitch`. See [Workflow](/workflow) for the full happy path.
+
+## Next
+
+- [Lighthouse example](/lighthouse) — why the demo holds together
+- [CLI reference](/cli) — every command
+- [shots.json schema](/shots-schema) — authoring rules

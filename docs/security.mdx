@@ -1,0 +1,50 @@
+---
+title: Security
+description: How vs handles credentials, manifests, costs, and ambiguous paid requests.
+---
+
+## Reporting a vulnerability
+
+Report security issues privately through [GitHub's private vulnerability reporting](https://github.com/mblode/video-studio/security/advisories/new) rather than opening a public issue. Expect a first reply within about a week.
+
+## Credentials
+
+`vs` talks to paid generation APIs on your behalf.
+
+**Keys are read from the environment only.** `ARK_API_KEY` and the optional `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, and `MINIMAX_API_KEY` are loaded from `.env` or the process environment. They are never written to a manifest, log line, or error message. `.env` is gitignored; `.env.example` is the canonical list of names.
+
+**Manifests are designed to be committed, and are scrubbed for that.** Each film keeps a `tasks.json` recording task ids, parameters, and status so a generation resumes on any machine. It deliberately does not retain the provider's signed result URL once a clip is downloaded — those URLs expire in about 24 hours and carry the provider's access key id in the query string.
+
+Do not paste an unredacted `tasks.json` into a public issue.
+
+## Generated media
+
+**Generated video is append-only by default.** Every take, render, animatic, upscale, and share export gets a numbered path. Failed retakes do not replace the manifest's selected successful revision. Explicit output paths refuse to replace an existing video.
+
+**Generated media is gitignored by default.** `films/**` ignores video, audio, and image files, so a reference photograph or voice recording cannot be committed by accident.
+
+## Costs as a safety property
+
+A misconfigured shot list can spend real money quickly.
+
+- `--dry-run` makes no network calls
+- `vs generate` asks for confirmation with a cost estimate
+- `--max-cost` refuses a run whose estimate exceeds your ceiling
+
+Estimates are guardrails, not guarantees. Where a shot binds a reference video whose billed duration is unknown up front, the estimate is a range and the ceiling is enforced against its top.
+
+## Ambiguous paid requests
+
+Every POST creates billable work. A create-task request that fails without an answer (dropped socket, gateway 5xx) is **not** retried — it fails with `task_uncertain`. `vs generate` records the attempt in the manifest *before* it submits.
+
+When you see `task_uncertain`, or a shot the tool refuses to resubmit:
+
+1. Check the provider's console for a task created around that time
+2. If one exists, let it finish and re-run the same command — it re-attaches
+3. Only if none exists, pass `--force` to submit again
+
+Passing `--force` in that state accepts the risk of paying twice. Do step 1 first.
+
+## Scope
+
+This is a local CLI. It has no server, no telemetry, and no network calls beyond the generation APIs you configure and the result downloads they hand back.

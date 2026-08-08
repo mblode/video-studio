@@ -1,0 +1,147 @@
+---
+title: shots.json and stills.json
+description: Schema, ordinal contract, hard rules, and lint warnings for film authoring files.
+---
+
+The CLI validates both files with zod (`src/shots.ts`). Every object is **strict** — a misspelled key is a load-time error. Always `--dry-run` first.
+
+Rules are **model-dependent**, keyed off `film.model`. A file with no `film.model` is validated as Seedance 2.0 (the CLI default). Set `"model": "dreamina-seedance-2-5-260628"` for 2.5 rules.
+
+Worked examples:
+
+- `examples/shots-2-5.json` — 2.5, two 30s acts
+- `films/lighthouse/shots.json` + `stills.json` — 2.0, twelve 8s shots, full pipeline
+
+## stills.json
+
+Generated first with `vs stills`. Locks the look: literal opening composition of every shot, plus character, prop, or environment plates.
+
+```json
+{
+  "model": "gemini-3-pro-image",
+  "outputDir": "./stills-v2",
+  "ratio": "1:1",
+  "stills": [
+    {
+      "id": "s01-last-arrival",
+      "prompt": "Photorealistic expressionist maritime black-and-white keyframe...",
+      "ratio": "1:1"
+    }
+  ]
+}
+```
+
+Per-still: `id` (required, `[a-z0-9_-]`, unique), `prompt` (required), optional `references` (https or local png/jpg/webp), optional `ratio` (literal `{w}:{h}`, never `adaptive`).
+
+A still with `id: foo` writes to `<outputDir>/foo.png` and is referenced from a shot as `./stills/foo.png`. Give a keyframe still the same id as its shot.
+
+Nano Banana needs `GEMINI_API_KEY`. `size` and `seed` still parse but are ignored on `gemini-*` models.
+
+## shots.json
+
+One shot is one paid task.
+
+```json
+{
+  "film": {
+    "title": "The Last Watch",
+    "outputDir": "./output",
+    "model": "dreamina-seedance-2-5-260628",
+    "defaults": {
+      "ratio": "1:1",
+      "duration": 30,
+      "resolution": "720p",
+      "generateAudio": true,
+      "watermark": false
+    },
+    "promptPreamble": "Photorealistic expressionist maritime cinema..."
+  },
+  "cards": [
+    { "after": "start", "text": "THE LAST WATCH", "duration": 3, "transition": 0.4 }
+  ],
+  "shots": [
+    {
+      "id": "a1-the-refusal",
+      "prompt": "...",
+      "seed": 8201,
+      "transition": 0.4,
+      "references": [
+        { "type": "image", "url": "./stills/keeper.png", "role": "reference_image" }
+      ]
+    }
+  ]
+}
+```
+
+**Per-shot:** `id`, `prompt`, optional `duration` (4–30 or `-1`), `ratio`, `resolution`, `cameraFixed`, `references`, `output`, `seed`, `transition` (0.05–2, crossfade **into** this shot).
+
+**`film`:** `title`, `model`, `draftModel`, `outputDir`, `promptPreamble`, `defaults`.
+
+**`cards`:** `after` (`"start"`, `"end"`, or a shot id), `text`, optional `duration` / `fontSize` / `transition`.
+
+Keep `defaults.generateAudio: true` for diegetic SFX — it does not add music or dialogue.
+
+<Callout type="warning">
+  Leave `film.draftModel` unset on a 2.5 film. A 30s film pointed at 2.0-fast
+  is refused, not warned.
+</Callout>
+
+## Reference roles
+
+Each `references[]` entry has `type` (`image` | `video` | `audio`), `url`, and `role`:
+
+| Mode | Roles |
+| --- | --- |
+| Reference | `reference_image`, `reference_video`, `reference_audio` |
+| Frame | `first_frame`, `last_frame` (images only) |
+
+On **Seedance 2.5** the modes combine — put the frame role **first** in the array. On **2.0-family** the modes are mutually exclusive.
+
+Ceilings: 2.5 allows 30 images / 10 video / 10 audio; 2.0 hard-caps at 9 / 3 / 3. Soft lint warns above 16 total (2.5) or 5 (2.0).
+
+Local images are inlined as data URLs. Local video/audio paths require 2.5 and a 20 MB ceiling; https URLs are the supported path for video and audio.
+
+## Ordinal contract
+
+A 2.5 prompt binds references by ordinal (`@Image 1`, `@Video 1`). Ordinals must match what the model receives.
+
+1. **Count per media type**, not array index — in `[video, image, image]`, `@Image 1` is the second entry
+2. **A frame role consumes an image ordinal** — `first_frame` plus two packs → keyframe is `@Image 1`, packs are `@Image 2` and `@Image 3`
+3. **The array is never reordered** — authored order is the contract
+4. **Bind every reference, and nothing missing** — unbound refs get averaged; out-of-range ordinals point at nothing
+
+## Hard rules (enforced)
+
+1. Frame XOR reference mode on 2.0-family; both allowed on 2.5
+2. On 2.5, frame role first in `references[]` (lint if not)
+3. At most one `first_frame` and one `last_frame` per shot
+4. Unique ids matching `[a-z0-9_-]+`
+5. Card `after` must resolve
+6. Local paths stay inside the film directory
+7. Frame roles must be images
+8. Duration 4–30 or `-1` (2.0 refuses >15s at generate)
+9. Unknown keys rejected everywhere
+
+## Lint warnings
+
+Printed by `vs generate`; free under `--dry-run`. Fix all of them.
+
+Notable shots warnings: no image reference, no `seed`, too many references, prompt over word cap (700 on 2.5 / 400 on 2.0), ordinal mismatches, unbound references, `draftModel` envelope mismatch.
+
+Notable stills warnings: duplicate id, prompt over ~200 words, `size` on `gemini-*`, missing local reference file.
+
+## Allowed values
+
+- **Ratios:** `16:9`, `9:16`, `4:3`, `3:4`, `1:1`, `21:9`, `adaptive`
+- **Resolution:** `480p`, `720p`, `1080p`, `4k` — generate at 720p, upscale for delivery
+- **Duration:** integer 4–30, or `-1`
+- **Transition:** 0.05–2 seconds
+
+`src/models.ts` is the capability authority; mismatches are refused (or warned on inferred 2.5 entries) at generate.
+
+## Validate
+
+```bash
+vs stills   films/<slug>/stills.json --dry-run
+vs generate films/<slug>/shots.json --dry-run
+```

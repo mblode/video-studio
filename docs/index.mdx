@@ -1,0 +1,43 @@
+---
+title: Video Studio
+description: Write a shot list as JSON and get back a finished film — without paying for the bad takes.
+---
+
+`vs` generates each shot with AI video models, then cuts them together with title cards, music, and narration. Each film is a self-contained folder under `films/`.
+
+## What it is
+
+- A CLI that turns a JSON shot list into AI-generated clips
+- A cost ladder: preview for free, draft cheap, pay for finals once
+- Immutable revisions — retakes never overwrite a good take
+
+## What it is not
+
+A GUI, a timeline editor, or a host for models. Bug reports are welcome; feature requests that expand that scope usually are not. See [Contributing](/contributing).
+
+## Start here
+
+<Columns cols={2}>
+  <Card title="Install" href="/installation">
+    Node 24, ffmpeg, and an API key.
+  </Card>
+  <Card title="Quickstart" href="/quickstart">
+    Run the lighthouse example end to end.
+  </Card>
+  <Card title="Cost ladder" href="/cost-ladder">
+    Preview → draft → final without overspending.
+  </Card>
+  <Card title="CLI reference" href="/cli">
+    Every command and the flags that matter.
+  </Card>
+</Columns>
+
+## Agent skills
+
+Four skills drive the pipeline. Install them globally:
+
+```bash
+npx skills add mblode/video-studio -g --agent codex claude-code -y
+```
+
+They also load from a clone with no install step: `.claude/skills` and `.agents/skills` are symlinks into `skills/`.

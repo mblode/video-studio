@@ -1,0 +1,50 @@
+{
+  "$schema": "https://blode.md/docs.json",
+  "name": "Video Studio",
+  "slug": "video-studio",
+  "description": "Write a shot list as JSON and get back a finished film — without paying for the bad takes.",
+  "seo": {
+    "siteUrl": "https://video-studio.blode.md"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/mblode/video-studio"
+      }
+    ]
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": ["index", "installation", "quickstart", "cost-ladder"]
+          },
+          {
+            "group": "CLI",
+            "pages": ["cli", "workflow"]
+          },
+          {
+            "group": "Authoring",
+            "pages": ["shots-schema"]
+          },
+          {
+            "group": "Example",
+            "pages": ["lighthouse"]
+          },
+          {
+            "group": "Guides",
+            "pages": ["security", "contributing"]
+          },
+          {
+            "group": "Reference",
+            "pages": ["adr/0001-video-provider-spec"]
+          }
+        ]
+      }
+    ]
+  }
+}

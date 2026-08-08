@@ -8,6 +8,8 @@
 
 </div>
 
+Docs: [video-studio.blode.md](https://video-studio.blode.md)
+
 ## Install
 
 You need [Node 24+](https://nodejs.org) and ffmpeg (`brew install ffmpeg`).
