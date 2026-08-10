@@ -2,15 +2,15 @@
 
 # [Video Studio](https://video-studio.blode.md)
 
-**Write a shot list as JSON and get back a finished film, without paying for the bad takes**
+**Turn a list of shots into a finished film, without wasting money on bad takes**
 
-`vs` generates each shot with AI video models, then cuts them together with title cards, music, and narration.
+Describe each shot in JSON. `vs` makes the AI clips, then cuts them into one video.
 
 </div>
 
 ## Demo
 
-Install, the cost ladder, CLI reference, and the lighthouse walkthrough.
+Setup, costs, commands, and a sample film you can run.
 
 <p>
 <a href="https://video-studio.blode.md">
@@ -29,11 +29,11 @@ npm install
 npm link
 ```
 
-Copy `.env.example` to `.env`, paste your `ARK_API_KEY`, then run `vs doctor`. Keys come from the [BytePlus console](https://console.byteplus.com).
+Copy `.env.example` to `.env`, add your `ARK_API_KEY` from the [BytePlus console](https://console.byteplus.com), then run `vs doctor`.
 
 ## Quickstart
 
-[`films/lighthouse/`](films/lighthouse/) is a complete 12-shot short. Climb the cost ladder:
+Try the sample film in [`films/lighthouse/`](films/lighthouse/):
 
 ```bash
 vs generate films/lighthouse/shots.json --dry-run
@@ -43,14 +43,14 @@ vs generate films/lighthouse/shots.json --max-cost 18
 vs stitch   films/lighthouse/shots.json --xfade 0.4
 ```
 
-For your own film: `vs init films/my-film`.
+Start your own with `vs init films/my-film`.
 
-## The cost ladder
+## Spend less
 
-- **Preview first:** assemble the cut from stills before paying for a clip.
-- **Set a limit:** `--max-cost` refuses a run before it overspends.
-- **Resume safely:** finished and in-flight shots are never resubmitted.
-- **Keep every version:** retakes get numbered files; `vs use` rolls back.
+- **Preview for free:** see the whole edit from stills before you pay for video.
+- **Set a budget:** `--max-cost` stops a run that would go over.
+- **Never pay twice:** finished or in-progress shots are not sent again.
+- **Keep every take:** old versions stay on disk; `vs use` picks which one to use.
 
 ## Agent skills
 
@@ -58,7 +58,7 @@ For your own film: `vs init films/my-film`.
 npx skills add mblode/video-studio -g --agent codex claude-code -y
 ```
 
-Works with Claude Code, Codex, Cursor, and other [skills.sh](https://skills.sh) hosts. From a clone, `.claude/skills` and `.agents/skills` already point at `skills/`.
+Works with Claude Code, Codex, Cursor, and other [skills.sh](https://skills.sh) agents. From a clone, they are already available.
 
 ## License
 
