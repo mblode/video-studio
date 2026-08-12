@@ -211,7 +211,7 @@ describe("the aisdk bridge carries the task across processes", () => {
     });
     const settled = await bridge.doStatus(started.id);
     expect(settled.status).toBe("succeeded");
-    expect(settled.content?.videoBytes).toEqual(Buffer.from("AQID", "base64"));
+    expect(settled.content?.videoBytes).toEqual(new Uint8Array([1, 2, 3]));
   });
 
   it("persists a base64 result as bytes", async () => {
