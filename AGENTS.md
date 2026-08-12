@@ -120,10 +120,13 @@ it, delete it.
   Gateway) and `film.model: "aisdk:google/veo-3.1-fast-generate-preview"`
   (Gemini BYOK) both work. Two things are
   weaker on a bridged model, both documented in that file: `toRequestBody`
-  renders the normalised call options rather than the HTTP body (upstream cannot
-  render one without sending it), so `payloadHash` audits the request, not the
-  wire; and cost comes from the registry only. Ark and MiniMax stay hand-written
-  because their `payloadHash` is a pinned literal-wire audit record.
+  renders the public `generateVideo({ model, prompt, duration, ... })`
+  arguments rather than the HTTP body (upstream cannot render a body without
+  sending it), so `payloadHash` audits the request, not the wire; and cost
+  comes from the registry only. Ark and MiniMax stay hand-written because
+  their `payloadHash` is a pinned literal-wire audit record. The wait path is
+  `doStart`/`doStatus` so `tasks.json` can re-attach; `generateVideo` itself
+  is not the spend path.
 - **Adding a provider is a registry entry plus one adapter, never a branch in a
   command.** `docs/adr/0001-video-provider-spec.md` is the contract:
   `src/spec/video-model.ts` defines `VideoModelV4`, `src/providers/*` implement

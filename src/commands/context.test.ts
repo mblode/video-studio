@@ -149,7 +149,7 @@ describe("createVideoModel resolves credentials lazily", () => {
       references: [],
     }) as Record<string, unknown>;
     expect(body.prompt).toBe("a lighthouse");
-    expect(body.model).toBeUndefined();
+    expect(body.model).toBe(MODEL_IDS.seedance25);
   });
 
   it("still refuses to submit without the key", async () => {

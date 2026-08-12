@@ -4,12 +4,17 @@ import type { ProviderId } from "../models.js";
 /**
  * Which backend a model id belongs to.
  *
- * Two spellings, in priority order:
+ * Spellings, in priority order:
  *
- * 1. **Explicit prefix** — `minimax:MiniMax-H3`. Wins outright.
+ * 1. **Explicit prefix** — `minimax:MiniMax-H3`, `aisdk:google/veo-...`.
+ *    Wins outright.
  * 2. **AI Gateway spelling** — `vendor/model` with a slash and no colon,
  *    e.g. `bytedance/seedance-2.5`. This is the id `generateVideo` takes.
- * 3. **Registry lookup** — the `provider` field on the model's entry.
+ *    A bare `google/veo-...` is this spelling too, not Gemini BYOK.
+ * 3. **Registry lookup** — the `provider` field on the model's entry, with
+ *    BytePlus vendor prefixes (`dreamina-`, `doubao-`, `dola-`) forced to
+ *    Ark so a 2.5 family whose canonical transport is Gateway still POSTs
+ *    a dreamina id to ModelArk.
  *
  * An unrecognised bare id falls through to the registry's permissive Ark
  * fallback, which is the historical behaviour and right for a Seedance release
@@ -20,13 +25,11 @@ import type { ProviderId } from "../models.js";
  * "the API is the authority, the registry is advisory" stance src/models.ts
  * already takes about capabilities.
  *
- * `aisdk:` is the same idea one level up. It routes to the bridge in
- * `src/providers/aisdk.ts`, and the id AFTER the prefix names the upstream
- * provider and model together, e.g. `aisdk:google/veo-3.1-fast-generate-preview`.
- * That second segment is what `createVideoModel` splits on to pick the
- * `@ai-sdk/*` package, so a bare `aisdk:veo-3.1` is not resolvable and says so.
- * A slash-shaped id without a prefix (`bytedance/seedance-2.5`) is the same
- * route: AI Gateway, no extra `aisdk:` needed.
+ * `aisdk:` routes to the bridge in `src/providers/aisdk.ts`. The id AFTER the
+ * prefix names the upstream provider and model together, e.g.
+ * `aisdk:google/veo-3.1-fast-generate-preview` (Gemini BYOK). A slash-shaped
+ * id without a prefix (`bytedance/seedance-2.5`) is the Gateway catalog: no
+ * extra `aisdk:` needed. A bare `aisdk:veo-3.1` is not a catalog id.
  */
 export interface ResolvedModelId {
   provider: ProviderId;
@@ -35,6 +38,18 @@ export interface ResolvedModelId {
 }
 
 const PROVIDER_PREFIXES: readonly ProviderId[] = ["aisdk", "ark", "minimax"];
+
+/**
+ * Which upstream factory the aisdk adapter should call.
+ *
+ * A slash-shaped id is the AI Gateway catalog (`bytedance/seedance-2.5`,
+ * `google/veo-3.1-fast-generate-preview`). Gemini BYOK is the explicit
+ * `aisdk:google/` prefix, so a bare `google/veo-...` does not steal a
+ * Gateway catalog entry.
+ */
+export function aisdkFactory(configured: string): "google" | "gateway" {
+  return /^aisdk:google\//iu.test(configured) ? "google" : "gateway";
+}
 
 export function resolveModelId(configured: string): ResolvedModelId {
   const separator = configured.indexOf(":");

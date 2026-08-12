@@ -65,8 +65,9 @@ commands/          knows: Shot, Film, cost, manifest
    v
 spec/              VideoModelV4 — the versioned contract
    |
-   +-- providers/ark/       Seedance   (translate, HTTP, errors, statuses)
-   +-- providers/minimax/   H3         (translate, HTTP, errors, statuses)
+   +-- providers/ark.ts     Seedance on BytePlus ModelArk
+   +-- providers/minimax.ts H3
+   +-- providers/aisdk.ts   Gateway catalog (`generateVideo` dialect) + Gemini BYOK
    |
 models.ts          capabilities + billing as DATA (no network, no key)
 cost.ts            pure pricing, branches on the billing union
@@ -122,10 +123,11 @@ union. Adding a third billing shape is a new union member plus one branch.
 `film.model` accepts a bare id (every existing film) or an explicit
 `provider:modelId` form. Resolution order:
 
-1. Explicit prefix wins: `minimax:MiniMax-H3`.
-2. A `vendor/model` id with a slash and no colon (`bytedance/seedance-2.5`) is the AI Gateway / `generateVideo` spelling and routes to `aisdk`.
-3. Otherwise the registry's `provider` field for that family.
-4. Otherwise `ark`, preserving today's behaviour.
+1. Explicit prefix wins: `minimax:MiniMax-H3`, `aisdk:google/veo-...` (Gemini BYOK).
+2. A `vendor/model` id with a slash and no colon (`bytedance/seedance-2.5`, `google/veo-...`) is the AI Gateway / `generateVideo` spelling and routes to `aisdk`.
+3. A BytePlus vendor prefix (`dreamina-`, `doubao-`, `dola-`) is Ark, even when the family canonical is Gateway (Seedance 2.5).
+4. Otherwise the registry's `provider` field for that family.
+5. Otherwise `ark`, preserving today's behaviour.
 
 The prefix is not decoration. Today an unrecognised id falls back to a
 permissive Ark entry, so a MiniMax model id the registry has not learned yet
@@ -190,7 +192,7 @@ promote it.
 | Not doing | Why | Promote when |
 | --- | --- | --- |
 | Separate npm packages per provider (`packages/ark`, `packages/minimax`) | One binary, one consumer. A package split buys independent versioning nobody needs and couples release cycles. | Someone outside this repo implements the spec. |
-| Adopting the AI SDK's `experimental_generateVideo` in place of this port | `@ai-sdk/provider` ships `VideoModelV4`, and this port now takes its version number and field names from it. The aisdk adapter *calls* `generateVideo` as the fallback for a model that only implements `doGenerate`, and AI Gateway Seedance (`bytedance/seedance-2.5`) is the default film model. What we do not do is collapse `vs generate` into a single `generateVideo()` call: upstream still has no `capabilities` (so `--dry-run` and cost estimation would need a key and a network call), no `toRequestBody` (so `payloadHash` could not be a byte-stable audit record), and `generateVideo` polls inside a single call, where `tasks.json` has to resume across processes. Gateway Seedance implements `doStart`/`doStatus`; that is the wait path. | Upstream exposes a capability or billing surface, or `payloadHash` stops being a pinned audit record. |
+| Adopting the AI SDK's `experimental_generateVideo` in place of this port | `@ai-sdk/provider` ships `VideoModelV4`, and this port now takes its version number and field names from it. The aisdk adapter's `toRequestBody` *is* the public `generateVideo({ model, prompt, duration, ... })` argument list, so `--dry-run` prints that dialect. What we do not do is collapse `vs generate` into a single `generateVideo()` call: upstream still has no `capabilities` (so cost estimation would need a key and a network call), `generateVideo` polls inside a single call (where `tasks.json` has to resume across processes), and it drops `inputReferences` when `frameImages` are set. Gateway Seedance implements `doStart`/`doStatus`; that is the wait path. A model with no `doStart` is refused. | Upstream exposes a capability or billing surface, or `payloadHash` stops being a pinned audit record. |
 | A `--flex` flag for BytePlus offline inference | The wire field is real (`service_tier: "flex"`, plus `execution_expires_after`) and the discount is a flat 50% on the token rate, so the existing estimator would just take a 0.5 multiplier. But offline inference is unsupported on the whole Seedance 2.0 series AND 2.5, which is every model this repo generates on; it exists only for 1.0/1.5-pro. It is also incompatible with `--draft` (last-frame return is disabled under it). | BytePlus enables offline inference on 2.5 or the 2.0 series. Then it is a capability bit in `src/models.ts` plus a rate multiplier, so `--dry-run` can refuse it with no key. |
 | Widening the task handle to upstream's opaque `operation: JSONValue` | `ManifestEntry.taskId` is a string that `vs status <task-id>` and the `--json` key contract both depend on, and both shipped providers key on an id. Widening it is a manifest migration for no present gain. | A provider whose resumption handle is not expressible as a string. |
 | Middleware / `wrapVideoModel` | No current requirement. Retry and rate limiting already live at the seam (`ModelLimiter`, the shared HTTP loop). | A cross-cutting concern appears that is not retry or concurrency. |

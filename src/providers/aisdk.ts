@@ -1,5 +1,4 @@
 import { Buffer } from "node:buffer";
-import { randomUUID } from "node:crypto";
 
 import type {
   Experimental_VideoModelV4 as AiVideoModel,
@@ -9,7 +8,6 @@ import type {
   Experimental_VideoModelV4VideoData as AiVideoData,
   JSONValue,
 } from "@ai-sdk/provider";
-import { experimental_generateVideo as generateVideo } from "ai";
 
 import { VsError } from "../errors.js";
 import { lookupModel, normalizeModelId } from "../models.js";
@@ -29,28 +27,25 @@ import type { AspectRatio, ShotReference, TaskStatus } from "../types.js";
  * The bridge to the AI SDK's own video models.
  *
  * ONE adapter for a whole family, rather than one per vendor. Every model
- * behind `@ai-sdk/google`, `@ai-sdk/fal`, `@ai-sdk/replicate` and friends
- * implements the same `VideoModelV4`, and this port already speaks that
- * dialect, so reaching Veo or Kling is a registry entry and a factory call
- * rather than a new directory.
+ * behind `@ai-sdk/gateway`, `@ai-sdk/google`, and friends implements the same
+ * `VideoModelV4`, and this port already speaks that dialect, so reaching
+ * Seedance 2.5 or Veo is a registry entry and a factory call rather than a
+ * new directory.
  *
- * TWO THINGS ARE WEAKER HERE than in a hand-written adapter, and both are
- * deliberate rather than oversights:
+ * `toRequestBody` is the public `generateVideo({ model, prompt, duration, ... })`
+ * argument list, JSON-serialisable, so `--dry-run` prints what an author would
+ * write and `payloadHash` identifies that request. It is still an audit of the
+ * REQUEST, not of the HTTP body: upstream offers no way to render a body
+ * without sending it. Ark and MiniMax keep their literal-wire hashes.
  *
- * 1. `toRequestBody` renders the NORMALISED CALL OPTIONS, not the provider's
- *    HTTP body, because upstream offers no way to render a body without
- *    sending it. The result is still pure and byte-stable, so `--dry-run`
- *    works without a key and `payloadHash` still identifies what was asked
- *    for — but it is an audit record of the REQUEST, not of the wire. Films on
- *    Ark and MiniMax keep their literal-wire hashes untouched.
- * 2. Cost comes from the registry only. Upstream carries no billing model, so
- *    a bridged model with no registry entry quotes the dearest known rate.
+ * The wait path is `doStart`/`doStatus`. `generateVideo` polls inside one call
+ * and swallows the operation id, so `tasks.json` could not re-attach across
+ * processes; it also drops `inputReferences` when `frameImages` are set, which
+ * would silently unbind mixed first-frame + ordinal packs. A model that has
+ * no `doStart` is refused rather than faked: there is no persistable id.
  *
- * `generateVideo` from `ai` is the high-level call this adapter speaks. The
- * wait path still uses `doStart`/`doStatus` when the upstream model has them
- * (AI Gateway Seedance does), because `tasks.json` has to re-attach across
- * processes. `generateVideo` is the fallback for a model that only implements
- * `doGenerate`, and it cannot resume: there is no id until the bytes are back.
+ * Cost comes from the registry only. Upstream carries no billing model, so a
+ * bridged model with no registry entry quotes the dearest known rate.
  */
 
 /**
@@ -76,8 +71,8 @@ function wireResolution(
 }
 
 /**
- * `adaptive` has no fixed frame, and upstream's type demands a literal ratio.
- * Sending nothing is the honest translation of "let the model choose".
+ * `adaptive` has no fixed frame, and sending nothing is the honest translation
+ * of "let the model choose" — the same as generateVideo's undefined default.
  */
 function wireAspectRatio(
   ratio: AspectRatio
@@ -142,6 +137,18 @@ function toFile(reference: ShotReference): AiFile {
   };
 }
 
+/** generateVideo's `DataContent`: a URL, or a data URL for inlined bytes. */
+function toDataContent(file: AiFile): string {
+  if (file.type === "url") {
+    return file.url;
+  }
+  const bytes =
+    typeof file.data === "string"
+      ? file.data
+      : Buffer.from(file.data).toString("base64");
+  return `data:${file.mediaType};base64,${bytes}`;
+}
+
 /**
  * Split one authored array into upstream's two, WITHOUT reordering either.
  *
@@ -204,16 +211,6 @@ function videoContent(videos: readonly AiVideoData[]): {
   );
 }
 
-/** `generateVideo`'s public API takes DataContent, not the v4 file part. */
-function fileToDataContent(file: AiFile): string | Uint8Array {
-  if (file.type === "url") {
-    return file.url;
-  }
-  return typeof file.data === "string"
-    ? `data:${file.mediaType};base64,${file.data}`
-    : file.data;
-}
-
 /**
  * Seedance knobs that Ark sends as top-level body fields. On the Gateway they
  * ride in `providerOptions.bytedance`. Other bridged models (Veo) must not
@@ -222,13 +219,13 @@ function fileToDataContent(file: AiFile): string | Uint8Array {
 function aisdkProviderOptions(
   modelId: string,
   options: VideoModelV4CallOptions
-): AiCallOptions["providerOptions"] {
+): Record<string, unknown> | undefined {
   const fromCaller = (options.providerOptions?.aisdk ?? {}) as Record<
     string,
     unknown
   >;
   if (!normalizeModelId(modelId).startsWith("seedance")) {
-    return fromCaller as AiCallOptions["providerOptions"];
+    return Object.keys(fromCaller).length > 0 ? fromCaller : undefined;
   }
   const existing =
     typeof fromCaller.bytedance === "object" && fromCaller.bytedance !== null
@@ -243,21 +240,96 @@ function aisdkProviderOptions(
       ? {}
       : { watermark: options.watermark }),
   };
-  return {
+  const result = {
     ...fromCaller,
     ...(Object.keys(bytedance).length > 0 ? { bytedance } : {}),
-  } as AiCallOptions["providerOptions"];
+  };
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
+ * The public generateVideo() argument list. Key order is fixed and every
+ * value is derived from the options, so the hash is stable across runs.
+ * Fields generateVideo would leave undefined are omitted, not padded.
+ */
+function toGenerateVideoArgs(
+  modelId: string,
+  options: VideoModelV4CallOptions
+): Record<string, unknown> {
+  const { frameImages, inputReferences } = splitReferences(options.references);
+  const body: Record<string, unknown> = {
+    model: modelId,
+    prompt: options.prompt,
+  };
+  if (options.duration !== undefined) {
+    body.duration = options.duration;
+  }
+  const aspectRatio = wireAspectRatio(options.aspectRatio);
+  if (aspectRatio !== undefined) {
+    body.aspectRatio = aspectRatio;
+  }
+  const resolution = wireResolution(options);
+  if (resolution !== undefined) {
+    body.resolution = resolution;
+  }
+  if (options.generateAudio !== undefined) {
+    body.generateAudio = options.generateAudio;
+  }
+  if (options.seed !== undefined) {
+    body.seed = options.seed;
+  }
+  const providerOptions = aisdkProviderOptions(modelId, options);
+  if (providerOptions !== undefined) {
+    body.providerOptions = providerOptions;
+  }
+  if (frameImages.length > 0) {
+    body.frameImages = frameImages.map((frame) => ({
+      frameType: frame.frameType,
+      image: toDataContent(frame.image),
+    }));
+  }
+  if (inputReferences.length > 0) {
+    body.inputReferences = inputReferences.map(toDataContent);
+  }
+  return body;
+}
+
+/**
+ * What upstream.doStart actually consumes: the v4 call options, with File
+ * parts so a local reference stays binary rather than a data-URL string.
+ */
+function toUpstreamCallOptions(
+  modelId: string,
+  options: VideoModelV4CallOptions
+): AiCallOptions {
+  const { frameImages, inputReferences } = splitReferences(options.references);
+  return {
+    abortSignal: undefined,
+    aspectRatio: wireAspectRatio(options.aspectRatio),
+    duration: options.duration,
+    fps: undefined,
+    frameImages: frameImages.length > 0 ? frameImages : undefined,
+    generateAudio: options.generateAudio,
+    headers: undefined,
+    image: undefined,
+    inputReferences: inputReferences.length > 0 ? inputReferences : undefined,
+    n: 1,
+    prompt: options.prompt,
+    providerOptions: aisdkProviderOptions(modelId, options) ?? {},
+    resolution: wireResolution(options),
+    seed: options.seed,
+  };
 }
 
 export interface AiSdkProviderConfig {
   /**
-   * Builds the upstream model, e.g. `() => google.video("veo-3.1-...")`.
+   * Builds the upstream model, e.g. `() => gateway.video("bytedance/seedance-2.5")`.
    *
    * A THUNK, not the model, for the same reason `ApiKeySource` is one: the
    * upstream factory reads its key eagerly, and `--dry-run` builds a model
    * purely to render a body. Passing the constructed model made
    * `vs generate --dry-run` and a `--max-cost` refusal both demand a
-   * `GEMINI_API_KEY` on a machine that was never going to spend.
+   * key on a machine that was never going to spend.
    */
   model: () => AiVideoModel;
   /** The id as the caller wrote it, prefix included, for the audit trail. */
@@ -272,12 +344,6 @@ class AiSdkVideoModel implements VideoModelV4 {
 
   private readonly createModel: () => AiVideoModel;
   private upstream?: AiVideoModel;
-  /**
-   * Bytes from a `generateVideo` / `doGenerate` fallback. That path has no
-   * provider task id, so it cannot resume across processes; the cache lives
-   * only for the rest of this poll loop.
-   */
-  private readonly completed = new Map<string, Uint8Array>();
 
   constructor(config: AiSdkProviderConfig) {
     this.modelId = config.modelId;
@@ -291,31 +357,8 @@ class AiSdkVideoModel implements VideoModelV4 {
     return this.upstream;
   }
 
-  toRequestBody(options: VideoModelV4CallOptions): AiCallOptions {
-    const { frameImages, inputReferences } = splitReferences(
-      options.references
-    );
-    // Key order is fixed and every value is derived from the options, so the
-    // hash is stable across runs. The `undefined` members satisfy upstream's
-    // type and then vanish in JSON, so they hash identically to being absent —
-    // which is what keeps a shot's hash unchanged when an unrelated optional
-    // field is added here later.
-    return {
-      abortSignal: undefined,
-      aspectRatio: wireAspectRatio(options.aspectRatio),
-      duration: options.duration,
-      fps: undefined,
-      frameImages: frameImages.length > 0 ? frameImages : undefined,
-      generateAudio: options.generateAudio,
-      headers: undefined,
-      image: undefined,
-      inputReferences: inputReferences.length > 0 ? inputReferences : undefined,
-      n: 1,
-      prompt: options.prompt,
-      providerOptions: aisdkProviderOptions(this.modelId, options),
-      resolution: wireResolution(options),
-      seed: options.seed,
-    };
+  toRequestBody(options: VideoModelV4CallOptions): Record<string, unknown> {
+    return toGenerateVideoArgs(this.modelId, options);
   }
 
   /**
@@ -327,41 +370,19 @@ class AiSdkVideoModel implements VideoModelV4 {
   async doStart(options: VideoModelV4CallOptions): Promise<GeneratedVideoTask> {
     const model = this.model();
     const start = model.doStart;
-    const body = this.toRequestBody(options);
     if (!start) {
-      // Same call `generateVideo({ model: 'bytedance/seedance-2.5', prompt })`
-      // makes. Used only when upstream has no doStart (doGenerate-only).
-      // maxRetries is 0: a POST spends money, and this CLI never replays one.
-      const { videos } = await generateVideo({
-        aspectRatio: body.aspectRatio,
-        duration: body.duration,
-        frameImages: body.frameImages?.map((frame) => ({
-          frameType: frame.frameType,
-          image: fileToDataContent(frame.image),
-        })),
-        generateAudio: body.generateAudio,
-        inputReferences: body.inputReferences?.map(fileToDataContent),
-        maxRetries: 0,
-        model,
-        n: body.n,
-        prompt: body.prompt ?? options.prompt,
-        providerOptions: body.providerOptions,
-        resolution: body.resolution,
-        seed: body.seed,
-      });
-      const [first] = videos;
-      if (first === undefined) {
-        throw new VsError(
-          "download_failed",
-          `${this.modelId} returned no videos`,
-          { hint: "check the prompt and references, then retry with --force" }
-        );
-      }
-      const id = JSON.stringify({ aisdkCompleted: randomUUID() });
-      this.completed.set(id, first.uint8Array);
-      return { id, model: this.modelId, status: "queued" };
+      throw new VsError(
+        "invalid_input",
+        `${this.modelId} does not implement doStart/doStatus`,
+        {
+          hint: "vs generate persists a task id so a later run can re-attach; a doGenerate-only model cannot. Use a Gateway catalog id (bytedance/seedance-2.5) or an Ark/MiniMax model",
+        }
+      );
     }
-    const result = await start.call(model, body as Parameters<typeof start>[0]);
+    const result = await start.call(
+      model,
+      toUpstreamCallOptions(this.modelId, options)
+    );
     return {
       id: JSON.stringify(result.operation),
       model: this.modelId,
@@ -370,23 +391,14 @@ class AiSdkVideoModel implements VideoModelV4 {
   }
 
   async doStatus(taskId: string): Promise<GeneratedVideoTask> {
-    const cached = this.completed.get(taskId);
-    if (cached !== undefined) {
-      this.completed.delete(taskId);
-      return {
-        content: { videoBytes: cached },
-        id: taskId,
-        status: "succeeded",
-      };
-    }
     const model = this.model();
     const status = model.doStatus;
     if (!status) {
       throw new VsError(
         "invalid_input",
-        `${this.modelId} has no doStatus and task ${taskId} is not in the in-process cache`,
+        `${this.modelId} does not implement doStatus`,
         {
-          hint: "generateVideo-only models cannot resume across processes; re-run with --force to submit again",
+          hint: "vs generate resumes by task id; this model has no status handle to re-attach to",
         }
       );
     }
@@ -436,8 +448,8 @@ class AiSdkVideoModel implements VideoModelV4 {
  * file never learns which vendor or key is behind it:
  *
  * ```ts
- * createAiSdk({ model: google.video("veo-3.1-fast-generate-preview"),
- *               modelId: "aisdk:google/veo-3.1-fast-generate-preview" })
+ * createAiSdk({ model: () => gateway.video("bytedance/seedance-2.5"),
+ *               modelId: "bytedance/seedance-2.5" })
  * ```
  */
 export function createAiSdk(config: AiSdkProviderConfig): VideoModelV4 {

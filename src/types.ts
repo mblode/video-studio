@@ -323,8 +323,8 @@ export interface ArkTask {
     /** Present only when the request set `return_last_frame`. */
     last_frame_url?: string;
     /**
-     * Inline bytes from a bridged model (AI Gateway base64/binary, or a
-     * `generateVideo` fallback). Runtime only — never written to the manifest.
+     * Inline bytes from a bridged model (AI Gateway base64/binary). Runtime
+     * only — never written to the manifest.
      */
     videoBytes?: Uint8Array;
   };

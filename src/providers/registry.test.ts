@@ -38,6 +38,13 @@ describe("resolveModelId", () => {
     });
   });
 
+  it("sends a bare google/veo id through the Gateway catalog", () => {
+    expect(resolveModelId("google/veo-3.1-fast-generate-preview")).toEqual({
+      modelId: "google/veo-3.1-fast-generate-preview",
+      provider: "aisdk",
+    });
+  });
+
   it("strips an explicit provider prefix from the wire id", () => {
     // The prefix is addressed to this CLI, not to the provider. Leaving it on
     // would send `minimax:MiniMax-H3` as the model name and 400.
