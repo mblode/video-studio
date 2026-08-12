@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import { describe, expect, it, vi } from "vitest";
 
 import type { VideoModelV4CallOptions } from "../spec/video-model.js";
@@ -84,13 +86,24 @@ describe("the aisdk bridge translates call options", () => {
     expect(body.frameImages).toEqual([
       {
         frameType: "first_frame",
-        image: { type: "url", url: "https://a.png" },
+        image: {
+          mediaType: "image/png",
+          type: "url",
+          url: "https://a.png",
+        },
       },
-      { frameType: "last_frame", image: { type: "url", url: "https://d.png" } },
+      {
+        frameType: "last_frame",
+        image: {
+          mediaType: "image/png",
+          type: "url",
+          url: "https://d.png",
+        },
+      },
     ]);
     expect(body.inputReferences).toEqual([
-      { type: "url", url: "https://b.png" },
-      { type: "url", url: "https://c.png" },
+      { mediaType: "image/png", type: "url", url: "https://b.png" },
+      { mediaType: "image/png", type: "url", url: "https://c.png" },
     ]);
   });
 
@@ -109,6 +122,14 @@ describe("the aisdk bridge translates call options", () => {
     expect(body.inputReferences).toEqual([
       { data: "AAAA", mediaType: "image/png", type: "file" },
     ]);
+  });
+
+  it("turns 480p 16:9 into Gateway's 854x480, not BytePlus's 864x496", () => {
+    expect(
+      model().toRequestBody(options({ resolution: "480p" }))
+    ).toMatchObject({
+      resolution: "854x480",
+    });
   });
 
   it("is pure, so --dry-run needs no key and the hash cannot drift", () => {
@@ -164,14 +185,36 @@ describe("the aisdk bridge carries the task across processes", () => {
     });
   });
 
-  it("refuses a model that cannot be polled, rather than paying blind", async () => {
-    const bridge = model({ doStart: undefined });
-    await expect(bridge.doStart(options())).rejects.toMatchObject({
-      code: "invalid_input",
+  it("falls back to generateVideo when upstream has no doStart", async () => {
+    const doGenerate = vi.fn(() =>
+      Promise.resolve({
+        response: {
+          headers: undefined,
+          modelId: "demo",
+          timestamp: new Date(),
+        },
+        videos: [
+          { data: "AQID", mediaType: "video/mp4", type: "base64" as const },
+        ],
+        warnings: [],
+      })
+    );
+    const bridge = model({
+      doGenerate,
+      doStart: undefined,
+      doStatus: undefined,
     });
+    const started = await bridge.doStart(options());
+    expect(doGenerate).toHaveBeenCalled();
+    expect(JSON.parse(started.id)).toMatchObject({
+      aisdkCompleted: expect.any(String),
+    });
+    const settled = await bridge.doStatus(started.id);
+    expect(settled.status).toBe("succeeded");
+    expect(settled.content?.videoBytes).toEqual(Buffer.from("AQID", "base64"));
   });
 
-  it("says so when the provider returns bytes it cannot persist", async () => {
+  it("persists a base64 result as bytes", async () => {
     const bridge = model({
       doStatus: vi.fn(() =>
         Promise.resolve({
@@ -186,8 +229,31 @@ describe("the aisdk bridge carries the task across processes", () => {
         })
       ),
     });
-    await expect(bridge.doStatus('"op"')).rejects.toMatchObject({
-      code: "download_failed",
+    await expect(bridge.doStatus('"op"')).resolves.toMatchObject({
+      content: { videoBytes: Buffer.from("AAAA", "base64") },
+      status: "succeeded",
+    });
+  });
+
+  it("persists a binary result as bytes", async () => {
+    const bytes = new Uint8Array([9, 8, 7]);
+    const bridge = model({
+      doStatus: vi.fn(() =>
+        Promise.resolve({
+          response: {
+            headers: undefined,
+            modelId: "veo",
+            timestamp: new Date(),
+          },
+          status: "completed" as const,
+          videos: [{ data: bytes, mediaType: "video/mp4", type: "binary" }],
+          warnings: [],
+        })
+      ),
+    });
+    await expect(bridge.doStatus('"op"')).resolves.toMatchObject({
+      content: { videoBytes: bytes },
+      status: "succeeded",
     });
   });
 });
@@ -197,6 +263,23 @@ describe("aisdk model ids", () => {
     expect(resolveModelId(MODEL_ID)).toEqual({
       modelId: "google/veo-3.1-fast-generate-preview",
       provider: "aisdk",
+    });
+  });
+
+  it("routes the Gateway Seedance spelling without an aisdk: prefix", () => {
+    expect(resolveModelId("bytedance/seedance-2.5")).toEqual({
+      modelId: "bytedance/seedance-2.5",
+      provider: "aisdk",
+    });
+  });
+
+  it("puts Seedance camera and watermark knobs in providerOptions.bytedance", () => {
+    const body = createAiSdk({
+      model: () => upstream() as never,
+      modelId: "bytedance/seedance-2.5",
+    }).toRequestBody(options({ cameraFixed: true, watermark: false }));
+    expect(body.providerOptions).toMatchObject({
+      bytedance: { cameraFixed: true, watermark: false },
     });
   });
 

@@ -89,7 +89,7 @@ const RATE_LIMIT_HINT =
   "the individual tier allows 180 requests/min and 3 concurrent tasks (15/min and 1 concurrent at 4K); lower --concurrency and re-run; completed shots are skipped";
 
 const AUTH_HINT =
-  "check ARK_API_KEY (or GEMINI_API_KEY for gemini-* stills) in .env, then re-run `vs doctor`";
+  "check AI_GATEWAY_API_KEY (or ARK_API_KEY for dreamina-* / BytePlus, GEMINI_API_KEY for gemini-* stills) in .env, then re-run `vs doctor`";
 
 /**
  * HTTP status carried by a provider error (ArkApiError/GeminiApiError). Read

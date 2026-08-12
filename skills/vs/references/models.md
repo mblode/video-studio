@@ -29,7 +29,14 @@ Confirmed on BytePlus ModelArk:
 | Seedance 2.0     | `dreamina-seedance-2-0-260128`    | 4-15s, 480p/720p/1080p/4K. $7.0/M at 720p      |
 | Seedance 2.0 fast | `dreamina-seedance-2-0-fast-260128` | 4-15s, 480p/720p only. $5.6/M, about 20% cheaper than standard |
 | Seedance 2.0 mini | `dreamina-seedance-2-0-mini-260615` | 4-15s, 480p/720p only. $3.5/M, the cheapest Seedance |
-| Seedance 2.5     | `dreamina-seedance-2-5-260628`    | **The default.** 4-30s, 480p/720p, $10.7/M. **1 concurrent, 60 RPM** |
+
+On Vercel AI Gateway (`generateVideo`):
+
+| Model | Id | Notes |
+| --- | --- | --- |
+| Seedance 2.5 | `bytedance/seedance-2.5` | **The default.** 4-30s, 480p/720p, $10.7/M. **1 concurrent, 60 RPM**. Needs `AI_GATEWAY_API_KEY` |
+
+The BytePlus ModelArk id `dreamina-seedance-2-5-260628` still works and routes to Ark (`ARK_API_KEY`). Pin it only when you want that backend.
 
 And on MiniMax, a different provider entirely:
 
@@ -51,10 +58,13 @@ there is nothing new to install or configure. The catch is the duration enum: a
 film written in 8s beats fits, one written in 30s acts does not.
 
 `film.model` also accepts an explicit `provider:id` form (`minimax:MiniMax-H3`,
-`aisdk:google/...`). A bare id is resolved through the registry, so the prefix
-is only needed for a model this repo has not learned yet: without it an unknown
-id falls back to Ark and gets POSTed to BytePlus. An `aisdk:` id always needs
-its `<vendor>/` segment, because that is what selects the upstream package.
+`aisdk:google/...`). A `vendor/model` id with a slash and no colon
+(`bytedance/seedance-2.5`) is the AI Gateway / `generateVideo` spelling and
+routes to the aisdk bridge without an `aisdk:` prefix. A bare id is resolved
+through the registry, so the prefix is only needed for a model this repo has
+not learned yet: without it an unknown id falls back to Ark and gets POSTed to
+BytePlus. An `aisdk:` id always needs its `<vendor>/` segment, because that is
+what selects the upstream package.
 
 A bridged model is weaker in two ways worth knowing before you pick one. Its
 `payloadHash` records the normalised request rather than the literal wire body,
@@ -302,7 +312,7 @@ beat, and every number below follows from that.
 
 | Field | Value |
 | --- | --- |
-| Id | `dreamina-seedance-2-5-260628` |
+| Id | `bytedance/seedance-2.5` (AI Gateway). Ark: `dreamina-seedance-2-5-260628` |
 | Duration | 4-30s (auto `-1` unconfirmed) |
 | Resolutions | 480p, 720p |
 | Refs (product ceiling) | 30 images / 10 video / 10 audio, 50 total |
@@ -310,10 +320,9 @@ beat, and every number below follows from that.
 | Rate (no video in) | **$10.7 / M tokens** |
 | Rate (with video in) | $6.4 / M tokens, reconciliation only |
 | Limits | **1 concurrent**, 60 RPM |
-| Confidence | `inferred`: console card and rates are published (Seed blog 2026-07-31), the ModelArk API is still "coming soon" |
+| Confidence | `inferred`: console card and rates are published (Seed blog 2026-07-31); the default path is Vercel AI Gateway |
 
-Opt in with `film.model: "dreamina-seedance-2-5-260628"`. Do **not** make it the
-CLI default until a live create-task succeeds.
+The CLI default is `bytedance/seedance-2.5`. Pin `dreamina-seedance-2-5-260628` to stay on BytePlus ModelArk. `generateVideo` itself drops `inputReferences` when `frameImages` are set; this CLI's wait path uses `doStart`/`doStatus` and still sends both, so mixed first-frame + ordinal packs keep working.
 
 **What `inferred` buys you.** `validateShotAgainstModel` downgrades every
 capability problem on an `inferred` model from error to warning, because

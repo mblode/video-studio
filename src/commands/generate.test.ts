@@ -22,6 +22,10 @@ vi.mock("../download.js", () => ({
     await mkdir(dirname(outputPath), { recursive: true });
     await writeFile(outputPath, "video");
   }),
+  writeVideoFile: vi.fn(async (_data: Uint8Array, outputPath: string) => {
+    await mkdir(dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, "video");
+  }),
 }));
 
 /**

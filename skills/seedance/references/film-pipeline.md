@@ -137,9 +137,10 @@ without re-rolling the composition.
 
 ## Model and draft settings
 
-- **`film.model`** is set explicitly to `dreamina-seedance-2-5-260628` for a 2.5
-  film. Omit it and the film is validated and generated as Seedance 2.0: 15s
-  ceiling, no local video references, no mixing frame roles with `reference_*`.
+- **`film.model`** is `bytedance/seedance-2.5` for a 2.5 film on AI Gateway
+  (the CLI default if omitted). Pin `dreamina-seedance-2-5-260628` to generate
+  on BytePlus ModelArk, or `dreamina-seedance-2-0-260128` for 2.0's 15s
+  envelope.
 - **`film.draftModel` stays unset on a 2.5 film.** `vs generate --draft`
   validates every shot against the draft model, and
   `dreamina-seedance-2-0-fast-260128` is documented at 4-15s, so a 30s film with

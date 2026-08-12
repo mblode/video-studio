@@ -1,5 +1,5 @@
 import { createWriteStream } from "node:fs";
-import { mkdir, rename, rm } from "node:fs/promises";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -33,6 +33,26 @@ export async function downloadFile(
     throw new VsError(
       "download_failed",
       `download of ${outputPath} was interrupted`,
+      { cause: error, hint: EXPIRY_HINT }
+    );
+  }
+}
+
+/** Write already-fetched video bytes via the same .part + rename as a download. */
+export async function writeVideoFile(
+  data: Uint8Array,
+  outputPath: string
+): Promise<void> {
+  await mkdir(dirname(outputPath), { recursive: true });
+  const tmp = `${outputPath}.part`;
+  try {
+    await writeFile(tmp, data);
+    await rename(tmp, outputPath);
+  } catch (error) {
+    await rm(tmp, { force: true });
+    throw new VsError(
+      "download_failed",
+      `write of ${outputPath} was interrupted`,
       { cause: error, hint: EXPIRY_HINT }
     );
   }

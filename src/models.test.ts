@@ -32,6 +32,13 @@ describe("normalizeModelId", () => {
       "seedance-2-0-fast"
     );
   });
+
+  it("normalises the AI Gateway Seedance 2.5 id onto the same family", () => {
+    expect(normalizeModelId("bytedance/seedance-2.5")).toBe("seedance-2-5");
+    expect(normalizeModelId("aisdk:bytedance/seedance-2.5")).toBe(
+      "seedance-2-5"
+    );
+  });
 });
 
 describe("lookupModel", () => {

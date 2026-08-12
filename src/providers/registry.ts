@@ -7,7 +7,9 @@ import type { ProviderId } from "../models.js";
  * Two spellings, in priority order:
  *
  * 1. **Explicit prefix** — `minimax:MiniMax-H3`. Wins outright.
- * 2. **Registry lookup** — the `provider` field on the model's entry.
+ * 2. **AI Gateway spelling** — `vendor/model` with a slash and no colon,
+ *    e.g. `bytedance/seedance-2.5`. This is the id `generateVideo` takes.
+ * 3. **Registry lookup** — the `provider` field on the model's entry.
  *
  * An unrecognised bare id falls through to the registry's permissive Ark
  * fallback, which is the historical behaviour and right for a Seedance release
@@ -23,6 +25,8 @@ import type { ProviderId } from "../models.js";
  * provider and model together, e.g. `aisdk:google/veo-3.1-fast-generate-preview`.
  * That second segment is what `createVideoModel` splits on to pick the
  * `@ai-sdk/*` package, so a bare `aisdk:veo-3.1` is not resolvable and says so.
+ * A slash-shaped id without a prefix (`bytedance/seedance-2.5`) is the same
+ * route: AI Gateway, no extra `aisdk:` needed.
  */
 export interface ResolvedModelId {
   provider: ProviderId;
@@ -43,6 +47,12 @@ export function resolveModelId(configured: string): ResolvedModelId {
     // An unknown prefix is far more likely to be part of the id itself than a
     // typo'd provider, so it is left alone rather than rejected. The registry
     // gets the whole string, unchanged.
+  }
+  // `bytedance/seedance-2.5` is the generateVideo / AI Gateway spelling. A
+  // slash with no colon is never a BytePlus ModelArk id, so it must not fall
+  // through to the registry's ark default.
+  if (configured.includes("/") && !configured.includes(":")) {
+    return { modelId: configured, provider: "aisdk" };
   }
   return { modelId: configured, provider: lookupModel(configured).provider };
 }

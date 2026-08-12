@@ -10,13 +10,31 @@ import { resolveModelId } from "./registry.js";
  */
 describe("resolveModelId", () => {
   it("routes a bare id through the registry", () => {
-    expect(resolveModelId(MODEL_IDS.seedance25)).toEqual({
-      modelId: MODEL_IDS.seedance25,
+    expect(resolveModelId(MODEL_IDS.seedance20)).toEqual({
+      modelId: MODEL_IDS.seedance20,
       provider: "ark",
     });
     expect(resolveModelId(MODEL_IDS.minimaxH3)).toEqual({
       modelId: MODEL_IDS.minimaxH3,
       provider: "minimax",
+    });
+  });
+
+  it("routes the Gateway Seedance spelling to the aisdk bridge", () => {
+    expect(resolveModelId(MODEL_IDS.seedance25)).toEqual({
+      modelId: MODEL_IDS.seedance25,
+      provider: "aisdk",
+    });
+    expect(resolveModelId("bytedance/seedance-2.5")).toEqual({
+      modelId: "bytedance/seedance-2.5",
+      provider: "aisdk",
+    });
+  });
+
+  it("keeps the BytePlus 2.5 id on Ark", () => {
+    expect(resolveModelId(MODEL_IDS.seedance25Ark)).toEqual({
+      modelId: MODEL_IDS.seedance25Ark,
+      provider: "ark",
     });
   });
 

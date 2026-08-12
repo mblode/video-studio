@@ -171,8 +171,13 @@ export const MODEL_IDS = {
   seedance20: "dreamina-seedance-2-0-260128",
   seedance20Fast: "dreamina-seedance-2-0-fast-260128",
   seedance20Mini: "dreamina-seedance-2-0-mini-260615",
-  /** Published on ModelArk console; API/Playground still marked coming soon. */
-  seedance25: "dreamina-seedance-2-5-260628",
+  /**
+   * AI Gateway / `generateVideo` id. The CLI default.
+   * `generateVideo({ model: 'bytedance/seedance-2.5', prompt })`.
+   */
+  seedance25: "bytedance/seedance-2.5",
+  /** BytePlus ModelArk id, for films that pin the Ark backend. */
+  seedance25Ark: "dreamina-seedance-2-5-260628",
 } as const;
 
 /**
@@ -597,7 +602,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
     fps: DEFAULT_FPS,
     limits: SEEDANCE_25_LIMITS,
     notes:
-      "Console id + rates published; API/Playground marked coming soon (docs 1520757). Console card lists 480p/720p; launch marketing claims up to 4K/10-bit, which is unconfirmed and not modelled here. Confidence stays `inferred` until a live create-task succeeds, which also means a 1080p request warns rather than being refused.",
+      "Default id is `bytedance/seedance-2.5` on Vercel AI Gateway (`generateVideo`). The BytePlus ModelArk id `dreamina-seedance-2-5-260628` still routes to Ark. Console card lists 480p/720p; launch marketing claims up to 4K/10-bit, which is unconfirmed and not modelled here. Confidence stays `inferred` until a live create-task succeeds, which also means a 1080p request warns rather than being refused.",
     provider: "ark",
     referenceSlots: SEEDANCE_25_REFERENCE_SLOTS,
     resolutions: ["480p", "720p"],

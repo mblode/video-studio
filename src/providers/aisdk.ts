@@ -1,3 +1,6 @@
+import { Buffer } from "node:buffer";
+import { randomUUID } from "node:crypto";
+
 import type {
   Experimental_VideoModelV4 as AiVideoModel,
   Experimental_VideoModelV4CallOptions as AiCallOptions,
@@ -6,10 +9,10 @@ import type {
   Experimental_VideoModelV4VideoData as AiVideoData,
   JSONValue,
 } from "@ai-sdk/provider";
+import { experimental_generateVideo as generateVideo } from "ai";
 
-import { frameSize } from "../cost.js";
 import { VsError } from "../errors.js";
-import { lookupModel } from "../models.js";
+import { lookupModel, normalizeModelId } from "../models.js";
 import type { ModelCapabilities } from "../models.js";
 import { pollUntilTerminal } from "../poll.js";
 import type { PollOptions } from "../poll.js";
@@ -19,7 +22,7 @@ import type {
   VideoModelV4,
   VideoModelV4CallOptions,
 } from "../spec/video-model.js";
-import { ASPECT_RATIO_VALUE } from "../types.js";
+import { ASPECT_RATIO_VALUE, RESOLUTION_SHORT_SIDE } from "../types.js";
 import type { AspectRatio, ShotReference, TaskStatus } from "../types.js";
 
 /**
@@ -42,17 +45,34 @@ import type { AspectRatio, ShotReference, TaskStatus } from "../types.js";
  *    Ark and MiniMax keep their literal-wire hashes untouched.
  * 2. Cost comes from the registry only. Upstream carries no billing model, so
  *    a bridged model with no registry entry quotes the dearest known rate.
+ *
+ * `generateVideo` from `ai` is the high-level call this adapter speaks. The
+ * wait path still uses `doStart`/`doStatus` when the upstream model has them
+ * (AI Gateway Seedance does), because `tasks.json` has to re-attach across
+ * processes. `generateVideo` is the fallback for a model that only implements
+ * `doGenerate`, and it cannot resume: there is no id until the bytes are back.
  */
 
-/** Upstream's `${number}x${number}`, derived from our resolution + ratio pair. */
+/**
+ * Upstream's `${number}x${number}`. Derived from the short-side pin, not from
+ * `frameSize`, because that function carries BytePlus-observed sizes (480p
+ * 16:9 is 864x496 there). AI Gateway Seedance documents 854x480 / 1280x720,
+ * which is `ceil(short × ratio)` without the macroblock round-up.
+ */
 function wireResolution(
   options: VideoModelV4CallOptions
 ): `${number}x${number}` | undefined {
   if (!options.resolution) {
     return;
   }
-  const { height, width } = frameSize(options.resolution, options.aspectRatio);
-  return `${width}x${height}`;
+  const short = RESOLUTION_SHORT_SIDE[options.resolution];
+  const ratio = ASPECT_RATIO_VALUE[options.aspectRatio];
+  if (ratio === undefined) {
+    return;
+  }
+  return ratio >= 1
+    ? `${Math.ceil(short * ratio)}x${short}`
+    : `${short}x${Math.ceil(short / ratio)}`;
 }
 
 /**
@@ -69,6 +89,38 @@ function wireAspectRatio(
 
 const DATA_URL = /^data:(?<mediaType>[^;,]+)(?<base64>;base64)?,(?<data>.*)$/su;
 
+/** Fallback when a remote URL has no usable extension. Gateway warns if omitted. */
+const MEDIA_BY_TYPE: Record<string, string> = {
+  audio: "audio/mpeg",
+  image: "image/png",
+  video: "video/mp4",
+};
+
+const MEDIA_BY_EXT: Record<string, string> = {
+  ".aac": "audio/aac",
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
+  ".m4a": "audio/mp4",
+  ".mov": "video/quicktime",
+  ".mp3": "audio/mpeg",
+  ".mp4": "video/mp4",
+  ".png": "image/png",
+  ".wav": "audio/wav",
+  ".webm": "video/webm",
+  ".webp": "image/webp",
+};
+
+function mediaTypeOf(reference: ShotReference): string {
+  const path = reference.url.split("?")[0] ?? reference.url;
+  const dot = path.lastIndexOf(".");
+  const ext = dot === -1 ? "" : path.slice(dot).toLowerCase();
+  return (
+    MEDIA_BY_EXT[ext] ??
+    MEDIA_BY_TYPE[reference.type] ??
+    "application/octet-stream"
+  );
+}
+
 /**
  * By the time a reference reaches the spec, `buildCallOptions` has already
  * inlined any local file as a data URL, so there are exactly two shapes here.
@@ -77,7 +129,11 @@ function toFile(reference: ShotReference): AiFile {
   const match = DATA_URL.exec(reference.url);
   const groups = match?.groups;
   if (groups?.data === undefined || groups.mediaType === undefined) {
-    return { type: "url", url: reference.url };
+    return {
+      mediaType: mediaTypeOf(reference),
+      type: "url",
+      url: reference.url,
+    };
   }
   return {
     data: groups.data,
@@ -120,19 +176,77 @@ function splitReferences(references: readonly ShotReference[]): {
   return { frameImages, inputReferences };
 }
 
-/** Only a URL result can be handed to the existing download path. */
-function videoUrl(videos: readonly AiVideoData[]): string {
+/**
+ * Persist whatever shape upstream handed back. Gateway Seedance may return a
+ * URL, base64, or binary; `vs generate` writes the file immediately because
+ * result URLs expire.
+ */
+function videoContent(videos: readonly AiVideoData[]): {
+  video_url?: string;
+  videoBytes?: Uint8Array;
+} {
   const [first] = videos;
-  if (first?.type === "url") {
-    return first.url;
+  if (first?.type === "url" && first.url.length > 0) {
+    return { video_url: first.url };
+  }
+  if (first?.type === "base64" && first.data.length > 0) {
+    return { videoBytes: Buffer.from(first.data, "base64") };
+  }
+  if (first?.type === "binary" && first.data.byteLength > 0) {
+    return { videoBytes: first.data };
   }
   throw new VsError(
     "download_failed",
-    `the provider returned the video as ${first?.type ?? "nothing"} rather than a URL`,
+    `the provider returned the video as ${first?.type ?? "nothing"} with no bytes or URL`,
     {
-      hint: "this bridge persists URL results only; open an issue with the model id so the inline-bytes path can be added",
+      hint: "vs generate persists the result immediately because result URLs expire; open an issue with the model id if this shape is new",
     }
   );
+}
+
+/** `generateVideo`'s public API takes DataContent, not the v4 file part. */
+function fileToDataContent(file: AiFile): string | Uint8Array {
+  if (file.type === "url") {
+    return file.url;
+  }
+  return typeof file.data === "string"
+    ? `data:${file.mediaType};base64,${file.data}`
+    : file.data;
+}
+
+/**
+ * Seedance knobs that Ark sends as top-level body fields. On the Gateway they
+ * ride in `providerOptions.bytedance`. Other bridged models (Veo) must not
+ * grow a bytedance block — that would churn their `payloadHash`.
+ */
+function aisdkProviderOptions(
+  modelId: string,
+  options: VideoModelV4CallOptions
+): AiCallOptions["providerOptions"] {
+  const fromCaller = (options.providerOptions?.aisdk ?? {}) as Record<
+    string,
+    unknown
+  >;
+  if (!normalizeModelId(modelId).startsWith("seedance")) {
+    return fromCaller as AiCallOptions["providerOptions"];
+  }
+  const existing =
+    typeof fromCaller.bytedance === "object" && fromCaller.bytedance !== null
+      ? (fromCaller.bytedance as Record<string, unknown>)
+      : {};
+  const bytedance = {
+    ...existing,
+    ...(options.cameraFixed === undefined
+      ? {}
+      : { cameraFixed: options.cameraFixed }),
+    ...(options.watermark === undefined
+      ? {}
+      : { watermark: options.watermark }),
+  };
+  return {
+    ...fromCaller,
+    ...(Object.keys(bytedance).length > 0 ? { bytedance } : {}),
+  } as AiCallOptions["providerOptions"];
 }
 
 export interface AiSdkProviderConfig {
@@ -158,6 +272,12 @@ class AiSdkVideoModel implements VideoModelV4 {
 
   private readonly createModel: () => AiVideoModel;
   private upstream?: AiVideoModel;
+  /**
+   * Bytes from a `generateVideo` / `doGenerate` fallback. That path has no
+   * provider task id, so it cannot resume across processes; the cache lives
+   * only for the rest of this poll loop.
+   */
+  private readonly completed = new Map<string, Uint8Array>();
 
   constructor(config: AiSdkProviderConfig) {
     this.modelId = config.modelId;
@@ -171,10 +291,6 @@ class AiSdkVideoModel implements VideoModelV4 {
     return this.upstream;
   }
 
-  // Needs no instance state, unlike Ark's and MiniMax's, because the model id
-  // is bound into the upstream model rather than sent in the body. It stays an
-  // instance method because `VideoModelV4` declares it as one.
-  // oxlint-disable-next-line eslint/class-methods-use-this
   toRequestBody(options: VideoModelV4CallOptions): AiCallOptions {
     const { frameImages, inputReferences } = splitReferences(
       options.references
@@ -196,8 +312,7 @@ class AiSdkVideoModel implements VideoModelV4 {
       inputReferences: inputReferences.length > 0 ? inputReferences : undefined,
       n: 1,
       prompt: options.prompt,
-      providerOptions: (options.providerOptions?.aisdk ??
-        {}) as AiCallOptions["providerOptions"],
+      providerOptions: aisdkProviderOptions(this.modelId, options),
       resolution: wireResolution(options),
       seed: options.seed,
     };
@@ -212,19 +327,41 @@ class AiSdkVideoModel implements VideoModelV4 {
   async doStart(options: VideoModelV4CallOptions): Promise<GeneratedVideoTask> {
     const model = this.model();
     const start = model.doStart;
+    const body = this.toRequestBody(options);
     if (!start) {
-      throw new VsError(
-        "invalid_input",
-        `${this.modelId} does not support asynchronous starts`,
-        {
-          hint: "this CLI resumes paid generations across processes, which needs the model's doStart/doStatus pair; pick a model that implements them",
-        }
-      );
+      // Same call `generateVideo({ model: 'bytedance/seedance-2.5', prompt })`
+      // makes. Used only when upstream has no doStart (doGenerate-only).
+      // maxRetries is 0: a POST spends money, and this CLI never replays one.
+      const { videos } = await generateVideo({
+        aspectRatio: body.aspectRatio,
+        duration: body.duration,
+        frameImages: body.frameImages?.map((frame) => ({
+          frameType: frame.frameType,
+          image: fileToDataContent(frame.image),
+        })),
+        generateAudio: body.generateAudio,
+        inputReferences: body.inputReferences?.map(fileToDataContent),
+        maxRetries: 0,
+        model,
+        n: body.n,
+        prompt: body.prompt ?? options.prompt,
+        providerOptions: body.providerOptions,
+        resolution: body.resolution,
+        seed: body.seed,
+      });
+      const [first] = videos;
+      if (first === undefined) {
+        throw new VsError(
+          "download_failed",
+          `${this.modelId} returned no videos`,
+          { hint: "check the prompt and references, then retry with --force" }
+        );
+      }
+      const id = JSON.stringify({ aisdkCompleted: randomUUID() });
+      this.completed.set(id, first.uint8Array);
+      return { id, model: this.modelId, status: "queued" };
     }
-    const result = await start.call(
-      model,
-      this.toRequestBody(options) as Parameters<typeof start>[0]
-    );
+    const result = await start.call(model, body as Parameters<typeof start>[0]);
     return {
       id: JSON.stringify(result.operation),
       model: this.modelId,
@@ -233,13 +370,24 @@ class AiSdkVideoModel implements VideoModelV4 {
   }
 
   async doStatus(taskId: string): Promise<GeneratedVideoTask> {
+    const cached = this.completed.get(taskId);
+    if (cached !== undefined) {
+      this.completed.delete(taskId);
+      return {
+        content: { videoBytes: cached },
+        id: taskId,
+        status: "succeeded",
+      };
+    }
     const model = this.model();
     const status = model.doStatus;
     if (!status) {
       throw new VsError(
         "invalid_input",
-        `${this.modelId} does not support status polling`,
-        { hint: "pick a model that implements doStart/doStatus" }
+        `${this.modelId} has no doStatus and task ${taskId} is not in the in-process cache`,
+        {
+          hint: "generateVideo-only models cannot resume across processes; re-run with --force to submit again",
+        }
       );
     }
     let operation: JSONValue;
@@ -262,7 +410,7 @@ class AiSdkVideoModel implements VideoModelV4 {
     }
     if (result.status === "completed") {
       return {
-        content: { video_url: videoUrl(result.videos) },
+        content: videoContent(result.videos),
         id: taskId,
         status: "succeeded",
       };

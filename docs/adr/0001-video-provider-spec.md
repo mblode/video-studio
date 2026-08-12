@@ -53,7 +53,7 @@ Recovered from the code, not invented. These are the names to use.
 | **Pass** | `draft` or `final`; picks the manifest and output dir | `src/paths.ts` |
 | **Reference** | A role-tagged input image/video/audio on a shot | `src/types.ts` |
 | **Ordinal** | A reference's 1-based index *within its media type* | `src/payload.ts` |
-| **Model** | A generation model id, e.g. `dreamina-seedance-2-5-260628` | `src/models.ts` |
+| **Model** | A generation model id, e.g. `bytedance/seedance-2.5` | `src/models.ts` |
 | **Provider** | The backend a model id is generated on | `src/models.ts` |
 | **Capabilities** | What a model accepts and how it bills | `src/models.ts` |
 
@@ -105,7 +105,7 @@ without a key:
 
 ```ts
 const ark = createArk({ apiKey, baseUrl });
-const model = ark.videoModel("dreamina-seedance-2-5-260628");
+const model = ark.videoModel("dreamina-seedance-2-0-260128");
 ```
 
 **3. `src/models.ts` — capabilities and billing as data.** Unchanged in spirit,
@@ -123,8 +123,9 @@ union. Adding a third billing shape is a new union member plus one branch.
 `provider:modelId` form. Resolution order:
 
 1. Explicit prefix wins: `minimax:MiniMax-H3`.
-2. Otherwise the registry's `provider` field for that family.
-3. Otherwise `ark`, preserving today's behaviour.
+2. A `vendor/model` id with a slash and no colon (`bytedance/seedance-2.5`) is the AI Gateway / `generateVideo` spelling and routes to `aisdk`.
+3. Otherwise the registry's `provider` field for that family.
+4. Otherwise `ark`, preserving today's behaviour.
 
 The prefix is not decoration. Today an unrecognised id falls back to a
 permissive Ark entry, so a MiniMax model id the registry has not learned yet
@@ -189,7 +190,7 @@ promote it.
 | Not doing | Why | Promote when |
 | --- | --- | --- |
 | Separate npm packages per provider (`packages/ark`, `packages/minimax`) | One binary, one consumer. A package split buys independent versioning nobody needs and couples release cycles. | Someone outside this repo implements the spec. |
-| Adopting the AI SDK's `experimental_generateVideo` in place of this port | `@ai-sdk/provider` ships `VideoModelV4`, and this port now takes its version number and field names from it. What upstream does not carry is `capabilities` (so `--dry-run` and cost estimation would need a key and a network call), `toRequestBody` (so `payloadHash` could not be a byte-stable audit record), and any billing model at all. `generateVideo` also polls inside a single call, where `tasks.json` has to resume across processes. | Upstream exposes a capability or billing surface, or `payloadHash` stops being a pinned audit record. |
+| Adopting the AI SDK's `experimental_generateVideo` in place of this port | `@ai-sdk/provider` ships `VideoModelV4`, and this port now takes its version number and field names from it. The aisdk adapter *calls* `generateVideo` as the fallback for a model that only implements `doGenerate`, and AI Gateway Seedance (`bytedance/seedance-2.5`) is the default film model. What we do not do is collapse `vs generate` into a single `generateVideo()` call: upstream still has no `capabilities` (so `--dry-run` and cost estimation would need a key and a network call), no `toRequestBody` (so `payloadHash` could not be a byte-stable audit record), and `generateVideo` polls inside a single call, where `tasks.json` has to resume across processes. Gateway Seedance implements `doStart`/`doStatus`; that is the wait path. | Upstream exposes a capability or billing surface, or `payloadHash` stops being a pinned audit record. |
 | A `--flex` flag for BytePlus offline inference | The wire field is real (`service_tier: "flex"`, plus `execution_expires_after`) and the discount is a flat 50% on the token rate, so the existing estimator would just take a 0.5 multiplier. But offline inference is unsupported on the whole Seedance 2.0 series AND 2.5, which is every model this repo generates on; it exists only for 1.0/1.5-pro. It is also incompatible with `--draft` (last-frame return is disabled under it). | BytePlus enables offline inference on 2.5 or the 2.0 series. Then it is a capability bit in `src/models.ts` plus a rate multiplier, so `--dry-run` can refuse it with no key. |
 | Widening the task handle to upstream's opaque `operation: JSONValue` | `ManifestEntry.taskId` is a string that `vs status <task-id>` and the `--json` key contract both depend on, and both shipped providers key on an id. Widening it is a manifest migration for no present gain. | A provider whose resumption handle is not expressible as a string. |
 | Middleware / `wrapVideoModel` | No current requirement. Retry and rate limiting already live at the seam (`ModelLimiter`, the shared HTTP loop). | A cross-cutting concern appears that is not retry or concurrency. |

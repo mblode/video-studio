@@ -11,7 +11,7 @@ Report security issues privately through [GitHub's private vulnerability reporti
 
 `vs` talks to paid generation APIs on your behalf.
 
-**Keys are read from the environment only.** `ARK_API_KEY` and the optional `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, and `MINIMAX_API_KEY` are loaded from `.env` or the process environment. They are never written to a manifest, log line, or error message. `.env` is gitignored; `.env.example` is the canonical list of names.
+**Keys are read from the environment only.** `AI_GATEWAY_API_KEY` (default Seedance 2.5), `ARK_API_KEY` (BytePlus), and the optional `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, and `MINIMAX_API_KEY` are loaded from `.env` or the process environment. They are never written to a manifest, log line, or error message. `.env` is gitignored; `.env.example` is the canonical list of names.
 
 **Manifests are designed to be committed, and are scrubbed for that.** Each film keeps a `tasks.json` recording task ids, parameters, and status so a generation resumes on any machine. It deliberately does not retain the provider's signed result URL once a clip is downloaded — those URLs expire in about 24 hours and carry the provider's access key id in the query string.
 

@@ -56,6 +56,24 @@ export function requireApiKey(): string {
   return key;
 }
 
+/**
+ * Vercel AI Gateway auth. `generateVideo({ model: 'bytedance/seedance-2.5' })`
+ * reads the same pair: an API key, or a Vercel OIDC token on Vercel.
+ */
+export function hasGatewayCredential(): boolean {
+  return Boolean(
+    process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN
+  );
+}
+
+export function requireGatewayCredential(): void {
+  if (!hasGatewayCredential()) {
+    throw new VsError("missing_credential", "AI_GATEWAY_API_KEY is not set", {
+      hint: "add `AI_GATEWAY_API_KEY=...` to a .env file (see .env.example), or set VERCEL_OIDC_TOKEN; pin film.model to a dreamina-* id to use BytePlus instead",
+    });
+  }
+}
+
 export function baseUrl(): string {
   return process.env.ARK_BASE_URL ?? DEFAULT_BASE_URL;
 }

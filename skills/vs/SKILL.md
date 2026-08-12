@@ -86,8 +86,9 @@ commands.
 
 ## Requirements
 
-`ARK_API_KEY` in `.env` for video (Seedance) and Seedream stills;
-`GEMINI_API_KEY` for Nano Banana stills and `vs score` (Lyria);
+`AI_GATEWAY_API_KEY` (or `VERCEL_OIDC_TOKEN`) in `.env` for the default
+Seedance 2.5 path; `ARK_API_KEY` for BytePlus Seedance 2.0 / lighthouse and
+Seedream stills; `GEMINI_API_KEY` for Nano Banana stills and `vs score` (Lyria);
 `ELEVENLABS_API_KEY` (+ `ELEVENLABS_VOICE_ID` or `--voice`) for `vs narrate`.
 See `.env.example`.
 

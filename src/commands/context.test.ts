@@ -104,38 +104,53 @@ describe("createVideoModel resolves credentials lazily", () => {
   // whole point of a free preflight.
   const saved = {
     ark: process.env.ARK_API_KEY,
+    gateway: process.env.AI_GATEWAY_API_KEY,
     minimax: process.env.MINIMAX_API_KEY,
+    oidc: process.env.VERCEL_OIDC_TOKEN,
   };
 
   beforeEach(() => {
     saved.ark = process.env.ARK_API_KEY;
+    saved.gateway = process.env.AI_GATEWAY_API_KEY;
     saved.minimax = process.env.MINIMAX_API_KEY;
+    saved.oidc = process.env.VERCEL_OIDC_TOKEN;
     // `delete`, not `= undefined`: assigning to process.env coerces, so the key
     // would read back as the string "undefined" and still look present.
-    process.env.ARK_API_KEY = undefined;
-    process.env.MINIMAX_API_KEY = undefined;
     delete process.env.ARK_API_KEY;
+    delete process.env.AI_GATEWAY_API_KEY;
     delete process.env.MINIMAX_API_KEY;
+    delete process.env.VERCEL_OIDC_TOKEN;
   });
 
   afterEach(() => {
     process.env.ARK_API_KEY = saved.ark;
+    process.env.AI_GATEWAY_API_KEY = saved.gateway;
     process.env.MINIMAX_API_KEY = saved.minimax;
+    process.env.VERCEL_OIDC_TOKEN = saved.oidc;
   });
 
-  it.each([MODEL_IDS.minimaxH3, MODEL_IDS.seedance25])(
-    "builds %s and renders a body with no api key set",
-    (modelId) => {
-      const model = createVideoModel(modelId);
-      const body = model.toRequestBody({
-        aspectRatio: "16:9",
-        duration: 6,
-        prompt: "a lighthouse",
-        references: [],
-      }) as Record<string, unknown>;
-      expect(body.model).toBe(modelId);
-    }
-  );
+  it("builds MiniMax-H3 and renders a body with no api key set", () => {
+    const model = createVideoModel(MODEL_IDS.minimaxH3);
+    const body = model.toRequestBody({
+      aspectRatio: "16:9",
+      duration: 6,
+      prompt: "a lighthouse",
+      references: [],
+    }) as Record<string, unknown>;
+    expect(body.model).toBe(MODEL_IDS.minimaxH3);
+  });
+
+  it("builds Gateway Seedance 2.5 and renders a body with no api key set", () => {
+    const model = createVideoModel(MODEL_IDS.seedance25);
+    const body = model.toRequestBody({
+      aspectRatio: "16:9",
+      duration: 6,
+      prompt: "a lighthouse",
+      references: [],
+    }) as Record<string, unknown>;
+    expect(body.prompt).toBe("a lighthouse");
+    expect(body.model).toBeUndefined();
+  });
 
   it("still refuses to submit without the key", async () => {
     // The other half of lazy: the key is not optional, only deferred. Losing

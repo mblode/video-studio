@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
+import { gateway } from "@ai-sdk/gateway";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 
 import { ArkClient } from "../ark.js";
@@ -10,6 +11,7 @@ import {
   loadEnv,
   minimaxBaseUrl,
   requireApiKey,
+  requireGatewayCredential,
   requireGeminiApiKey,
   requireMinimaxApiKey,
 } from "../env.js";
@@ -39,11 +41,16 @@ export function createArkClient(): ArkClient {
 }
 
 /**
- * Build an upstream `VideoModelV4` from an `aisdk:<vendor>/<model>` id.
+ * Build an upstream `VideoModelV4` from an `aisdk:<vendor>/<model>` id, or
+ * from a bare Gateway spelling (`bytedance/seedance-2.5`).
  *
  * Vendors are listed explicitly rather than resolved dynamically. A dynamic
  * import keyed on user input is an attack surface for a tool that spends money,
  * which is the same reason ADR 0001 rules out a plugin loader.
+ *
+ * `google` stays BYOK via `GEMINI_API_KEY`. Everything else — including
+ * Seedance 2.5 — goes through AI Gateway, which is what `generateVideo({
+ * model: 'bytedance/seedance-2.5' })` uses.
  */
 function createBridgedModel(
   configuredModelId: string,
@@ -61,13 +68,13 @@ function createBridgedModel(
       modelId: configuredModelId,
     });
   }
-  throw new VsError(
-    "invalid_input",
-    `no AI SDK provider is wired up for "${vendor || modelId}"`,
-    {
-      hint: "ids look like `aisdk:google/veo-3.1-fast-generate-preview`; only `google` is compiled in today, and adding one is an `@ai-sdk/*` dependency plus a branch here",
-    }
-  );
+  return createAiSdk({
+    model: () => {
+      requireGatewayCredential();
+      return gateway.video(modelId);
+    },
+    modelId: configuredModelId,
+  });
 }
 
 /**
