@@ -315,7 +315,8 @@ function toUpstreamCallOptions(
     inputReferences: inputReferences.length > 0 ? inputReferences : undefined,
     n: 1,
     prompt: options.prompt,
-    providerOptions: aisdkProviderOptions(modelId, options) ?? {},
+    providerOptions: (aisdkProviderOptions(modelId, options) ??
+      {}) as AiCallOptions["providerOptions"],
     resolution: wireResolution(options),
     seed: options.seed,
   };
