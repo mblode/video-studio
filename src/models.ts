@@ -171,8 +171,13 @@ export const MODEL_IDS = {
   seedance20: "dreamina-seedance-2-0-260128",
   seedance20Fast: "dreamina-seedance-2-0-fast-260128",
   seedance20Mini: "dreamina-seedance-2-0-mini-260615",
-  /** Published on ModelArk console; API/Playground still marked coming soon. */
-  seedance25: "dreamina-seedance-2-5-260628",
+  /**
+   * AI Gateway / `generateVideo` id. The CLI default.
+   * `generateVideo({ model: 'bytedance/seedance-2.5', prompt })`.
+   */
+  seedance25: "bytedance/seedance-2.5",
+  /** BytePlus ModelArk id, for films that pin the Ark backend. */
+  seedance25Ark: "dreamina-seedance-2-5-260628",
 } as const;
 
 /**
@@ -597,8 +602,8 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
     fps: DEFAULT_FPS,
     limits: SEEDANCE_25_LIMITS,
     notes:
-      "Console id + rates published; API/Playground marked coming soon (docs 1520757). Console card lists 480p/720p; launch marketing claims up to 4K/10-bit, which is unconfirmed and not modelled here. Confidence stays `inferred` until a live create-task succeeds, which also means a 1080p request warns rather than being refused.",
-    provider: "ark",
+      "Default id is `bytedance/seedance-2.5` on Vercel AI Gateway (`generateVideo`). The BytePlus ModelArk id `dreamina-seedance-2-5-260628` still routes to Ark. Console card lists 480p/720p; launch marketing claims up to 4K/10-bit, which is unconfirmed and not modelled here. Confidence stays `inferred` until a live create-task succeeds, which also means a 1080p request warns rather than being refused.",
+    provider: "aisdk",
     referenceSlots: SEEDANCE_25_REFERENCE_SLOTS,
     resolutions: ["480p", "720p"],
   },
@@ -691,6 +696,12 @@ function fallbackCapabilities(modelId: string): ModelCapabilities {
   };
 }
 
+/** BytePlus ModelArk / Volcengine ids, regardless of family. */
+function bytePlusVendorId(modelId: string): boolean {
+  const bare = modelId.trim().toLowerCase().replace(PROVIDER_PREFIX, "");
+  return VENDOR_PREFIXES.some((prefix) => bare.startsWith(prefix));
+}
+
 /** Capabilities for a model id. Never throws: an unknown id gets the fallback. */
 export function lookupModel(modelId?: string): ModelCapabilities {
   if (!modelId) {
@@ -701,7 +712,17 @@ export function lookupModel(modelId?: string): ModelCapabilities {
   if (!entry) {
     return fallbackCapabilities(modelId);
   }
-  return { ...entry, family, id: modelId, known: true };
+  // The 2.5 family's canonical transport is Gateway (`provider: "aisdk"`), but
+  // a dreamina-/doubao-/dola- id is still BytePlus ModelArk. Routing and
+  // capabilities.provider have to agree, or `--dry-run` would quote a Gateway
+  // film and `vs generate` would POST it to Ark.
+  return {
+    ...entry,
+    family,
+    id: modelId,
+    known: true,
+    ...(bytePlusVendorId(modelId) ? { provider: "ark" as const } : {}),
+  };
 }
 
 export function isKnownModel(modelId: string): boolean {

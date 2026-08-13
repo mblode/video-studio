@@ -5,7 +5,7 @@ description: Schema, ordinal contract, hard rules, and lint warnings for film au
 
 The CLI validates both files with zod (`src/shots.ts`). Every object is **strict** — a misspelled key is a load-time error. Always `--dry-run` first.
 
-Rules are **model-dependent**, keyed off `film.model`. A file with no `film.model` is validated as Seedance 2.0 (the CLI default). Set `"model": "dreamina-seedance-2-5-260628"` for 2.5 rules.
+Rules are **model-dependent**, keyed off `film.model`. A file with no `film.model` is validated as Seedance 2.5 (`bytedance/seedance-2.5`, the CLI default). Pin `"model": "dreamina-seedance-2-0-260128"` for 2.0 rules.
 
 Worked examples:
 
@@ -46,7 +46,7 @@ One shot is one paid task.
   "film": {
     "title": "The Last Watch",
     "outputDir": "./output",
-    "model": "dreamina-seedance-2-5-260628",
+    "model": "bytedance/seedance-2.5",
     "defaults": {
       "ratio": "1:1",
       "duration": 30,

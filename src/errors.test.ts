@@ -44,7 +44,7 @@ describe("formatError", () => {
 
   it("maps an auth failure to the key to check", () => {
     expect(formatError(new ArkApiError("Ark", 401, "{}")).hint).toContain(
-      "ARK_API_KEY"
+      "AI_GATEWAY_API_KEY"
     );
   });
 

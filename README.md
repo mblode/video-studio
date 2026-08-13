@@ -29,7 +29,7 @@ npm install
 npm link
 ```
 
-Copy `.env.example` to `.env`, add your `ARK_API_KEY` from the [BytePlus console](https://console.byteplus.com), then run `vs doctor`.
+Copy `.env.example` to `.env`, add your `AI_GATEWAY_API_KEY` from [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) (default Seedance 2.5) or `ARK_API_KEY` from the [BytePlus console](https://console.byteplus.com) (Seedance 2.0 / lighthouse), then run `vs doctor`.
 
 ## Quickstart
 

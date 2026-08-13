@@ -2,7 +2,7 @@
   "film": {
     "title": "The Last Watch (Seedance 2.5 cut)",
     "outputDir": "./output",
-    "model": "dreamina-seedance-2-5-260628",
+    "model": "bytedance/seedance-2.5",
     "defaults": {
       "ratio": "1:1",
       "duration": 30,

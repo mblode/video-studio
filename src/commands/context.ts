@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
+import { gateway } from "@ai-sdk/gateway";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 
 import { ArkClient } from "../ark.js";
@@ -10,6 +11,7 @@ import {
   loadEnv,
   minimaxBaseUrl,
   requireApiKey,
+  requireGatewayCredential,
   requireGeminiApiKey,
   requireMinimaxApiKey,
 } from "../env.js";
@@ -20,7 +22,7 @@ import type { Pass } from "../paths.js";
 import { createAiSdk } from "../providers/aisdk.js";
 import { createArk } from "../providers/ark.js";
 import { createMinimax } from "../providers/minimax.js";
-import { resolveModelId } from "../providers/registry.js";
+import { aisdkFactory, resolveModelId } from "../providers/registry.js";
 import { loadShotsFile, loadStillsFile } from "../shots.js";
 import type { VideoModelV4 } from "../spec/video-model.js";
 import type { ShotsFile, StillsFile } from "../types.js";
@@ -39,20 +41,24 @@ export function createArkClient(): ArkClient {
 }
 
 /**
- * Build an upstream `VideoModelV4` from an `aisdk:<vendor>/<model>` id.
+ * Build an upstream `VideoModelV4` from an `aisdk:<vendor>/<model>` id, or
+ * from a bare Gateway spelling (`bytedance/seedance-2.5`).
  *
- * Vendors are listed explicitly rather than resolved dynamically. A dynamic
+ * Factories are listed explicitly rather than resolved dynamically. A dynamic
  * import keyed on user input is an attack surface for a tool that spends money,
  * which is the same reason ADR 0001 rules out a plugin loader.
+ *
+ * Slash-shaped ids go through AI Gateway, which is what
+ * `generateVideo({ model: 'bytedance/seedance-2.5' })` uses. Gemini BYOK is
+ * the explicit `aisdk:google/` prefix.
  */
 function createBridgedModel(
   configuredModelId: string,
   modelId: string
 ): VideoModelV4 {
-  const separator = modelId.indexOf("/");
-  const vendor = separator > 0 ? modelId.slice(0, separator) : "";
-  const upstreamId = modelId.slice(separator + 1);
-  if (vendor === "google") {
+  if (aisdkFactory(configuredModelId) === "google") {
+    const separator = modelId.indexOf("/");
+    const upstreamId = separator > 0 ? modelId.slice(separator + 1) : modelId;
     return createAiSdk({
       model: () =>
         createGoogleGenerativeAI({ apiKey: requireGeminiApiKey() }).video(
@@ -61,13 +67,13 @@ function createBridgedModel(
       modelId: configuredModelId,
     });
   }
-  throw new VsError(
-    "invalid_input",
-    `no AI SDK provider is wired up for "${vendor || modelId}"`,
-    {
-      hint: "ids look like `aisdk:google/veo-3.1-fast-generate-preview`; only `google` is compiled in today, and adding one is an `@ai-sdk/*` dependency plus a branch here",
-    }
-  );
+  return createAiSdk({
+    model: () => {
+      requireGatewayCredential();
+      return gateway.video(modelId);
+    },
+    modelId: configuredModelId,
+  });
 }
 
 /**

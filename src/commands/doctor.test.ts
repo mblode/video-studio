@@ -57,16 +57,29 @@ describe("validateTaskShape", () => {
 });
 
 describe("runDoctor", () => {
-  const original = process.env.ARK_API_KEY;
+  const original = {
+    ark: process.env.ARK_API_KEY,
+    gateway: process.env.AI_GATEWAY_API_KEY,
+    oidc: process.env.VERCEL_OIDC_TOKEN,
+  };
   beforeEach(() => {
     process.exitCode = undefined;
   });
   afterEach(() => {
-    if (original === undefined) {
-      process.env.ARK_API_KEY = undefined;
+    if (original.ark === undefined) {
       delete process.env.ARK_API_KEY;
     } else {
-      process.env.ARK_API_KEY = original;
+      process.env.ARK_API_KEY = original.ark;
+    }
+    if (original.gateway === undefined) {
+      delete process.env.AI_GATEWAY_API_KEY;
+    } else {
+      process.env.AI_GATEWAY_API_KEY = original.gateway;
+    }
+    if (original.oidc === undefined) {
+      delete process.env.VERCEL_OIDC_TOKEN;
+    } else {
+      process.env.VERCEL_OIDC_TOKEN = original.oidc;
     }
     process.exitCode = undefined;
   });
@@ -91,10 +104,19 @@ describe("runDoctor", () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it("fails when ARK_API_KEY is missing", async () => {
-    process.env.ARK_API_KEY = undefined;
+  it("fails when neither a Gateway key nor ARK_API_KEY is set", async () => {
     delete process.env.ARK_API_KEY;
+    delete process.env.AI_GATEWAY_API_KEY;
+    delete process.env.VERCEL_OIDC_TOKEN;
     await runDoctor(undefined, { ffmpeg: false });
     expect(process.exitCode).toBe(1);
+  });
+
+  it("passes with only AI_GATEWAY_API_KEY", async () => {
+    delete process.env.ARK_API_KEY;
+    delete process.env.VERCEL_OIDC_TOKEN;
+    process.env.AI_GATEWAY_API_KEY = "gw";
+    await runDoctor(undefined, { ffmpeg: false });
+    expect(process.exitCode).toBeUndefined();
   });
 });

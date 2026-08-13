@@ -7,15 +7,18 @@ import {
   modelRateLimits,
   normalizeModelId,
 } from "./models.js";
-import type { ModelCapabilities } from "./models.js";
+import type { ModelCapabilities, ProviderId } from "./models.js";
 import type { PollOptions } from "./poll.js";
+import { createAiSdk } from "./providers/aisdk.js";
 import { createArk } from "./providers/ark.js";
+import { createMinimax } from "./providers/minimax.js";
+import { resolveModelId } from "./providers/registry.js";
 import { SPEC_VERSION } from "./spec/video-model.js";
 import type {
   VideoModelV4,
   VideoModelV4CallOptions,
 } from "./spec/video-model.js";
-import type { ArkTask, CreateTaskRequest, Resolution } from "./types.js";
+import type { ArkTask, Resolution } from "./types.js";
 
 /**
  * Concurrency gate keyed by (model, resolution).
@@ -97,12 +100,12 @@ export interface MockProviderOptions {
  */
 export class MockVideoProvider implements VideoModelV4 {
   readonly specificationVersion = SPEC_VERSION;
-  readonly provider = "ark" as const;
+  readonly provider: ProviderId;
   readonly modelId: string;
   readonly capabilities: ModelCapabilities;
 
   /** Every wire body submitted, in order. Assert against this in tests. */
-  readonly requests: CreateTaskRequest[] = [];
+  readonly requests: unknown[] = [];
 
   private readonly options: Required<MockProviderOptions>;
   private readonly reads = new Map<string, number>();
@@ -117,16 +120,35 @@ export class MockVideoProvider implements VideoModelV4 {
     };
     this.modelId = this.options.modelId;
     this.capabilities = lookupModel(this.modelId);
+    const resolved = resolveModelId(this.modelId);
+    this.provider = resolved.provider;
     // The REAL wire translation, so a test asserting on `requests` is asserting
-    // on what would genuinely be submitted. Only the network is fake.
-    this.translate = createArk({
-      apiKey: "mock",
-      baseUrl: "https://mock.invalid",
-    }).videoModel(this.modelId);
+    // on what would genuinely be submitted. Only the network is fake. The
+    // aisdk thunk throws: `toRequestBody` is pure and never calls it.
+    if (resolved.provider === "aisdk") {
+      this.translate = createAiSdk({
+        model: () => {
+          throw new Error(
+            "MockVideoProvider does not construct an upstream AI SDK model"
+          );
+        },
+        modelId: this.modelId,
+      });
+    } else if (resolved.provider === "minimax") {
+      this.translate = createMinimax({
+        apiKey: "mock",
+        baseUrl: "https://mock.invalid",
+      }).videoModel(resolved.modelId);
+    } else {
+      this.translate = createArk({
+        apiKey: "mock",
+        baseUrl: "https://mock.invalid",
+      }).videoModel(resolved.modelId);
+    }
   }
 
-  toRequestBody(options: VideoModelV4CallOptions): CreateTaskRequest {
-    return this.translate.toRequestBody(options) as CreateTaskRequest;
+  toRequestBody(options: VideoModelV4CallOptions): unknown {
+    return this.translate.toRequestBody(options);
   }
 
   doStart(options: VideoModelV4CallOptions): Promise<ArkTask> {
@@ -134,7 +156,7 @@ export class MockVideoProvider implements VideoModelV4 {
     this.requests.push(request);
     const id = `task-${this.requests.length}`;
     this.reads.set(id, 0);
-    return Promise.resolve({ id, model: request.model, status: "queued" });
+    return Promise.resolve({ id, model: this.modelId, status: "queued" });
   }
 
   doStatus(taskId: string): Promise<ArkTask> {

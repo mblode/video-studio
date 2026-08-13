@@ -3,8 +3,9 @@
 How to write the `prompt` string for a shot. **Write for Seedance 2.5**:
 timestamp-level narrative, camera, and rhythm control; 30s one-take acts; and
 multimodal binding by ordinal (Seed product blog, 2026-07-31). Set
-`film.model` to `dreamina-seedance-2-5-260628` to get it, because the CLI's
-built-in default is still 2.0. The BytePlus ModelArk 2.0 guide (doc 2222480)
+`film.model` to `bytedance/seedance-2.5` to get it (that is also the CLI
+default). Pin `dreamina-seedance-2-5-260628` for the BytePlus ModelArk backend.
+The BytePlus ModelArk 2.0 guide (doc 2222480)
 remains the reference for bracket semantics, and 2.0 craft is the same craft
 clipped to a 15s envelope.
 

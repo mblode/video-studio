@@ -98,9 +98,11 @@ it, delete it.
   to `0`; if you crossfade the cut, use the same value (and per-shot
   `transition` overrides) on assemble so narration lands on the right timeline.
 - **Seedance 2.5 is the default, and two things about it bite.** A film that
-  sets no `film.model` generates on `dreamina-seedance-2-5-260628`; pin
+  sets no `film.model` generates on `bytedance/seedance-2.5` via Vercel AI
+  Gateway (`generateVideo({ model: 'bytedance/seedance-2.5', prompt })`); pin
   `dreamina-seedance-2-0-260128` explicitly to opt out (`films/lighthouse` does,
-  so the worked example stays cheap and reproducible). (1) **Concurrency is 1**,
+  so the worked example stays cheap and reproducible). The BytePlus ModelArk id
+  `dreamina-seedance-2-5-260628` still routes to Ark. (1) **Concurrency is 1**,
   at every resolution, regardless of `--concurrency`. A 30s generation takes 10 to 15 minutes, so a six-act film
   generates strictly serially over 60 to 90 minutes. (2) **Never set
   `film.draftModel` on a 2.5 film.** `--draft` validates against `draftModel`,
@@ -114,13 +116,17 @@ it, delete it.
   `src/images.ts` already uses, and the vocabulary matches (`duration`,
   `frameImages`/`inputReferences`, `doStart`/`doStatus`, the literal
   `first_frame`/`last_frame`). `src/providers/aisdk.ts` bridges ANY upstream
-  video model behind the port, so `film.model: "aisdk:google/veo-3.1-fast-generate-preview"`
-  works on the existing `GEMINI_API_KEY` with no new dependency. Two things are
+  video model behind the port, so `film.model: "bytedance/seedance-2.5"` (AI
+  Gateway) and `film.model: "aisdk:google/veo-3.1-fast-generate-preview"`
+  (Gemini BYOK) both work. Two things are
   weaker on a bridged model, both documented in that file: `toRequestBody`
-  renders the normalised call options rather than the HTTP body (upstream cannot
-  render one without sending it), so `payloadHash` audits the request, not the
-  wire; and cost comes from the registry only. Ark and MiniMax stay hand-written
-  because their `payloadHash` is a pinned literal-wire audit record.
+  renders the public `generateVideo({ model, prompt, duration, ... })`
+  arguments rather than the HTTP body (upstream cannot render a body without
+  sending it), so `payloadHash` audits the request, not the wire; and cost
+  comes from the registry only. Ark and MiniMax stay hand-written because
+  their `payloadHash` is a pinned literal-wire audit record. The wait path is
+  `doStart`/`doStatus` so `tasks.json` can re-attach; `generateVideo` itself
+  is not the spend path.
 - **Adding a provider is a registry entry plus one adapter, never a branch in a
   command.** `docs/adr/0001-video-provider-spec.md` is the contract:
   `src/spec/video-model.ts` defines `VideoModelV4`, `src/providers/*` implement

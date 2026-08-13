@@ -11,7 +11,7 @@ import {
   usdForTokens,
 } from "../cost.js";
 import type { ClipSpec, CostEstimate } from "../cost.js";
-import { downloadFile } from "../download.js";
+import { downloadFile, writeVideoFile } from "../download.js";
 import { formatError, isVsError, VsError } from "../errors.js";
 import {
   isComplete,
@@ -501,7 +501,8 @@ async function settleTask(options: {
   // estimate in src/cost.ts checkable instead of permanently notional.
   const tokensUsed = final.usage?.completion_tokens;
   const videoUrl = final.content?.video_url;
-  if (options.download && videoUrl) {
+  const videoBytes = final.content?.videoBytes;
+  if (options.download && (videoBytes || videoUrl)) {
     const version = manifest.entries[shot.id]?.attempts ?? 1;
     const outputPath = clipRevisionPath(
       options.outputDir,
@@ -509,7 +510,11 @@ async function settleTask(options: {
       version,
       shot.output
     );
-    await downloadFile(videoUrl, outputPath);
+    if (videoBytes) {
+      await writeVideoFile(videoBytes, outputPath);
+    } else if (videoUrl) {
+      await downloadFile(videoUrl, outputPath);
+    }
     upsertEntry(manifest, {
       outputPath: relative(options.shotsDir, outputPath),
       shotId: shot.id,

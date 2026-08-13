@@ -58,8 +58,13 @@ describe("MockVideoProvider", () => {
     await provider.doStart(request());
     expect(provider.requests).toHaveLength(1);
     // The mock claims the CLI's default model, so this also pins what an
-    // unconfigured film generates on.
-    expect(provider.requests[0]?.model).toBe(DEFAULT_VIDEO_MODEL);
+    // unconfigured film generates on: the Gateway / generateVideo spelling.
+    expect(provider.modelId).toBe(DEFAULT_VIDEO_MODEL);
+    expect(DEFAULT_VIDEO_MODEL).toBe("bytedance/seedance-2.5");
+    expect(provider.requests[0]).toMatchObject({
+      duration: 5,
+      prompt: "a shot",
+    });
   });
 });
 

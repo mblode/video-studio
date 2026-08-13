@@ -32,6 +32,13 @@ describe("normalizeModelId", () => {
       "seedance-2-0-fast"
     );
   });
+
+  it("normalises the AI Gateway Seedance 2.5 id onto the same family", () => {
+    expect(normalizeModelId("bytedance/seedance-2.5")).toBe("seedance-2-5");
+    expect(normalizeModelId("aisdk:bytedance/seedance-2.5")).toBe(
+      "seedance-2-5"
+    );
+  });
 });
 
 describe("lookupModel", () => {
@@ -174,6 +181,8 @@ describe("validateShotAgainstModel", () => {
     const model = lookupModel("dreamina-seedance-2-5-260628");
     expect(model.known).toBe(true);
     expect(model.family).toBe("seedance-2-5");
+    expect(model.provider).toBe("ark");
+    expect(lookupModel(MODEL_IDS.seedance25).provider).toBe("aisdk");
     expect(model.confidence).toBe("inferred");
     expect(model.durations).toMatchObject({ auto: false, max: 30, min: 4 });
     expect(model.resolutions).toEqual(["480p", "720p"]);

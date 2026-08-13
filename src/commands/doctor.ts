@@ -2,7 +2,12 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 import type { ArkClient } from "../ark.js";
-import { baseUrl, loadEnv, minimaxBaseUrl } from "../env.js";
+import {
+  baseUrl,
+  hasGatewayCredential,
+  loadEnv,
+  minimaxBaseUrl,
+} from "../env.js";
 import { formatError } from "../errors.js";
 import { assertBinary } from "../ffmpeg.js";
 import { TASK_STATUSES } from "../types.js";
@@ -123,9 +128,37 @@ function envCheck(envPath: string | undefined): DoctorCheck {
   };
 }
 
+function gatewayKeyCheck(ark: boolean): DoctorCheck {
+  if (hasGatewayCredential()) {
+    return {
+      detail: process.env.AI_GATEWAY_API_KEY
+        ? "AI_GATEWAY_API_KEY"
+        : "VERCEL_OIDC_TOKEN",
+      label: "AI Gateway auth set (default Seedance 2.5)",
+      status: "ok",
+    };
+  }
+  if (ark) {
+    return {
+      detail:
+        "needed for the default model `bytedance/seedance-2.5`; ARK_API_KEY covers BytePlus films",
+      label: "AI_GATEWAY_API_KEY not set",
+      status: "skip",
+    };
+  }
+  return {
+    detail:
+      "add `AI_GATEWAY_API_KEY=...` (default Seedance 2.5 via AI Gateway) or `ARK_API_KEY=...` (BytePlus ModelArk) to .env",
+    label: "no video API key",
+    status: "fail",
+  };
+}
+
 function keyChecks(): DoctorCheck[] {
+  const ark = Boolean(process.env.ARK_API_KEY);
   return [
-    process.env.ARK_API_KEY
+    gatewayKeyCheck(ark),
+    ark
       ? {
           detail: `base URL: ${baseUrl()}`,
           label: "ARK_API_KEY set",
@@ -133,9 +166,9 @@ function keyChecks(): DoctorCheck[] {
         }
       : {
           detail:
-            "add `ARK_API_KEY=...` to .env (see .env.example); every generate/stills/status call needs it",
-          label: "ARK_API_KEY missing",
-          status: "fail",
+            "needed for BytePlus Seedance 2.0 (films/lighthouse) and Seedream stills",
+          label: "ARK_API_KEY not set",
+          status: "skip",
         },
     process.env.MINIMAX_API_KEY
       ? {

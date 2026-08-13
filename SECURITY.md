@@ -12,7 +12,7 @@ within about a week.
 `vs` talks to paid generation APIs on your behalf, so it is worth being precise
 about where keys live and what ends up on disk.
 
-**Keys are read from the environment only.** `ARK_API_KEY` and the optional
+**Keys are read from the environment only.** `AI_GATEWAY_API_KEY` (default Seedance 2.5), `ARK_API_KEY` (BytePlus), and the optional
 `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`, and `ELEVENLABS_VOICE_ID` are loaded
 from a `.env` file or the process environment. They are never written to a
 manifest, a log line, or an error message. `.env` is gitignored. `.env.example`

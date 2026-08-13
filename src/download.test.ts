@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { downloadFile } from "./download.js";
+import { downloadFile, writeVideoFile } from "./download.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -28,5 +28,15 @@ describe("downloadFile", () => {
     await expect(downloadFile("https://x/clip.mp4", out)).rejects.toThrow();
     expect(existsSync(`${out}.part`)).toBe(false);
     expect(existsSync(out)).toBe(false);
+  });
+});
+
+describe("writeVideoFile", () => {
+  it("writes bytes via a .part file then renames", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vs-write-"));
+    const out = join(dir, "clip.mp4");
+    await writeVideoFile(new Uint8Array([1, 2, 3, 4]), out);
+    expect(existsSync(out)).toBe(true);
+    expect(existsSync(`${out}.part`)).toBe(false);
   });
 });

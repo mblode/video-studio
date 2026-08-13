@@ -14,11 +14,10 @@ generate: a `stills.json` and `shots.json` that pass validation and follow
 - **IS NOT:** the story itself (`storycraft`), running the generations (`vs`),
   Nano Banana still prompts (`nano-banana-2`), or editing the CLI's TypeScript.
 
-**Write for 2.5 and set it explicitly.** `film.model` is
-`dreamina-seedance-2-5-260628`; the CLI's built-in default stays on 2.0, so a
-film that omits `film.model` gets 2.0's envelope and 2.0's rules. ModelArk API
-access for 2.5 is still marked coming soon (August 2026), which is why the
-registry entry is `confidence: "inferred"`: a capability mismatch on 2.5 is
+**Write for 2.5.** `film.model` is `bytedance/seedance-2.5` (Vercel AI Gateway,
+the CLI default). A film that omits `film.model` gets 2.5's envelope and 2.5's
+rules. Pin `dreamina-seedance-2-5-260628` to generate on BytePlus ModelArk
+instead. Registry confidence stays `inferred`: a capability mismatch on 2.5 is
 reported as a warning and the request still goes out, rather than being refused.
 
 Two worked examples, the same story either way, both lint-clean in CI:
