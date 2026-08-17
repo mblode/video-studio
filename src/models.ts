@@ -95,11 +95,15 @@ export interface AuthoringLimits {
    */
   framesExcludeReferences: boolean;
   /**
-   * True when a local video/audio reference may go on the wire as a base64 data
-   * URL. False means those references must be https URLs. Images are inlinable
-   * everywhere; this flag is only about the heavy media types.
+   * True when a local AUDIO reference may go on the wire as a base64 data URL.
+   *
+   * Deliberately not "non-image": images inline everywhere (Ark documents base64
+   * for the `image_url` content type), and video never inlines on any model. Ark
+   * publishes no base64 form for `video_url`, so inlining a clip spent a ~27 MB
+   * upload to discover the rejection after submit; `shots.ts` refuses a local
+   * video path at load instead.
    */
-  inlineNonImageRefs: boolean;
+  inlineAudioRefs: boolean;
   /**
    * True when prompts on this model are expected to bind each reference by
    * ordinal (`@Image 1`, `@Video 2`). Seedance 2.5 and MiniMax H3 both resolve
@@ -190,7 +194,18 @@ export const MODEL_IDS = {
  * generated on, which is the quietest possible way to waste a paid run. Same
  * reasoning as the single-ladder rule over `effectiveShotParams` itself.
  */
-export const DEFAULT_VIDEO_MODEL: string = MODEL_IDS.seedance25;
+/**
+ * BytePlus ModelArk, NOT the Gateway id, and the reason is cost correctness.
+ *
+ * Ark returns `usage.completion_tokens`, which is what lets a run reconcile its
+ * quote against the real bill and self-correct the registry (measured twice at
+ * 0% drift: 648,900 billed against 648,000 estimated for a 30s 720p act). The
+ * Gateway returns no usage block, so `--max-cost` becomes a quote nothing
+ * verifies, exactly as documented for MiniMax H3. Ark is also the one route
+ * whose `payloadHash` is a literal record of the wire body for a paid
+ * generation. `bytedance/seedance-2.5` remains available by naming it.
+ */
+export const DEFAULT_VIDEO_MODEL: string = MODEL_IDS.seedance25Ark;
 
 /** Seedance 2.5 console rate (USD / 1M tokens) without video input. */
 const SEEDANCE_25_USD_PER_MTOKEN = 10.7;
@@ -229,7 +244,7 @@ const SEEDANCE_25_LIMITS: RateLimits = { concurrency: 1, rpm: 60 };
  */
 const SEEDANCE_20_AUTHORING: AuthoringLimits = {
   framesExcludeReferences: true,
-  inlineNonImageRefs: false,
+  inlineAudioRefs: false,
   ordinalBindingIdiom: false,
   // Multi-beat timed-segment shots legitimately need more words than a
   // single-action shot; this warns on real bloat, not on density.
@@ -247,7 +262,7 @@ const SEEDANCE_20_AUTHORING: AuthoringLimits = {
  */
 const SEEDANCE_25_AUTHORING: AuthoringLimits = {
   framesExcludeReferences: false,
-  inlineNonImageRefs: true,
+  inlineAudioRefs: true,
   ordinalBindingIdiom: true,
   promptWordLimit: 700,
   softReferenceLimit: 16,
@@ -262,7 +277,7 @@ const SEEDANCE_25_AUTHORING: AuthoringLimits = {
  */
 const MINIMAX_H3_AUTHORING: AuthoringLimits = {
   framesExcludeReferences: true,
-  inlineNonImageRefs: false,
+  inlineAudioRefs: false,
   ordinalBindingIdiom: true,
   promptCharLimit: 7000,
   promptWordLimit: 400,
@@ -601,8 +616,13 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
     durations: SEEDANCE_25_DURATIONS,
     fps: DEFAULT_FPS,
     limits: SEEDANCE_25_LIMITS,
+    // Not published for 2.5. Taken as its own 30s output ceiling, the same
+    // reasoning that makes 2.0's figure 15. A guess is required, because with the
+    // field undefined `usdCeilingForClip` returns the LOW estimate and `--max-cost`
+    // enforces a ceiling against the bottom of its own range on the DEFAULT model.
+    maxInputVideoSeconds: 30,
     notes:
-      "Default id is `bytedance/seedance-2.5` on Vercel AI Gateway (`generateVideo`). The BytePlus ModelArk id `dreamina-seedance-2-5-260628` still routes to Ark. Console card lists 480p/720p; launch marketing claims up to 4K/10-bit, which is unconfirmed and not modelled here. Confidence stays `inferred` until a live create-task succeeds, which also means a 1080p request warns rather than being refused.",
+      "Default id is the BytePlus ModelArk `dreamina-seedance-2-5-260628`, which is the only route that returns a usage block and so the only one whose cost estimate reconciles. `bytedance/seedance-2.5` routes through the Vercel AI Gateway instead, priced from this registry with nothing to check it against. Console card lists 480p/720p; launch marketing claims up to 4K/10-bit, which is unconfirmed and not modelled here. Confidence stays `inferred` until a live create-task succeeds, which also means a 1080p request warns rather than being refused.",
     provider: "aisdk",
     referenceSlots: SEEDANCE_25_REFERENCE_SLOTS,
     resolutions: ["480p", "720p"],

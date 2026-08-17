@@ -58,12 +58,17 @@ describe("MockVideoProvider", () => {
     await provider.doStart(request());
     expect(provider.requests).toHaveLength(1);
     // The mock claims the CLI's default model, so this also pins what an
-    // unconfigured film generates on: the Gateway / generateVideo spelling.
+    // unconfigured film generates on: BytePlus ModelArk, because Ark is the only
+    // route that returns a usage block and so the only one whose cost estimate
+    // reconciles against the real bill.
     expect(provider.modelId).toBe(DEFAULT_VIDEO_MODEL);
-    expect(DEFAULT_VIDEO_MODEL).toBe("bytedance/seedance-2.5");
+    expect(DEFAULT_VIDEO_MODEL).toBe("dreamina-seedance-2-5-260628");
+    // Ark's literal wire body: the prompt is the first `content` item, not a
+    // top-level `prompt` field. That shape IS the point of keeping Ark
+    // hand-written — `payloadHash` audits these bytes.
     expect(provider.requests[0]).toMatchObject({
+      content: [{ text: "a shot", type: "text" }],
       duration: 5,
-      prompt: "a shot",
     });
   });
 });

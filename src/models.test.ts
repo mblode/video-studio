@@ -278,8 +278,8 @@ describe("authoring limits are capability data, not model names", () => {
   });
 
   it("permits inlined local video/audio only where the model accepts it", () => {
-    expect(lookupModel(MODEL_IDS.seedance25).inlineNonImageRefs).toBe(true);
-    expect(lookupModel(MODEL_IDS.seedance20).inlineNonImageRefs).toBe(false);
+    expect(lookupModel(MODEL_IDS.seedance25).inlineAudioRefs).toBe(true);
+    expect(lookupModel(MODEL_IDS.seedance20).inlineAudioRefs).toBe(false);
   });
 
   it("raises the soft reference and prompt budgets on 2.5", () => {
@@ -302,7 +302,7 @@ describe("authoring limits are capability data, not model names", () => {
     const unknown = lookupModel("some-model-released-next-year");
     expect(unknown.known).toBe(false);
     expect(unknown.framesExcludeReferences).toBe(true);
-    expect(unknown.inlineNonImageRefs).toBe(false);
+    expect(unknown.inlineAudioRefs).toBe(false);
   });
 
   it("routes every registered model to a declared provider", () => {

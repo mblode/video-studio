@@ -736,10 +736,21 @@ const videoShot = (url: string) => ({
 });
 
 describe("video references: region edit and extend", () => {
-  it("lets Seedance 2.5 bind a local clip, which is what region edit and extend need", async () => {
+  // Ark documents base64 for `image_url` and publishes nothing equivalent for
+  // `video_url`, so the permissive 2.5 rule this replaced spent a ~27 MB upload
+  // to discover the rejection after submit.
+  it("refuses a local clip on 2.5 too, since no model inlines video", async () => {
     const path = await writeShotsFile({
       film: { model: "dreamina-seedance-2-5-260628", title: "T" },
       shots: [videoShot("./output/clips/a1/v001.mp4")],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/Upload the clip/u);
+  });
+
+  it("takes an https clip on 2.5", async () => {
+    const path = await writeShotsFile({
+      film: { model: "dreamina-seedance-2-5-260628", title: "T" },
+      shots: [videoShot("https://example.com/source.mp4")],
     });
     await expect(loadShotsFile(path)).resolves.toBeDefined();
   });

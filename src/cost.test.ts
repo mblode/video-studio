@@ -340,6 +340,40 @@ describe("range quotes for unknowable input video", () => {
     expect(checkCostCeiling(estimate, between).allowed).toBe(false);
   });
 
+  /**
+   * 2.5 shipped without a `maxInputVideoSeconds`, which silently collapsed the
+   * range: `usdCeilingForClip` returned the point estimate, so `--max-cost`
+   * enforced a ceiling against the bottom of its own quote on the DEFAULT model.
+   */
+  describe("on Seedance 2.5, the default model", () => {
+    const on25 = {
+      duration: 8,
+      modelId: MODEL_IDS.seedance25Ark,
+      ratio: "16:9" as const,
+      referenceVideos: 1,
+      resolution: "720p" as const,
+    };
+
+    it("quotes a ceiling strictly above the point estimate", () => {
+      const estimate = estimateClip(on25);
+      expect(estimate.usdMax).toBeGreaterThan(estimate.usd);
+    });
+
+    it("bounds the ceiling by 2.5's own 30s input ceiling at the with-video rate", () => {
+      const tokensPerSecond = clipTokens({ ...on25, duration: 1 });
+      expect(usdCeilingForClip(on25)).toBeCloseTo(
+        ((8 + 30) * tokensPerSecond * 6.4) / 1_000_000,
+        6
+      );
+    });
+
+    it("checks --max-cost against the ceiling, not the low end", () => {
+      const estimate = estimateClip(on25);
+      const between = (estimate.usd + estimate.usdMax) / 2;
+      expect(checkCostCeiling(estimate, between).allowed).toBe(false);
+    });
+  });
+
   it("prints a range only when the ends differ", () => {
     expect(formatEstimate(0, 1.2, 1.2)).toBe("$1.20");
     expect(formatEstimate(0, 1.2, 2.5)).toBe("$1.20-$2.50");

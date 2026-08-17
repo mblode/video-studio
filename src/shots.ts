@@ -87,9 +87,15 @@ function lacksTimestampPlan(prompt: string): boolean {
   );
 }
 
-/** Ordinals a prompt binds per media type: `@Image 3`, `<Image_3>`, `@Video 1`. */
+/**
+ * Ordinals a prompt binds per media type: `@Image 3`, `<Image_3>`, `@Video 1`,
+ * and the bare `Video 1` that BytePlus's own reference-to-video sample prompt
+ * uses. The sigil is the house style, but the model resolves either, and
+ * treating the vendor's documented form as "binds nothing" warned at prompts
+ * that were correct. The `\\b` stops `subimage 2` binding.
+ */
 const ORDINAL_PATTERN =
-  /(?:@|<)\s*(?<kind>image|video|audio)[\s_]*(?<index>\d+)/giu;
+  /(?:@|<)?\s*\b(?<kind>image|video|audio)[\s_]*(?<index>\d+)/giu;
 
 function boundOrdinals(prompt: string): Map<ShotReference["type"], number> {
   const highest = new Map<ShotReference["type"], number>();
@@ -261,7 +267,7 @@ const shotsFileSchema = z
     const seenIds = new Set<string>();
     // Two rules below depend on the model, which only this schema can see.
     const modelId = file.film.model ?? DEFAULT_VIDEO_MODEL;
-    const { framesExcludeReferences, inlineNonImageRefs } =
+    const { framesExcludeReferences, inlineAudioRefs } =
       authoringLimits(modelId);
     for (const [index, shot] of file.shots.entries()) {
       if (seenIds.has(shot.id)) {
@@ -272,16 +278,21 @@ const shotsFileSchema = z
       }
       const refs = shot.references ?? [];
       for (const ref of refs) {
-        if (
-          ref.type !== "image" &&
-          !ref.url.startsWith("https://") &&
-          !inlineNonImageRefs
-        ) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `shot ${shot.id}: ${ref.type} references must be https URLs on ${modelId} (local paths are always supported for images). Upload the clip and paste its URL.`,
-          });
+        if (ref.type === "image" || ref.url.startsWith("https://")) {
+          continue;
         }
+        // Audio is the one heavy type a model may accept inline. Video never is:
+        // Ark documents base64 for `image_url` and publishes nothing equivalent
+        // for `video_url`, so inlining a clip meant paying for a ~27 MB upload to
+        // discover that after submit.
+        if (ref.type === "audio" && inlineAudioRefs) {
+          continue;
+        }
+        const scope = ref.type === "video" ? "on every model" : `on ${modelId}`;
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `shot ${shot.id}: ${ref.type} references must be https URLs ${scope} (local paths are always supported for images). Upload the clip and paste its URL.`,
+        });
       }
       if (
         framesExcludeReferences &&
@@ -512,11 +523,49 @@ function lintOneShot(shot: Shot, file: ShotsFile, modelId: string): string[] {
  * serializes generation and cascades retakes, and deeper than 3 accumulates
  * drift — prefer a literal keyframe per shot.
  */
-export function lintShotsFile(file: ShotsFile): string[] {
+/**
+ * Local shot references that are not on disk.
+ *
+ * Fatal rather than merely lossy: `resolveReferenceUrl` reads the file to inline
+ * it, so a missing plate is an ENOENT at submit. It has to be a PRE-FLIGHT check
+ * because of where that lands. Shots submit one at a time, and on Seedance 2.5
+ * concurrency is 1 whatever `--concurrency` says, so a six-act film with a
+ * missing plate in act 2 bills act 1 in full before it discovers the problem.
+ * `--dry-run` was silent here because dry-run skips the inline read that fails.
+ */
+function missingReferences(
+  file: ShotsFile,
+  shotsDir: string | undefined
+): string[] {
+  if (shotsDir === undefined) {
+    return [];
+  }
+  const warnings: string[] = [];
+  for (const shot of file.shots) {
+    for (const ref of shot.references ?? []) {
+      if (
+        !ref.url.startsWith("https://") &&
+        !existsSync(resolve(shotsDir, ref.url))
+      ) {
+        warnings.push(
+          `${shot.id}: reference "${ref.url}" is not on disk — this shot cannot be submitted, and on a serial model the shots before it are billed before the run reaches it`
+        );
+      }
+    }
+  }
+  return warnings;
+}
+
+/** Pass `shotsDir` to also check that local references resolve on disk. */
+export function lintShotsFile(
+  file: ShotsFile,
+  options: { shotsDir?: string } = {}
+): string[] {
   const modelId = file.film.model ?? DEFAULT_VIDEO_MODEL;
   return [
     ...file.shots.flatMap((shot) => lintOneShot(shot, file, modelId)),
     ...lintDraftModelEnvelope(file),
+    ...missingReferences(file, options.shotsDir),
   ];
 }
 

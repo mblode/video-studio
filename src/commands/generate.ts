@@ -552,7 +552,7 @@ export async function runGenerate(
   // draft override, and that applies to the whole run.
   const modelId = overrides?.model ?? file.film.model ?? DEFAULT_VIDEO_MODEL;
 
-  for (const warning of lintShotsFile(file)) {
+  for (const warning of lintShotsFile(file, { shotsDir })) {
     warn(warning);
   }
   assertShotsCapable(shots, file, overrides);
