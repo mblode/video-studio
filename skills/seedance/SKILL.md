@@ -93,7 +93,10 @@ total does not show.
   literal opening composition. Mode B: a `reference_image` pack for
   likeness, style, staging, and motion. **On 2.5 you may combine them**, and if
   you do, the frame role goes first so the packs start at `@Image 2`. On
-  2.0-family, mixing frame roles with `reference_*` is a schema error.
+  2.0-family, mixing frame roles with `reference_*` is a schema error. A frame
+  role is declared in the provider's exact words as a standalone sentence
+  (`Use @Image 1 as the first frame.`) and locks the output ratio to that
+  image, so a 9:16 shot needs a 9:16 still.
 - **A film longer than one generation is several independent acts, cut together
   by `vs stitch`.** Each act carries its own reference pack, is retakeable on
   its own, and generates concurrently up to the model's task limit. Continuing
@@ -104,9 +107,11 @@ total does not show.
   the gaps stretch. Use `0-6s:` / `7-13s:` ranges. **Integer seconds only:**
   2.5's documented unit is one second, and a fractional range like
   `[0.0s-4.0s]` is both off-grammar and invisible to the lint.
-- **Four to seven seconds a beat on a 30s act.** Under-filling a range lets the
-  model improvise; over-filling one makes it drop beats you paid for. When an
-  act feels thin the fix is more story, never more cuts.
+- **Segment count follows the event count, not a clock.** Under-filling a range
+  lets the model improvise; over-filling one makes it drop beats you paid for,
+  and the documented fix is *fewer* stages rather than finer ones. Four to seven
+  seconds a segment is where a six-event 30s act lands, not a target to hit.
+  Every segment closes on an observable end state.
 - **Prompts are fully expanded.** No tokens, no "the character from the
   previous shot". The model has no memory across generations. The exception is
   choreography, which the provider asks you to describe generally.

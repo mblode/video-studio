@@ -8,11 +8,20 @@ ModelArk. Name `bytedance/seedance-2.5` to route through Vercel AI Gateway
 instead.
 
 The first-party sources this file follows are the **2.5 prompt guide**
-(ModelArk doc 2607689), the **2.5 tutorial** (doc 2607688), and the
-**create-task API reference** (doc 1520757). The 2.0 guide (doc 2222480)
-remains the origin of the bracket semantics, and 2.0 craft is the same craft
-clipped to a 15s envelope. Anything below marked *observed* comes from
-community reporting rather than those docs.
+(ModelArk doc 2607689), the **2.5 tutorial** (doc 2607688), the **create-task
+API reference** (doc 1520757), and **`sd25-pe`**, ByteDance's own prompt
+optimiser skill (`owner: seedance`). The 2.0 guide (doc 2222480) remains the
+origin of the bracket semantics, and 2.0 craft is the same craft clipped to a
+15s envelope. Anything below marked *observed* comes from community reporting
+rather than those sources.
+
+`sd25-pe` is not linked from the docs page in a fetchable form. Its discovery
+index is
+`https://arkdocs-en.tos-ap-southeast-1.volces.com/skills/.well-known/agent-skills/index.json`,
+which names a versioned zip containing a single `SKILL.md`. It self-updates, so
+re-fetch rather than trusting a quote here if the two ever disagree. Where it
+contradicts the docs pages, it is the more specific source and this file
+follows it.
 
 For the JSON around the prompt, see `shots-schema.md`. For model ids,
 resolutions, and rate limits, see `../../vs/references/models.md`.
@@ -22,7 +31,7 @@ resolutions, and rate limits, see `../../vs/references/models.md`.
 - [Duration and story units](#duration-and-story-units)
 - [Beat carriers](#beat-carriers)
 - [Bracket semantics](#bracket-semantics)
-- [Constraints and the two blessed negations](#constraints-and-the-two-blessed-negations)
+- [Constraints and negation](#constraints-and-negation)
 - [Realtime motion](#realtime-motion)
 - [Binding references](#binding-references)
 - [Clay and white-model blockout](#clay-and-white-model-blockout)
@@ -137,8 +146,9 @@ Rules that follow:
   the model eases out of the posed frame. Put a motion verb in the first
   segment rather than re-describing the pose you already supplied as an image.
 - **Name the cut** when you want an internal cut ("cut to", "hard cut to").
-- **Say the opening frame matches the keyframe once**, at the top, then stop
-  describing it.
+- **Declare a keyframe once, in the provider's exact words** (`Use @Image 1 as
+  the first frame.`, as its own sentence), then describe that frame once and
+  stop. See [Modes](#modes): the wording is mandated, not stylistic.
 - **Beat count follows the story**, not a fixed "always 3-4". A 30s act runs to
   four to six segments; a pure hold needs fewer. Empty beats stretch into sludge.
 - **Describe actions generally; save the detail for a few beats.** Counter to
@@ -146,30 +156,70 @@ Rules that follow:
   descriptions ("doing several sets of high-knee raises and somersaults") and
   says to "only write specific details for a few memorable actions, and avoid
   repeating the same actions". Reconcile the two like this: **be literal about
-  identity, continuity, and staging; be broad about choreography.** What the
-  model must not drift on gets spelled out. What it is good at inventing gets a
-  verb and room.
+  identity, continuity, staging, and how each beat ends; be broad about the
+  choreography in between.** What the model must not drift on gets spelled out.
+  What it is good at inventing gets a verb and room. The generality has a hard
+  floor, and `sd25-pe` names it: do not write only "show the complete process
+  of installing, operating, and completing the product workflow". A beat with
+  no stated end state is not general, it is empty. The one place to say less is
+  where a reference already carries the action, where the rule becomes "state
+  only which dimensions to inherit; there is no need to restate every action."
 - **Close with the invariants.** A single line after the plan, such as
   `Exactly two people in every frame, one KEEPER and one RELIEF, never
   duplicated.`, is cheaper than fighting duplication in every segment.
 
 ### How long a beat should be
 
-**Four to seven seconds per segment on a 30s act.** Both ends of that range are
-load-bearing, and doc 2607689 names both failures:
+**Count events, not seconds.** The provider is deliberate about refusing a
+number here: `sd25-pe` says "the number of stages is determined by the number of
+events and may be increased or decreased; it is not fixed at three", and
+instructs against publishing "an unverified maximum number of time segments".
+So the two rules that actually bind are directional:
 
-- **Too little in a range** and "the model may improvise more freely". That is
-  the sludge you already know: one verb stretched into slow motion.
+- **Too little in a range** and "the model may improvise more freely"
+  (doc 2607689). That is the sludge you already know: one verb stretched into
+  slow motion.
 - **Too much in a range** and the result "may contain excessive cuts or omit
   parts of the plot". The act does not just get busy, it silently drops beats
-  you paid for.
+  you paid for. The stated fix is **fewer stages, not finer ones**: "when events
+  are too dense, reduce the number of stages instead of subdividing them
+  further." Merge secondary events before you split anything.
 
-ByteDance's own worked examples run tighter than this, around 2.5-4s a beat (the
-flagship 30s example is nine shots). Take that as the floor, not the target.
-*Observed:* prompts carried over from 2.0, which tend toward rapid
-one-second-style cutting, degrade visibly on 2.5, and acts given room to breathe
-come back better. 2.5 punishes over-segmentation harder than 2.0 did, so when a
-30s act feels thin the fix is more story, never more cuts.
+**A range is an event budget, not an edit point.** `sd25-pe` again: segments
+"represent event budgets, not frame-level edit points", which is why sub-second
+precision is refused and why a timestamp is not a promise about the frame the
+cut lands on.
+
+**Four to seven seconds a segment is this repo's heuristic**, not the
+provider's, arrived at from a 30s act carrying four to six events. ByteDance's
+worked examples run tighter, around 2.5-4s. Treat ours as the shape a
+six-event act falls into rather than a rule to hit, and let the event count
+move it. *Observed:* prompts carried over from 2.0, which tend toward rapid
+one-second-style cutting, degrade visibly on 2.5. When a 30s act feels thin the
+fix is more story, never more cuts.
+
+**Do not back-derive a plan from the duration field.** `sd25-pe` treats
+unnumbered stages as the default and reserves numeric timestamps for when
+"the user has already provided numerical time segments or explicitly requests
+time-segment control", warning specifically against inventing `0-8 seconds` /
+`8-18 seconds` "merely to align with that parameter". Films in this repo are
+the explicit-request case: an author choosing the beats *is* requesting
+time-segment control, and the lint's 20s threshold exists because we would
+rather pin the rhythm than let the model infer it. The rule still bites in one
+place. Never pad an act to its `duration` by slicing the same events thinner.
+
+**Every segment states an observable end state.** `sd25-pe` requires each stage
+to carry a start, a main event, and an explicit close:
+
+```
+0-5 seconds: <starting state>; <main event>; at the end, <observable state>.
+5-10 seconds: continue from <state> in the previous segment; <main event>; at the end, <observable state>.
+```
+
+For a handoff, a grab, or anything changing who holds a prop, **name the
+ownership change**: "after handing it over, the original holder no longer has
+it; at the end, it is only in the recipient's hands." That sentence is what
+stops a prop existing twice.
 
 The 2.0 equivalent, from `films/lighthouse/shots.json` (`s09-trust-turns-light`):
 
@@ -196,7 +246,7 @@ tripped the content filter twice on a real film in
 `../video-studio-films/smorgon-bros`, costing 3 and 6 retries, and the official
 phrasing above does the same job without it.
 
-## Constraints and the two blessed negations
+## Constraints and negation
 
 There is **no `negative_prompt` field**, on any route: doc 1520757's parameter
 list is `model`, `content`, `ratio`, `duration`, `resolution`, `output_format`,
@@ -204,7 +254,9 @@ list is `model`, `content`, `ratio`, `duration`, `resolution`, `output_format`,
 `omni_reference_task_type`, `callback_url`, `safety_identifier` and
 `execution_expires_after`, and nothing else.
 
-In-prompt negation is another matter, and it splits into three tiers.
+In-prompt negation is another matter, and the provider uses it far more than the
+"prefer positive language" advice suggests. Four cases, in descending order of
+how well documented they are.
 
 **Officially supported, and reliable: subtitles and audio.** Doc 2607689 says
 to "use positive descriptions whenever possible" but that "negative constraints
@@ -219,21 +271,56 @@ No audio.
 Use these directly rather than paraphrasing them positively. They are the one
 place a bare negation is documented to work.
 
-**Undocumented but demonstrated first-party: visual exclusion.** ByteDance's
-own showcase prompts carry a bracketed block, which is worth copying as a
-format if a look keeps leaking:
+**Required, not merely allowed: scoping a reference.** This is the correction to
+make if you learned the old version of this section. Negation is how `sd25-pe`
+fences off the part of an asset you do not want, and its own worked prompts are
+full of it:
+
+```
+@Image1 is used for the carpenter's facial features, short hair, and dark blue work apron; do not use the image background.
+@Image4: use only spatial layout, architecture, and lighting, and do not use the people in the image.
+```
+
+So the house "use @Image 1 for his face, hair and wardrobe **only**" is the
+right instinct written at half strength. The provider's form is **positive
+scope plus an explicit exclusion of the obvious leak**, and a face plate whose
+background or extra people could bleed deserves the second clause. On a video
+edit the exclusion is not optional at all: a replaced subject needs
+`The red bicycle and rider must no longer appear in the final video.` or the
+model keeps both.
+
+**Also demonstrated: a bracketed exclusion block**, worth copying as a format
+when a whole look keeps leaking:
 
 ```
 [Strictly exclude] Black-and-white, monochrome, desaturated visuals; hand-drawn, sketch, line art; storyboard frames; tilt-shift miniature look, plastic CG, glossy overexposed CG.
 ```
 
+**What is actually forbidden is boilerplate.** `sd25-pe` principle 8: "do not
+automatically add quality packs, stability packs, watermarks, logos, subtitles,
+duplicates, or other generic negative constraints that the user did not
+request." A negation earns its place by naming a leak *this shot* has. A
+negation copied in from a template is noise competing with the plan.
+
 **Everything else: positive language.** For anything not covered above, state
-what the frame *does* contain in `film.promptPreamble` or the shot ("no readable
-labels, subtitles, watermark or on-screen lettering" reads as a negation but is
-really an inventory). Repeat only what that shot uniquely must not do. Prefer a
+what the frame *does* contain in `film.promptPreamble` or the shot. Prefer a
 production-specific invariant, which the model holds far better than a blanket
 prohibition: `Exactly two boys in every frame, one Eric and one Victor, with
 clear air between them and no duplicates.` beats "no duplicated characters".
+
+### Unused assets
+
+`sd25-pe` requires that **every available-but-unused reference be listed by
+number inside the prompt**, under a `【Unused Assets】` heading, so a downstream
+prompt-enhancement pass cannot reactivate it: "do not explain this only outside
+the Prompt, and do not replace specific numbers with 'other assets'."
+
+This mostly does not arise here, because a shot's `references[]` is authored to
+be exactly what that shot binds, so the unused set is empty and the lint already
+warns on anything unbound. It matters when you hand a whole film's plate library
+to a single generation, or paste a prompt into a console alongside assets the
+shot does not use. Note the heading is the one legitimate use of `【 】`, which
+is otherwise the subtitle channel.
 
 ## Realtime motion
 
@@ -301,10 +388,16 @@ characters or 1,000 English words", and names the failure precisely. An
 over-long prompt does not error. It causes "scattered information", and the
 model "may ignore details and only focus on key points, resulting in missing
 elements in the generated video" - **silent dropout**, discovered only after you
-have paid for the clip. ByteDance's own worked examples measure roughly 330-520
-words. So: **aim at 300-550 words for a 30s act**, treat our 700 as a backstop
-rather than a target, and read a prompt pushing the cap as a sign the act is
-carrying two acts' worth of story.
+have paid for the clip.
+
+Do not turn that into a word target. `sd25-pe` is explicit: **"do not impose a
+fixed word limit."** What it asks for instead is a **priority order** when a
+prompt runs long, which is far more useful than a number. Keep, in this order:
+subject mappings, asset roles, events, end states. Compress: repeated style
+terms, repeated constraints, inactive assets. Our 700 is a house backstop well
+under the provider's ceiling, and a prompt pushing it is worth reading as a sign
+the act carries two acts' worth of story, but trimming to hit a count is exactly
+the move that costs you a binding.
 
 ### Modes
 
@@ -317,6 +410,23 @@ carrying two acts' worth of story.
 On 2.0-family, A and B are mutually exclusive and mixing them is a load-time
 error. On 2.5 the combination is what the R2V demos do. There is no third mode:
 a shot is anchored by the images you author, never by another shot's last frame.
+
+**Bind a frame role in the provider's exact words, as its own sentence.**
+`sd25-pe` mandates the literal string and forbids softening it:
+
+```
+Use @Image 1 as the first frame.
+Use @Image 8 as the last frame.
+```
+
+It names the weakenings to avoid, and one of them is close to what this repo has
+been writing: do not say "use only as a first-frame reference", "reference the
+opening composition", or "first-frame composition reference", and **do not merge
+the role statement into the action sentence**. Put the exact sentence on its
+own, then describe that frame's composition, subject positions, prop states and
+camera direction in a separate sentence after it. `films/lighthouse` opens its
+shots with "The opening frame matches the provided keyframe: ..." which is both
+weakened and merged; treat that as 2.0-era phrasing rather than a template.
 
 **A frame role locks the aspect ratio and silently overrides `ratio`.** Doc
 1520757 forces `ratio` to `adaptive` for first-frame, first-and-last-frame,
@@ -532,14 +642,20 @@ prompt convention over a bound `reference_video`, with no new role to invent.
 - **Miscounted ordinals.** A `first_frame` is `@Image 1`. Count per media type.
 - **Unbound references.** Supplying five images and naming none of them averages
   them together.
-- **Trimming the bindings to hit a word cap.** Trim description instead.
+- **Trimming the bindings to hit a word cap.** Compress repeated style terms and
+  repeated constraints first. Subject mappings, asset roles, events and end
+  states are the last things to go.
 - **Subtitle brackets as timecodes.** `【0:00-0:03】` is wrong; use `0-5s:` or
-  `[0:00-0:05]`.
+  `[0:00-0:05]`. `【Unused Assets】` is the one legitimate use of that bracket.
 - **Fractional timestamps.** `[0.0s-4.0s]` is off-grammar and invisible to the
-  lint. Integer seconds only.
+  lint. Integer seconds only, and no claim of half-second precision.
 - **Over-segmenting a 30s act.** Ten three-second beats is the 2.5-specific
-  failure: excessive cuts, and dropped beats you paid for. Four to seven
-  seconds a segment.
+  failure: excessive cuts, and dropped beats you paid for. Merge secondary
+  events; do not subdivide further.
+- **A beat with no end state.** Every segment says what is observably true when
+  it closes, and a beat that moves a prop says who holds it afterwards.
+- **Weakening a frame-role declaration.** `Use @Image 1 as the first frame.` is
+  a mandated literal sentence, not a phrasing preference.
 - **Stacking camera moves in one beat.** Pick the move that carries the turn.
 - **Composed target frames as references.** They morph as soon as the camera
   leaves them. Bind the subject and the empty location separately.
