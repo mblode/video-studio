@@ -239,7 +239,7 @@ uses the wrong reference for the wrong job and looks like a model failure.
 | No image reference on a shot | Anchor every shot to a literal keyframe. Tighter, cheaper, far fewer glitches |
 | No `seed` | A draft and its final must share a seed or the final re-rolls the composition |
 | Too many references **M** | Soft warn above 16 on 2.5, 5 on 2.0-family. Product ceiling is 30/10/10, and quality drops long before it |
-| Prompt over the word cap **M** | 700 words on 2.5, 400 on 2.0-family, counting `promptPreamble`. Move shared style up, trim to the timed beats, or split the shot. Do **not** compress ordinal bindings to fit |
+| Prompt over the word cap **M** | 900 words on 2.5, 400 on 2.0-family, counting `promptPreamble`. Move shared style up, trim to the timed beats, or split the shot. Do **not** compress ordinal bindings to fit |
 | More than 2 slow-motion terms | Seedance renders soft vocabulary literally. Use brisk verbs |
 | 12s or longer with no beat carrier | A single verb stretches into slow motion. `Shot N:`, `0-5s:`, or `[0:00-0:05]` all satisfy it. Skipped for `-1` |
 | 20s or longer on 2.5 with no **timestamp** plan **M** | `Shot N:` orders the beats but says nothing about rhythm, so past 20s the model invents the pacing between them. Only a timestamp range or `[0:00` bracket clears this one |

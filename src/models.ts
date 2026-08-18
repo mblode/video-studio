@@ -262,14 +262,31 @@ const SEEDANCE_20_AUTHORING: AuthoringLimits = {
  * and audio may be inlined, and an 8-14 reference ordinal pack is the design
  * idiom rather than a smell — so both soft limits are much higher. A 30s act
  * carries roughly twice the beats of a 15s shot AND an ordinal binding block
- * naming each reference's single job; measured acts land at 380-430 words plus
- * preamble. Do NOT compress ordinal bindings to fit a cap.
+ * naming each reference's single job. Do NOT compress ordinal bindings to fit
+ * a cap.
+ *
+ * The word limit was 700, measured on acts that landed at 380-430 words plus
+ * preamble. That measurement is stale, and in the same way the durations and
+ * resolutions here were: it predates three things `sd25-pe` (ByteDance's own
+ * optimiser skill) turns out to require on every act. An observable end state
+ * per timestamp segment, an explicit ownership transfer wherever a prop
+ * changes hands, and a negation clause scoping each reference ("do not use the
+ * image background") together cost about 150 words on a 30s act. A fully
+ * compliant six-act film measures 732-865 words including preamble.
+ *
+ * So 700 could no longer express a correct act, which is the worst thing a
+ * soft cap can do: it pushed you toward cutting the bindings, the one thing
+ * both the docs and this comment say never to cut. 900 sits above a compliant
+ * act and 100 short of the provider's documented 1,000-word ceiling, where
+ * over-long prompts do not error but silently drop elements
+ * (ModelArk doc 1520757). That 100 is the runway to fix a prompt in before it
+ * starts losing beats you paid for.
  */
 const SEEDANCE_25_AUTHORING: AuthoringLimits = {
   framesExcludeReferences: false,
   inlineAudioRefs: true,
   ordinalBindingIdiom: true,
-  promptWordLimit: 700,
+  promptWordLimit: 900,
   softReferenceLimit: 16,
 };
 

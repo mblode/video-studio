@@ -378,7 +378,7 @@ clean background, plus the location plate with no people in it. This is an
 argument *for* the per-range staging plate above, which is a location, and
 against pre-composing your characters into it.
 
-Never compress the binding block to fit a word count. The 2.5 word cap is 700
+Never compress the binding block to fit a word count. The 2.5 word cap is 900
 including `promptPreamble` precisely so a real act plus its bindings fits; if a
 prompt is over, trim description, not bindings.
 
@@ -394,10 +394,15 @@ Do not turn that into a word target. `sd25-pe` is explicit: **"do not impose a
 fixed word limit."** What it asks for instead is a **priority order** when a
 prompt runs long, which is far more useful than a number. Keep, in this order:
 subject mappings, asset roles, events, end states. Compress: repeated style
-terms, repeated constraints, inactive assets. Our 700 is a house backstop well
-under the provider's ceiling, and a prompt pushing it is worth reading as a sign
-the act carries two acts' worth of story, but trimming to hit a count is exactly
-the move that costs you a binding.
+terms, repeated constraints, inactive assets.
+
+Our 900 is a house backstop 100 short of the provider's ceiling, so a warning
+leaves runway to fix the prompt before it starts dropping elements. It was 700
+until a compliant film was measured against it: an end state per segment, an
+ownership transfer per handoff, and a negation clause per reference cost about
+150 words on a 30s act, and a six-act film written correctly lands at 732-865
+words including preamble. A cap that cannot express a correct act is worse than
+no cap, because it argues for cutting the bindings.
 
 ### Modes
 
