@@ -242,9 +242,9 @@ Shot 3: crane upward through the stairwell as she starts the motor; the flywheel
 When a film needs the model to stay off music and speech, say so in the
 provider's own words: **"No BGM; generate only environmental sounds and action
 sounds."** Do **not** write "no music, no spoken words". That exact string
-tripped the content filter twice on a real film in
-`../video-studio-films/smorgon-bros`, costing 3 and 6 retries, and the official
-phrasing above does the same job without it.
+tripped the content filter on two separate shots of a real 30s-act film,
+costing 3 and 6 retries before it was diagnosed, and the official phrasing
+above does the same job without it.
 
 ## Constraints and negation
 
