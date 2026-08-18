@@ -98,11 +98,13 @@ it, delete it.
   to `0`; if you crossfade the cut, use the same value (and per-shot
   `transition` overrides) on assemble so narration lands on the right timeline.
 - **Seedance 2.5 is the default, and two things about it bite.** A film that
-  sets no `film.model` generates on `bytedance/seedance-2.5` via Vercel AI
-  Gateway (`generateVideo({ model: 'bytedance/seedance-2.5', prompt })`); pin
-  `dreamina-seedance-2-0-260128` explicitly to opt out (`films/lighthouse` does,
-  so the worked example stays cheap and reproducible). The BytePlus ModelArk id
-  `dreamina-seedance-2-5-260628` still routes to Ark. (1) **Concurrency is 1**,
+  sets no `film.model` generates on the BytePlus ModelArk id
+  `dreamina-seedance-2-5-260628`, **not** the Gateway, because Ark is the only
+  route that returns `usage.completion_tokens` and so the only one whose cost
+  estimate reconciles against the real bill. Name `bytedance/seedance-2.5` to
+  opt into Vercel AI Gateway instead, or pin `dreamina-seedance-2-0-260128` for
+  2.0 (`films/lighthouse` does, so the worked example stays cheap and
+  reproducible). (1) **Concurrency is 1**,
   at every resolution, regardless of `--concurrency`. A 30s generation takes 10 to 15 minutes, so a six-act film
   generates strictly serially over 60 to 90 minutes. (2) **Never set
   `film.draftModel` on a 2.5 film.** `--draft` validates against `draftModel`,

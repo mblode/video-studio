@@ -137,10 +137,10 @@ without re-rolling the composition.
 
 ## Model and draft settings
 
-- **`film.model`** is `bytedance/seedance-2.5` for a 2.5 film on AI Gateway
-  (the CLI default if omitted). Pin `dreamina-seedance-2-5-260628` to generate
-  on BytePlus ModelArk, or `dreamina-seedance-2-0-260128` for 2.0's 15s
-  envelope.
+- **`film.model`** defaults to `dreamina-seedance-2-5-260628`, a 2.5 film on
+  BytePlus ModelArk, when omitted. Name `bytedance/seedance-2.5` to route the
+  same model through Vercel AI Gateway, or `dreamina-seedance-2-0-260128` for
+  2.0's 15s envelope.
 - **`film.draftModel` stays unset on a 2.5 film.** `vs generate --draft`
   validates every shot against the draft model, and
   `dreamina-seedance-2-0-fast-260128` is documented at 4-15s, so a 30s film with

@@ -177,15 +177,15 @@ describe("validateShotAgainstModel", () => {
     });
   });
 
-  it("resolves Seedance 2.5 with 4-30s, 720p ceiling, and concurrency 1", () => {
+  it("resolves Seedance 2.5 with 4-30s, a 1080p ceiling, and concurrency 1", () => {
     const model = lookupModel("dreamina-seedance-2-5-260628");
     expect(model.known).toBe(true);
     expect(model.family).toBe("seedance-2-5");
     expect(model.provider).toBe("ark");
     expect(lookupModel(MODEL_IDS.seedance25).provider).toBe("aisdk");
     expect(model.confidence).toBe("inferred");
-    expect(model.durations).toMatchObject({ auto: false, max: 30, min: 4 });
-    expect(model.resolutions).toEqual(["480p", "720p"]);
+    expect(model.durations).toMatchObject({ auto: true, max: 30, min: 4 });
+    expect(model.resolutions).toEqual(["480p", "720p", "1080p"]);
     expect(modelRateLimits(model.id, "720p")).toEqual({
       concurrency: 1,
       rpm: 60,
@@ -194,12 +194,15 @@ describe("validateShotAgainstModel", () => {
     expect(
       validateShotAgainstModel(model.id, { duration: 24, resolution: "720p" })
     ).toEqual([]);
+    // 1080p and auto are both in 2.5's documented envelope (ModelArk 1520757),
+    // so neither is a capability problem. 4K is not: that is 2.0 only.
+    expect(validateShotAgainstModel(model.id, { resolution: "1080p" })).toEqual(
+      []
+    );
+    expect(validateShotAgainstModel(model.id, { duration: -1 })).toEqual([]);
     expect(
-      validateShotAgainstModel(model.id, { resolution: "1080p" })
+      validateShotAgainstModel(model.id, { resolution: "4k" })
     ).toMatchObject([{ field: "resolution", severity: "warning" }]);
-    expect(validateShotAgainstModel(model.id, { duration: -1 })).toMatchObject([
-      { field: "duration", severity: "warning" },
-    ]);
   });
 });
 

@@ -14,11 +14,13 @@ generate: a `stills.json` and `shots.json` that pass validation and follow
 - **IS NOT:** the story itself (`storycraft`), running the generations (`vs`),
   Nano Banana still prompts (`nano-banana-2`), or editing the CLI's TypeScript.
 
-**Write for 2.5.** `film.model` is `bytedance/seedance-2.5` (Vercel AI Gateway,
-the CLI default). A film that omits `film.model` gets 2.5's envelope and 2.5's
-rules. Pin `dreamina-seedance-2-5-260628` to generate on BytePlus ModelArk
-instead. Registry confidence stays `inferred`: a capability mismatch on 2.5 is
-reported as a warning and the request still goes out, rather than being refused.
+**Write for 2.5.** The CLI default is `dreamina-seedance-2-5-260628` on BytePlus
+ModelArk, so a film that omits `film.model` gets 2.5's envelope and 2.5's rules
+on Ark. Ark is the default because it is the only route that returns a usage
+block, which is what lets a run reconcile its quote against the real bill. Name
+`bytedance/seedance-2.5` to route through Vercel AI Gateway instead. Registry
+confidence stays `inferred`: a capability mismatch on 2.5 is reported as a
+warning and the request still goes out, rather than being refused.
 
 Two worked examples, the same story either way, both lint-clean in CI:
 
@@ -99,18 +101,27 @@ total does not show.
   `seedance-prompting.md`.
 - **Past 20s, a timestamp plan is the carrier.** `Shot N:` orders the beats but
   says nothing about rhythm, so the model invents the pacing between them and
-  the gaps stretch. Use `0-6s:` / `7-13s:` ranges.
+  the gaps stretch. Use `0-6s:` / `7-13s:` ranges. **Integer seconds only:**
+  2.5's documented unit is one second, and a fractional range like
+  `[0.0s-4.0s]` is both off-grammar and invisible to the lint.
+- **Four to seven seconds a beat on a 30s act.** Under-filling a range lets the
+  model improvise; over-filling one makes it drop beats you paid for. When an
+  act feels thin the fix is more story, never more cuts.
 - **Prompts are fully expanded.** No tokens, no "the character from the
-  previous shot". The model has no memory across generations.
+  previous shot". The model has no memory across generations. The exception is
+  choreography, which the provider asks you to describe generally.
 - **Coverage, not empty time.** Every timestamp segment changes camera setup and
-  verb. Open mid-action. Do not invent a mandatory beat count.
+  verb, and carries **one** principal camera move. Open mid-action. Do not
+  invent a mandatory beat count.
 - **Per-clip audio is diegetic SFX and ambience only**, in `<angle brackets>`.
   Score and narration are mixed at `vs stitch`. Keep `generateAudio: true`.
 - **Title cards are rendered in post** via the `cards` array. In-model text is
   unreliable, and any signage that must appear in frame is baked into the
   keyframe still instead.
-- **Generate at 720p.** 1080p is a delivery upscale, not a generation target;
-  2.5's console card lists 480p/720p only.
+- **Generate at 720p.** 2.5 does render 1080p, but it costs 2.25x the tokens for
+  the same act and is widely reported to weaken prompt adherence, so 1080p is a
+  delivery upscale (`vs upscale`, free, and only on the shots that survive the
+  edit) rather than a generation target. There is no 4K on 2.5 at all.
 - **A 2.5 film sets no `film.draftModel`.** `vs generate --draft` validates
   against the draft model, and 2.0-fast is documented at 4-15s, so a 30s film
   with a 2.0-fast draft model is refused outright. Leave it unset and `--draft`

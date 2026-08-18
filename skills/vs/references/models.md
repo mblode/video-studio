@@ -26,17 +26,24 @@ Confirmed on BytePlus ModelArk:
 
 | Model            | Id                                | Notes                                          |
 | ---------------- | --------------------------------- | ---------------------------------------------- |
+| Seedance 2.5     | `dreamina-seedance-2-5-260628`    | **The default.** 4-30s (auto `-1` supported), 480p/720p/1080p, **no 4K**. $10.7/M. **1 concurrent, 60 RPM**. Needs `ARK_API_KEY` |
 | Seedance 2.0     | `dreamina-seedance-2-0-260128`    | 4-15s, 480p/720p/1080p/4K. $7.0/M at 720p      |
 | Seedance 2.0 fast | `dreamina-seedance-2-0-fast-260128` | 4-15s, 480p/720p only. $5.6/M, about 20% cheaper than standard |
 | Seedance 2.0 mini | `dreamina-seedance-2-0-mini-260615` | 4-15s, 480p/720p only. $3.5/M, the cheapest Seedance |
+
+4K is a **2.0-only** resolution. The 2.5 ceiling is 1080p, at 10-bit colour
+depth against 480p/720p's 8-bit (ModelArk doc 1520757).
 
 On Vercel AI Gateway (`generateVideo`):
 
 | Model | Id | Notes |
 | --- | --- | --- |
-| Seedance 2.5 | `bytedance/seedance-2.5` | **The default.** 4-30s, 480p/720p, $10.7/M. **1 concurrent, 60 RPM**. Needs `AI_GATEWAY_API_KEY` |
+| Seedance 2.5 | `bytedance/seedance-2.5` | The same model, routed through the Gateway. Needs `AI_GATEWAY_API_KEY` |
 
-The BytePlus ModelArk id `dreamina-seedance-2-5-260628` still works and routes to Ark (`ARK_API_KEY`). Pin it only when you want that backend.
+Name the Gateway id only when you want that backend. Ark is the default because
+it is the one route that returns `usage.completion_tokens`, so a run reconciles
+its quote against the real bill; the Gateway returns no usage block, which makes
+`--max-cost` a quote nothing verifies.
 
 And on MiniMax, a different provider entirely:
 
@@ -151,17 +158,18 @@ and nothing you pass on the command line shortens it.
 
 Limits are model-specific. `src/models.ts` is the authority.
 
-**Seedance 2.0 (default).** Platform / registry hard ceiling per generation:
+**Seedance 2.5 (default).** Product/console ceiling: **30 images, 10 video, 10
+audio** per generation, 50 total. `lintShotsFile` soft-warns above **~16
+references total**, still well below the ceiling but higher than 2.0's ~5,
+because a 30s act legitimately binds a pack: characters, plates, and a staging
+still per timestamp span. Per-asset caps from ModelArk doc 1520757: images
+300-6000px a side and under 30 MB; videos 480p/720p, 24-60fps, 2-30s each and
+**30s total across all of them**; audio 2-30s each, 30s total, under 15 MB.
+
+**Seedance 2.0.** Platform / registry hard ceiling per generation:
 **9 images, 3 videos, 3 audio** (`validateShotAgainstModel` errors above that).
 `lintShotsFile` soft-warns above **~5 references total**, because quality degrades
 well before the ceiling.
-
-**Seedance 2.5.** Product/console ceiling (Seed blog, 2026-07-31): **30 images,
-10 video, 10 audio** per generation, 50 total. `lintShotsFile` soft-warns above
-**~16 references total**, still well below the ceiling but higher than 2.0's
-~5, because a 30s act legitimately binds a pack: characters, plates, and a
-staging still per timestamp span. API access is **coming soon** on ModelArk;
-keep the CLI default on 2.0 until create-task succeeds.
 
 Both checks are warnings, not errors.
 
@@ -316,17 +324,25 @@ beat, and every number below follows from that.
 
 | Field | Value |
 | --- | --- |
-| Id | `bytedance/seedance-2.5` (AI Gateway). Ark: `dreamina-seedance-2-5-260628` |
-| Duration | 4-30s (auto `-1` unconfirmed) |
-| Resolutions | 480p, 720p |
+| Id | `dreamina-seedance-2-5-260628` (Ark, the default). Gateway: `bytedance/seedance-2.5` |
+| Duration | 4-30s integer, or `-1` for auto (the API's own default) |
+| Resolutions | 480p, 720p, 1080p. 1080p is 10-bit; **no 4K** |
+| Aspect ratios | 16:9, 4:3, 1:1, 3:4, 9:16, 21:9, adaptive. 2.5 also reaches any ratio in [0.4, 2.5] via the input assets |
+| fps | 24 |
 | Refs (product ceiling) | 30 images / 10 video / 10 audio, 50 total |
 | Refs (soft warn) | ~16 total |
 | Rate (no video in) | **$10.7 / M tokens** |
 | Rate (with video in) | $6.4 / M tokens, reconciliation only |
 | Limits | **1 concurrent**, 60 RPM |
-| Confidence | `inferred`: console card and rates are published (Seed blog 2026-07-31); the default path is Vercel AI Gateway |
+| Confidence | `inferred`: the envelope above is from ModelArk docs 1520757 / 2607688, but no create-task on this account has confirmed it |
 
-The CLI default is `bytedance/seedance-2.5`. Pin `dreamina-seedance-2-5-260628` to stay on BytePlus ModelArk. Mixed first-frame + ordinal packs stay on `doStart`/`doStatus`, which sends both groups; `generateVideo` itself would drop `inputReferences` when `frameImages` are set.
+Mixed first-frame + ordinal packs stay on `doStart`/`doStatus`, which sends both groups; `generateVideo` itself would drop `inputReferences` when `frameImages` are set.
+
+**BytePlus rejects reference images and videos containing real human faces.**
+That is a platform rule on the Ark route, which is the default, so a film that
+wants to bind a photograph of a real person has to go through their
+digital-character flow or not bind it at all. Generating a stylised still *from*
+a photograph and binding the still is unaffected.
 
 **What `inferred` buys you.** `validateShotAgainstModel` downgrades every
 capability problem on an `inferred` model from error to warning, because

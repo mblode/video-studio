@@ -6,10 +6,10 @@ ignored field. A rule below either fails validation or degrades a paid
 generation, so always `--dry-run` first.
 
 Several rules are **model-dependent**, keyed off `film.model`. A file with no
-`film.model` is validated as Seedance 2.5 (`bytedance/seedance-2.5`), because
-that is the CLI's built-in default. Pin `"model": "dreamina-seedance-2-0-260128"`
-for 2.0's rules, or `"model": "dreamina-seedance-2-5-260628"` to keep 2.5 on
-BytePlus ModelArk.
+`film.model` is validated as Seedance 2.5 on BytePlus ModelArk
+(`dreamina-seedance-2-5-260628`), because that is the CLI's built-in default.
+Pin `"model": "dreamina-seedance-2-0-260128"` for 2.0's rules, or
+`"model": "bytedance/seedance-2.5"` to run 2.5 through Vercel AI Gateway.
 
 Two worked, lint-clean files to read alongside this, both the same story:
 `examples/shots-2-5.json` (2.5, two 30s acts: a pure ordinal-bound pack, then
@@ -78,7 +78,7 @@ Generated with `vs generate`. One shot is one paid task.
   "film": {
     "title": "The Last Watch (Seedance 2.5 cut)",
     "outputDir": "./output",
-    "model": "bytedance/seedance-2.5",
+    "model": "dreamina-seedance-2-5-260628",
     "defaults": {
       "ratio": "1:1",
       "duration": 30,
@@ -264,7 +264,10 @@ uses the wrong reference for the wrong job and looks like a model failure.
 - **Aspect ratios:** `16:9`, `9:16`, `4:3`, `3:4`, `1:1`, `21:9`, `adaptive`.
   `adaptive` derives the frame from the reference image, so it has no numeric
   value: cost estimation falls back to an explicit ratio and `vs review` skips
-  the aspect check.
+  the aspect check. **A `first_frame` or `last_frame` role forces `adaptive`
+  provider-side whatever you author here**, and the output takes the keyframe
+  image's ratio, so a 9:16 shot anchored in frame mode needs a 9:16 keyframe
+  still. Video edit forces both `adaptive` and `duration: -1`.
 - **Resolution:** `480p`, `720p`, `1080p`, `4k`. Generate at 720p and upscale
   for delivery; the reasoning and the 4K rate-limit trap are in
   `../../vs/references/models.md`.

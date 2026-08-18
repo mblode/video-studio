@@ -176,11 +176,11 @@ export const MODEL_IDS = {
   seedance20Fast: "dreamina-seedance-2-0-fast-260128",
   seedance20Mini: "dreamina-seedance-2-0-mini-260615",
   /**
-   * AI Gateway / `generateVideo` id. The CLI default.
+   * AI Gateway / `generateVideo` id, for films that opt into that backend:
    * `generateVideo({ model: 'bytedance/seedance-2.5', prompt })`.
    */
   seedance25: "bytedance/seedance-2.5",
-  /** BytePlus ModelArk id, for films that pin the Ark backend. */
+  /** BytePlus ModelArk id. The CLI default, see DEFAULT_VIDEO_MODEL below. */
   seedance25Ark: "dreamina-seedance-2-5-260628",
 } as const;
 
@@ -217,9 +217,14 @@ const SEEDANCE_25_USD_PER_MTOKEN = 10.7;
  */
 const SEEDANCE_25_USD_PER_MTOKEN_WITH_VIDEO = 6.4;
 
-/** CONFIRMED on the 2.5 console card: 4-30s. Auto (-1) is unconfirmed. */
+/**
+ * CONFIRMED in ModelArk doc 1520757: integer 4-30s, and `-1` is the API's own
+ * default, where "the model automatically adapts the video duration based on
+ * the input prompt and reference asset" and picks an integer length inside the
+ * same range. The console card omits auto; the API reference does not.
+ */
 const SEEDANCE_25_DURATIONS: DurationSupport = {
-  auto: false,
+  auto: true,
   kind: "range",
   max: 30,
   min: 4,
@@ -603,11 +608,18 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
       kind: "tokens",
       // Quote the without-video ceiling so estimates never undersell. With
       // video input the console lists 6.4 USD/M.
+      //
+      // Flat across resolutions, unlike 2.0's table, because the 2.5 console
+      // publishes one rate rather than a per-resolution breakdown. That is
+      // fine: the token formula already scales by w * h, so 1080p costs ~2.25x
+      // 720p at the same rate without a second number.
       usdPerMTokenByResolution: {
+        "1080p": SEEDANCE_25_USD_PER_MTOKEN,
         "480p": SEEDANCE_25_USD_PER_MTOKEN,
         "720p": SEEDANCE_25_USD_PER_MTOKEN,
       },
       usdPerMTokenWithVideoInput: {
+        "1080p": SEEDANCE_25_USD_PER_MTOKEN_WITH_VIDEO,
         "480p": SEEDANCE_25_USD_PER_MTOKEN_WITH_VIDEO,
         "720p": SEEDANCE_25_USD_PER_MTOKEN_WITH_VIDEO,
       },
@@ -616,16 +628,17 @@ export const MODEL_REGISTRY: Readonly<Record<string, RegistryEntry>> = {
     durations: SEEDANCE_25_DURATIONS,
     fps: DEFAULT_FPS,
     limits: SEEDANCE_25_LIMITS,
-    // Not published for 2.5. Taken as its own 30s output ceiling, the same
-    // reasoning that makes 2.0's figure 15. A guess is required, because with the
-    // field undefined `usdCeilingForClip` returns the LOW estimate and `--max-cost`
-    // enforces a ceiling against the bottom of its own range on the DEFAULT model.
+    // CONFIRMED in ModelArk doc 1520757: a bound video reference is 2-30s, and
+    // all of them together may not exceed 30s. So 30 is the real worst case for
+    // one shot, not a guess. It has to be set, because with the field undefined
+    // `usdCeilingForClip` returns the LOW estimate and `--max-cost` would
+    // enforce a ceiling against the bottom of its own range on the DEFAULT model.
     maxInputVideoSeconds: 30,
     notes:
-      "Default id is the BytePlus ModelArk `dreamina-seedance-2-5-260628`, which is the only route that returns a usage block and so the only one whose cost estimate reconciles. `bytedance/seedance-2.5` routes through the Vercel AI Gateway instead, priced from this registry with nothing to check it against. Console card lists 480p/720p; launch marketing claims up to 4K/10-bit, which is unconfirmed and not modelled here. Confidence stays `inferred` until a live create-task succeeds, which also means a 1080p request warns rather than being refused.",
+      "Default id is the BytePlus ModelArk `dreamina-seedance-2-5-260628`, which is the only route that returns a usage block and so the only one whose cost estimate reconciles. `bytedance/seedance-2.5` routes through the Vercel AI Gateway instead, priced from this registry with nothing to check it against. ModelArk doc 1520757 gives the envelope as 480p/720p/1080p at 24fps, 1080p being 10-bit against the others' 8-bit; 4K is Seedance 2.0 only. Generate at 720p anyway and upscale for delivery: 1080p costs 2.25x the tokens and is widely reported to weaken prompt adherence. Confidence stays `inferred` until a live create-task succeeds, which keeps a capability mismatch a warning rather than a refusal.",
     provider: "aisdk",
     referenceSlots: SEEDANCE_25_REFERENCE_SLOTS,
-    resolutions: ["480p", "720p"],
+    resolutions: ["480p", "720p", "1080p"],
   },
 };
 
