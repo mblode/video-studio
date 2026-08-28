@@ -1,0 +1,14 @@
+{
+  "characters": [
+    {
+      "id": "keeper",
+      "name": "THE KEEPER",
+      "block": "a lean weathered man in his late sixties with grey stubble, near-black wool coat, thick dark scarf and black boots"
+    },
+    {
+      "id": "relief",
+      "name": "THE RELIEF",
+      "block": "a woman in her early thirties with cropped dark curls, pale slick oilskin, black sweater and brown canvas tool roll"
+    }
+  ]
+}

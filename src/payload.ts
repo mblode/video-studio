@@ -224,11 +224,22 @@ export function referenceCountsByType(
   return counts;
 }
 
-/** Prepend the film's locked style preamble (color script) to the shot prompt. */
+/**
+ * The wire prompt: the film's locked style preamble (color script), then the
+ * generated cast binding block, then the shot's own prompt. That is the
+ * documented reading order — who is in frame and what each reference is for,
+ * then the timed plan, then the invariants.
+ *
+ * Filtering before joining is load-bearing rather than tidy. `payloadHash` is
+ * persisted in every existing manifest, so a film with no `castPrompt` has to
+ * compose byte-for-byte what it always did; an unconditional three-way join
+ * would put a double separator where the middle segment is absent and move the
+ * hash of every film ever generated.
+ */
 function composePrompt(film: ShotsFile["film"], shot: Shot): string {
-  return film.promptPreamble
-    ? `${film.promptPreamble}\n\n${shot.prompt}`
-    : shot.prompt;
+  return [film.promptPreamble, shot.castPrompt, shot.prompt]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 /**
@@ -256,8 +267,13 @@ export async function buildCallOptions(
 
   const references: ShotReference[] = [];
   for (const ref of shot.references ?? []) {
+    // Named fields, not `...ref`. `ShotReference.cast` is an authoring marker
+    // that must never reach a request body, and spreading would carry it into
+    // `VideoModelV4CallOptions` where the next adapter to render a body from
+    // the whole object would hash it in.
     references.push({
-      ...ref,
+      role: ref.role,
+      type: ref.type,
       url: await resolveReferenceUrl(ref.url, shotsDir, skipInline),
     });
   }

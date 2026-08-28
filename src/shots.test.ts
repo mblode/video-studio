@@ -692,6 +692,27 @@ describe("lintStillsFile", () => {
     ).toEqual([]);
   });
 
+  it("does not warn about a reference this same run will generate", async () => {
+    // A stills file is a DAG: films/lighthouse chains nine stills off one
+    // earlier still's png. Warning that a file this run is about to write does
+    // not exist yet turns a correct film into nine warnings on every first run.
+    const { lintStillsFile } = await import("./shots.js");
+    const dir = await mkdtemp(join(tmpdir(), "vs-stills-dag-"));
+    const file = {
+      outputDir: "./out",
+      stills: [
+        { id: "anchor", prompt: "the plate" },
+        { id: "derived", prompt: "p", references: ["./out/anchor.png"] },
+        { id: "orphan", prompt: "p", references: ["./out/nobody-writes.png"] },
+      ],
+    };
+    expect(
+      lintStillsFile(file, { outputDir: join(dir, "out"), stillsDir: dir })
+    ).toEqual([expect.stringContaining("nobody-writes.png")]);
+    // Without outputDir the checker cannot know, so it stays conservative.
+    expect(lintStillsFile(file, { stillsDir: dir })).toHaveLength(2);
+  });
+
   it("warns only about local references that are not on disk", async () => {
     const { lintStillsFile } = await import("./shots.js");
     const dir = await mkdtemp(join(tmpdir(), "vs-stills-"));

@@ -21,7 +21,13 @@ import {
   RESOLUTIONS,
   STILL_ASPECT_RATIOS,
 } from "./types.js";
-import type { Shot, ShotReference, ShotsFile, StillsFile } from "./types.js";
+import type {
+  CharactersFile,
+  Shot,
+  ShotReference,
+  ShotsFile,
+  StillsFile,
+} from "./types.js";
 
 const UNSAFE_LOCAL_PATH =
   "must stay within the film directory (no `..` or absolute paths)";
@@ -172,6 +178,10 @@ const durationSchema = z.union([
 // difference between a typo and an afternoon.
 const referenceSchema = z
   .strictObject({
+    // Written by `vs cast sync` to mark a reference it owns, so a re-sync
+    // replaces exactly what it wrote and leaves a hand-authored reference
+    // beside it alone. Never reaches a request body.
+    cast: z.string().min(1).optional(),
     role: z.enum([
       "reference_image",
       "reference_video",
@@ -203,6 +213,9 @@ const referenceSchema = z
 const shotSchema = z
   .strictObject({
     cameraFixed: z.boolean().optional(),
+    // Authored input to `vs cast sync`; `castPrompt` is what it writes back.
+    cast: z.array(z.string().min(1)).optional(),
+    castPrompt: z.string().min(1).optional(),
     duration: durationSchema.optional(),
     id: z
       .string()
@@ -323,6 +336,8 @@ const shotsFileSchema = z
 
 const stillSchema = z
   .strictObject({
+    /** Set by `vs cast sync` on a sheet it generated. See `Still.cast`. */
+    cast: z.string().min(1).optional(),
     id: z
       .string()
       .regex(ID_PATTERN, "still id must be alphanumeric/dash/underscore"),
@@ -368,6 +383,156 @@ const stillsFileSchema = z
         });
       }
       seen.add(still.id);
+    }
+  });
+
+// A block is joined into `{name} is {block}; use @Image N for {binding}.`, so
+// it must not carry its own terminator: "…no wasted step." would compose as
+// "…no wasted step.; use @Image 1…" and, worse, would stop matching what sync
+// wrote last run, which is what makes a re-sync a no-op.
+const BLOCK_TERMINATOR = /[.;:,]$/u;
+
+function sheetReferences(character: {
+  sheet?: { references?: string[] };
+  variants?: { sheet?: { references?: string[] } }[];
+}): string[] {
+  return [
+    ...(character.sheet?.references ?? []),
+    ...(character.variants ?? []).flatMap(
+      (variant) => variant.sheet?.references ?? []
+    ),
+  ];
+}
+
+/**
+ * The stills.json id for one character's sheet. Shared with src/cast.ts so the
+ * collision check below and the upsert that writes the file cannot disagree
+ * about what a character is called on disk.
+ */
+export function sheetStillId(key: string): string {
+  return `char-${key.replace(":", "-")}`;
+}
+
+const sheetSchema = z.strictObject({
+  prompt: z.string().min(1).optional(),
+  ratio: stillRatioSchema.optional(),
+  references: z.array(z.string().min(1)).optional(),
+  seed: z.number().int().optional(),
+});
+
+const blockSchema = z
+  .string()
+  .min(1)
+  .refine((block) => !BLOCK_TERMINATOR.test(block.trim()), {
+    message:
+      "block must not end in punctuation — it is joined into a longer sentence",
+  });
+
+const variantSchema = z.strictObject({
+  binding: z.string().min(1).optional(),
+  block: blockSchema,
+  id: z
+    .string()
+    .regex(ID_PATTERN, "variant id must be alphanumeric/dash/underscore"),
+  sheet: sheetSchema.optional(),
+});
+
+const characterSchema = z
+  .strictObject({
+    binding: z.string().min(1).optional(),
+    block: blockSchema,
+    id: z
+      .string()
+      .regex(ID_PATTERN, "character id must be alphanumeric/dash/underscore"),
+    name: z.string().min(1),
+    sheet: sheetSchema.optional(),
+    variants: z.array(variantSchema).optional(),
+  })
+  .superRefine((character, ctx) => {
+    // `binding` names the ONE job the sheet does. Without it the sentence has
+    // no clause and the model averages the reference into everything it sees,
+    // which is the failure the ordinal idiom exists to prevent.
+    if (character.sheet && character.binding === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `character ${character.id} has a sheet but no binding — name the one job it does ("her face, hair and wardrobe only")`,
+        path: ["binding"],
+      });
+    }
+    const seen = new Set<string>();
+    for (const variant of character.variants ?? []) {
+      if (seen.has(variant.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `duplicate variant id: ${character.id}:${variant.id}`,
+          path: ["variants"],
+        });
+      }
+      seen.add(variant.id);
+      if (
+        variant.sheet &&
+        (variant.binding ?? character.binding) === undefined
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `variant ${character.id}:${variant.id} has a sheet but neither it nor ${character.id} sets a binding`,
+          path: ["variants"],
+        });
+      }
+    }
+    for (const ref of sheetReferences(character)) {
+      if (!STILL_REFERENCE_EXTENSION.test(ref)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `sheet reference "${ref}" is not an image (use png/jpg/jpeg/webp)`,
+        });
+      }
+      if (isUnsafeLocalReference(ref)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `sheet reference "${ref}" ${UNSAFE_LOCAL_PATH}`,
+        });
+      }
+    }
+  });
+
+const charactersFileSchema = z
+  .strictObject({
+    characters: z.array(characterSchema).min(1),
+    style: z.string().min(1).optional(),
+  })
+  .superRefine((file, ctx) => {
+    const seen = new Set<string>();
+    for (const character of file.characters) {
+      if (seen.has(character.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `duplicate character id: ${character.id}`,
+        });
+      }
+      seen.add(character.id);
+    }
+    // `keeper` + variant `old` and a separate character `keeper-old` both derive
+    // the still id `char-keeper-old`. Catch it here rather than letting one
+    // sheet silently overwrite the other's png.
+    const derived = new Map<string, string>();
+    for (const character of file.characters) {
+      for (const key of [
+        character.id,
+        ...(character.variants ?? []).map(
+          (variant) => `${character.id}:${variant.id}`
+        ),
+      ]) {
+        const stillId = sheetStillId(key);
+        const owner = derived.get(stillId);
+        if (owner !== undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `${key} and ${owner} both derive the still id "${stillId}" — rename one`,
+          });
+        }
+        derived.set(stillId, key);
+      }
     }
   });
 
@@ -476,13 +641,17 @@ function lintOneShot(shot: Shot, file: ShotsFile, modelId: string): string[] {
       `${shot.id}: no seed — set one so a draft and its final (and any retake) stay reproducible instead of re-rolling a new composition each run`
     );
   }
-  const preamble = file.film.promptPreamble;
+  // Every segment `composePrompt` will send, not just the authored one. A cast
+  // block is real prompt text on the wire, and five characters run 150-250
+  // words — the difference between passing and busting 2.0's budget.
   const words = wordCount(
-    preamble ? `${preamble} ${shot.prompt}` : shot.prompt
+    [file.film.promptPreamble, shot.castPrompt, shot.prompt]
+      .filter(Boolean)
+      .join(" ")
   );
   if (words > promptWordLimit) {
     warnings.push(
-      `${shot.id}: prompt is ${words} words (incl. promptPreamble) — even a multi-beat shot degrades past ~${promptWordLimit}; move shared style into film.promptPreamble, trim to the timed beats, or split the shot`
+      `${shot.id}: prompt is ${words} words (incl. promptPreamble and castPrompt) — even a multi-beat shot degrades past ~${promptWordLimit}; move shared style into film.promptPreamble, trim to the timed beats, or split the shot`
     );
   }
   const slowTerms = slowMotionTermCount(shot.prompt);
@@ -578,14 +747,25 @@ export function lintShotsFile(
  *
  * Pass `stillsDir` to also check that local references resolve on disk (a
  * reference that is not there produces a still with none of the likeness you
- * asked for, and no error).
+ * asked for, and no error). Pass `outputDir` too when the caller is about to
+ * generate: a stills file legitimately chains one still off another's png, and
+ * warning that a file this very run is going to write does not exist yet turns
+ * a correct film into a screenful of noise on every first run.
  */
 export function lintStillsFile(
   file: StillsFile,
-  options: { stillsDir?: string } = {}
+  options: { outputDir?: string; stillsDir?: string } = {}
 ): string[] {
   const warnings: string[] = [];
   const seen = new Set<string>();
+  // The pngs this run will write, so a reference to one is not "missing".
+  const producedHere = new Set(
+    options.outputDir === undefined
+      ? []
+      : file.stills.map((still) =>
+          resolve(options.outputDir as string, `${still.id}.png`)
+        )
+  );
   for (const still of file.stills) {
     // Unreachable via loadStillsFile (the schema rejects duplicates); reachable
     // for a StillsFile a caller built in memory.
@@ -611,11 +791,16 @@ export function lintStillsFile(
       continue;
     }
     for (const ref of still.references ?? []) {
-      if (!ref.startsWith("https://") && !existsSync(resolve(stillsDir, ref))) {
-        warnings.push(
-          `${still.id}: reference "${ref}" is not on disk — the still will generate without it, silently losing that likeness or style`
-        );
+      if (ref.startsWith("https://")) {
+        continue;
       }
+      const resolved = resolve(stillsDir, ref);
+      if (existsSync(resolved) || producedHere.has(resolved)) {
+        continue;
+      }
+      warnings.push(
+        `${still.id}: reference "${ref}" is not on disk — the still will generate without it, silently losing that likeness or style`
+      );
     }
   }
   return warnings;
@@ -669,16 +854,51 @@ function formatIssues(path: string, error: z.ZodError): VsError {
   });
 }
 
-export async function loadShotsFile(path: string): Promise<ShotsFile> {
-  const parsed = shotsFileSchema.safeParse(await loadJson(path));
+/**
+ * The raw `JSON.parse` result, for the one caller that has to WRITE the file
+ * back: `vs cast sync`.
+ *
+ * Zod builds its output by walking the schema shape, not the input, so
+ * `parsed.data` comes back with every key in schema order. Serialising that
+ * would silently reorder every shot in a film the first time you synced it —
+ * a several-hundred-line diff on a file whose whole contract is that what you
+ * typed is what gets sent. Sync mutates this object and validates the parsed
+ * one.
+ */
+export function loadRawFilmJson(path: string): Promise<unknown> {
+  return loadJson(path);
+}
+
+/** Validate an already-parsed shots.json. `label` names the file in errors. */
+export function parseShotsFile(value: unknown, label: string): ShotsFile {
+  const parsed = shotsFileSchema.safeParse(value);
   if (!parsed.success) {
-    throw formatIssues(path, parsed.error);
+    throw formatIssues(label, parsed.error);
   }
   return parsed.data;
 }
 
+/** Validate an already-parsed stills.json. `label` names the file in errors. */
+export function parseStillsFile(value: unknown, label: string): StillsFile {
+  const parsed = stillsFileSchema.safeParse(value);
+  if (!parsed.success) {
+    throw formatIssues(label, parsed.error);
+  }
+  return parsed.data;
+}
+
+export async function loadShotsFile(path: string): Promise<ShotsFile> {
+  return parseShotsFile(await loadJson(path), path);
+}
+
 export async function loadStillsFile(path: string): Promise<StillsFile> {
-  const parsed = stillsFileSchema.safeParse(await loadJson(path));
+  return parseStillsFile(await loadJson(path), path);
+}
+
+export async function loadCharactersFile(
+  path: string
+): Promise<CharactersFile> {
+  const parsed = charactersFileSchema.safeParse(await loadJson(path));
   if (!parsed.success) {
     throw formatIssues(path, parsed.error);
   }

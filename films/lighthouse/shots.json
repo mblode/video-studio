@@ -10,7 +10,7 @@
       "generateAudio": true,
       "watermark": false
     },
-    "promptPreamble": "Photorealistic expressionist maritime cinema in stark black-and-white, composed for an exact almost-square 1.10:1 frame inherited from the first-frame keyframe. Orthochromatic tonal response renders skin pale, sky chalky, wool and wet rock nearly black. Hard practical light, deep crushed shadows, silver halation, coarse 35mm grain, slight gate weave, salt haze, real spray and condensation. Consistent characters: THE KEEPER is a lean weathered man in his late sixties with grey stubble, near-black wool coat, thick dark scarf and black boots; THE RELIEF is a woman in her early thirties with cropped dark curls, pale slick oilskin, black sweater and brown canvas tool roll. Claustrophobic, severe, human, and grounded. Realtime speed, brisk natural motion, precise physical action. Diegetic sound only. Keep every frame subtitle-free and free of flags, brands, dialogue, logos, watermarks, readable labels, and on-screen lettering."
+    "promptPreamble": "Photorealistic expressionist maritime cinema in stark black-and-white, composed for an exact almost-square 1.10:1 frame inherited from the first-frame keyframe. Orthochromatic tonal response renders skin pale, sky chalky, wool and wet rock nearly black. Hard practical light, deep crushed shadows, silver halation, coarse 35mm grain, slight gate weave, salt haze, real spray and condensation. Claustrophobic, severe, human, and grounded. Realtime speed, brisk natural motion, precise physical action. Diegetic sound only. Keep every frame subtitle-free and free of flags, brands, dialogue, logos, watermarks, readable labels, and on-screen lettering."
   },
   "cards": [
     {
@@ -31,70 +31,80 @@
     {
       "id": "s01-last-arrival",
       "prompt": "The opening frame matches the provided keyframe: a remote white lighthouse rises through a pearl-grey dusk, its lamp dark, while a wet path and cottage compress beneath it in the exact 1.10:1 frame.\nShot 1: wide exterior pushes toward the vertical tower as wind lashes long grass sideways; THE RELIEF climbs the lower path carrying her brown tool roll and a distinct compact dark motor case; <hard coastal wind, distant surf, boots on gravel>.\nShot 2: cut inside the cottage to a hard-lit hand close-up; THE KEEPER presses a small dark suitcase shut and snaps both latches; <two metal latch clicks, window frame rattling>.\nShot 3: cut to a long-lens close through wet glass; he sees the motor case first, then lifts his eyes to the relief approaching below; <coat cloth under wind, rain ticking glass>.",
+      "castPrompt": "THE KEEPER is a lean weathered man in his late sixties with grey stubble, near-black wool coat, thick dark scarf and black boots. THE RELIEF is a woman in her early thirties with cropped dark curls, pale slick oilskin, black sweater and brown canvas tool roll.",
+      "cast": ["keeper", "relief"],
       "ratio": "adaptive",
       "seed": 8201,
       "transition": 0.4,
       "references": [
         {
+          "role": "first_frame",
           "type": "image",
-          "url": "./stills-v2/s01-last-arrival.png",
-          "role": "first_frame"
+          "url": "./stills-v2/s01-last-arrival.png"
         }
       ]
     },
     {
       "id": "s02-refusal",
       "prompt": "The opening frame matches the provided keyframe: THE KEEPER and THE RELIEF face each other across the open iron door in a cramped vertical two-shot, her dark motor case hanging at her side.\nShot 1: close wide-angle track as she offers her right hand; he takes the motor case instead, sets it against the stone wall and slams the door against the gale; <case on stone, iron hinge groan, door slam, wind muffling>.\nShot 2: cut to a tight table insert; she reaches toward the large dark iron service key, but his hand closes around it first and clips it to his belt; <keys scraping wood, one metal chime>.\nShot 3: cut to a locked two-shot split by the spiral stair; he sets two enamel mugs far apart and climbs while she looks once at the shelved case, then follows; <ceramic on wood, first iron footfalls>.",
+      "castPrompt": "THE KEEPER is a lean weathered man in his late sixties with grey stubble, near-black wool coat, thick dark scarf and black boots. THE RELIEF is a woman in her early thirties with cropped dark curls, pale slick oilskin, black sweater and brown canvas tool roll.",
+      "cast": ["keeper", "relief"],
       "ratio": "adaptive",
       "seed": 8202,
       "transition": 0.4,
       "references": [
         {
+          "role": "first_frame",
           "type": "image",
-          "url": "./stills-v2/s02-refusal.png",
-          "role": "first_frame"
+          "url": "./stills-v2/s02-refusal.png"
         }
       ]
     },
     {
       "id": "s03-worn-link",
       "prompt": "The opening frame matches the provided keyframe: in the machinery room, a vertical guarded weight chain divides THE KEEPER from THE RELIEF; his hands are empty and her grey vibration meter is ready.\nShot 1: low vertical track as he draws the large dark iron service key from inside his coat, fits it and winds the counterweight upward before leaning close to the gear rhythm; <chain lifting, even clockwork tick, his measured breath>.\nShot 2: cut to macro; she clamps the meter to the housing, its blank needle kicks, and she stops one visibly thinned chain link between gloved fingers; <clamp click, harsh vibration buzz, chain knock>.\nShot 3: cut to a locked confrontation; she holds a clean spare link beside the worn one, but he returns the spare to her roll, pockets the key and winds the weight one turn higher; <fresh link chime, ratchet clacking, strained metal knock>.",
+      "castPrompt": "THE KEEPER is a lean weathered man in his late sixties with grey stubble, near-black wool coat, thick dark scarf and black boots. THE RELIEF is a woman in her early thirties with cropped dark curls, pale slick oilskin, black sweater and brown canvas tool roll.",
+      "cast": ["keeper", "relief"],
       "ratio": "adaptive",
       "seed": 8203,
       "transition": 0.3,
       "references": [
         {
+          "role": "first_frame",
           "type": "image",
-          "url": "./stills-v2/s03-worn-link-privacy-v2.png",
-          "role": "first_frame"
+          "url": "./stills-v2/s03-worn-link-privacy-v2.png"
         }
       ]
     },
     {
       "id": "s04-boat-approaches",
       "prompt": "The opening frame matches the provided keyframe: a hard-lit radio room above a fogging sea window, both keepers small beneath it as storm rain erases the horizon.\nShot 1: tight push on the old radio and barometer; static detonates and the blank barometer needle drops; <radio static, warning bell, rain hammering glass>.\nShot 2: whip pan as THE RELIEF wipes condensation from the high window; THE KEEPER reaches her side and both see a small work boat still driving through the last visible channel; <sleeve on wet glass, steady distant diesel, one low horn>.\nShot 3: cut to compressed sea geography; the boat's wake points between black open water and white reef before fog closes over both, then the keeper turns and climbs toward the dark lamp; <surf building, iron stair footfalls>.",
+      "castPrompt": "THE KEEPER is a lean weathered man in his late sixties with grey stubble, near-black wool coat, thick dark scarf and black boots. THE RELIEF is a woman in her early thirties with cropped dark curls, pale slick oilskin, black sweater and brown canvas tool roll.",
+      "cast": ["keeper", "relief"],
       "ratio": "adaptive",
       "seed": 8204,
       "transition": 0.4,
       "references": [
         {
+          "role": "first_frame",
           "type": "image",
-          "url": "./stills-v2/s04-boat-approaches.png",
-          "role": "first_frame"
+          "url": "./stills-v2/s04-boat-approaches.png"
         }
       ]
     },
     {
       "id": "s05-pride-breaks-drive",
       "prompt": "The opening frame matches the provided keyframe: inside the dark lamp room, THE KEEPER fills the foreground at the completely unlit Fresnel lens while THE RELIEF and her meter are trapped behind its vertical iron frame.\nShot 1: hard-lit close wide; he strikes the igniter and the lamp catches, then drives the dark iron key home and engages the clockwork as her meter needle hammers; <flint crack, ignition thump, gears rising, vibration buzz>.\nShot 2: hard cut to macro inside the guard; the established worn link stretches under load, parts cleanly and lashes into its steel guard while both keepers remain safely clear; the lamp dies at the exact instant of the snap; <chain strain, sharp steel snap, gears grinding down>.\nShot 3: hard cut outside to a tower profile in complete darkness; the lighthouse remains black with absolutely no glow and no beam while lightning only silhouettes cloud far offshore; <alarm bell, storm wind, surf exploding below>.",
+      "castPrompt": "THE KEEPER is a lean weathered man in his late sixties with grey stubble, near-black wool coat, thick dark scarf and black boots. THE RELIEF is a woman in her early thirties with cropped dark curls, pale slick oilskin, black sweater and brown canvas tool roll.",
+      "cast": ["keeper", "relief"],
       "ratio": "adaptive",
       "seed": 8205,
       "transition": 0.15,
       "references": [
         {
+          "role": "first_frame",
           "type": "image",
-          "url": "./stills-v2/s05-pride-breaks-drive-privacy-v3.png",
-          "role": "first_frame"
+          "url": "./stills-v2/s05-pride-breaks-drive-privacy-v3.png"
         }
       ]
     },
@@ -106,51 +116,57 @@
       "transition": 0.2,
       "references": [
         {
+          "role": "first_frame",
           "type": "image",
-          "url": "./stills-v2/s06-reef-in-dark.png",
-          "role": "first_frame"
+          "url": "./stills-v2/s06-reef-in-dark.png"
         }
       ]
     },
     {
       "id": "s07-hand-crank-fails",
       "prompt": "The opening frame matches the provided keyframe: low in the cramped machinery room, THE KEEPER kneels at the manual hand-crank with the broken guarded chain overhead and THE RELIEF close behind.\nShot 1: over his shoulder, pushing in; he jams the dark iron service key into the hand-crank and throws his weight against the jammed train while she points to the broken chain; <key scraping steel, strained gear creak, his breath>.\nShot 2: cut to a tight hand close-up; the crank kicks backward, the key cuts across his left palm without gore and rings onto stone; <metal kick, key clattering, muffled boat horn>.\nShot 3: cut low and wide; he loses balance, she catches him under both shoulders, wraps his palm and returns the key to his belt while he stares at the frozen wheel; <boots sliding, cloth tearing, alarm bell continuing>.",
+      "castPrompt": "THE KEEPER is a lean weathered man in his late sixties with grey stubble, near-black wool coat, thick dark scarf and black boots. THE RELIEF is a woman in her early thirties with cropped dark curls, pale slick oilskin, black sweater and brown canvas tool roll.",
+      "cast": ["keeper", "relief"],
       "ratio": "adaptive",
       "seed": 8207,
       "transition": 0.2,
       "references": [
         {
+          "role": "first_frame",
           "type": "image",
-          "url": "./stills-v2/s07-hand-crank-fails-privacy-v2.png",
-          "role": "first_frame"
+          "url": "./stills-v2/s07-hand-crank-fails-privacy-v2.png"
         }
       ]
     },
     {
       "id": "s08-motor-needs-key",
       "prompt": "The opening frame matches the provided keyframe: THE RELIEF hauls the same compact dark motor case up the tight spiral stair while THE KEEPER waits above with his left palm wrapped and the dark iron key on his belt.\nShot 1: fast upward tilt with her climb; she drops the case beside the stopped drive, snaps both latches and lifts out the compact service motor; <boots striking iron, case thump, two latch clicks>.\nShot 2: cut overhead; she bolts the motor to the service shaft and switches it on, but the lens remains locked to the broken weight train; <bolts turning, electric motor whine, locked gear chatter>.\nShot 3: cut to a hard-lit close; a dark iron clutch cover refuses to open, so she stops the motor, turns to the keeper and extends her empty hand toward the key on his belt; <motor falling silent, locked metal knock, second distant horn>.",
+      "castPrompt": "THE KEEPER is a lean weathered man in his late sixties with grey stubble, near-black wool coat, thick dark scarf and black boots. THE RELIEF is a woman in her early thirties with cropped dark curls, pale slick oilskin, black sweater and brown canvas tool roll.",
+      "cast": ["keeper", "relief"],
       "ratio": "adaptive",
       "seed": 8208,
       "transition": 0.2,
       "references": [
         {
+          "role": "first_frame",
           "type": "image",
-          "url": "./stills-v2/s08-motor-needs-key-privacy-v3.png",
-          "role": "first_frame"
+          "url": "./stills-v2/s08-motor-needs-key-privacy-v3.png"
         }
       ]
     },
     {
       "id": "s09-trust-turns-light",
       "prompt": "The opening frame matches the provided keyframe: close two-shot over the exposed service shaft, THE RELIEF holds one open palm between them, THE KEEPER grips the dark iron key, and the motor is already mounted.\nShot 1: completely locked hand close; after the second horn he looks from the frozen beam to her palm, unclips the key and places it there; <muffled horn, belt clip, one metal chime>.\nShot 2: cut low along the drive; he points out the concealed release, she unlocks the clutch while he holds the broken weight train clear, then she couples the motor; <key turning, clutch clack, coupling lock>.\nShot 3: crane upward through the stairwell as she starts the motor; the flywheel and Fresnel lens turn, and pale bars travel across both faces for the first time; <motor rising, gears catching cleanly, glass resonance, storm wind>.",
+      "castPrompt": "THE KEEPER is a lean weathered man in his late sixties with grey stubble, near-black wool coat, thick dark scarf and black boots. THE RELIEF is a woman in her early thirties with cropped dark curls, pale slick oilskin, black sweater and brown canvas tool roll.",
+      "cast": ["keeper", "relief"],
       "ratio": "adaptive",
       "seed": 8209,
       "transition": 0.25,
       "references": [
         {
+          "role": "first_frame",
           "type": "image",
-          "url": "./stills-v2/s09-trust-turns-light-privacy-v2.png",
-          "role": "first_frame"
+          "url": "./stills-v2/s09-trust-turns-light-privacy-v2.png"
         }
       ]
     },
@@ -162,37 +178,41 @@
       "transition": 0.4,
       "references": [
         {
+          "role": "first_frame",
           "type": "image",
-          "url": "./stills-v2/s10-safe-water.png",
-          "role": "first_frame"
+          "url": "./stills-v2/s10-safe-water.png"
         }
       ]
     },
     {
       "id": "s11-duty-handed-over",
       "prompt": "The opening frame matches the provided keyframe: at silver dawn, two enamel mugs touch beside a blank closed logbook, THE KEEPER's bandaged hand and dark iron service key on one side, THE RELIEF opposite.\nShot 1: locked still-life close; his good hand pushes the key across worn wood and her hand closes around it beside the joined mugs; <ceramic set down, iron sliding on wood>.\nShot 2: cut to a hard white doorway medium; he lifts his dark suitcase and steps into wet clear air while she remains inside holding the key; <door hinge, gulls returning, light wind>.\nShot 3: cut to a long exterior compressed under the tower; he walks down the path, pauses at the bend and looks back once at the lens still turning on the emergency motor; <boots on gravel, distant surf, steady mechanism>.",
+      "castPrompt": "THE KEEPER is a lean weathered man in his late sixties with grey stubble, near-black wool coat, thick dark scarf and black boots. THE RELIEF is a woman in her early thirties with cropped dark curls, pale slick oilskin, black sweater and brown canvas tool roll.",
+      "cast": ["keeper", "relief"],
       "ratio": "adaptive",
       "seed": 8211,
       "transition": 0.6,
       "references": [
         {
+          "role": "first_frame",
           "type": "image",
-          "url": "./stills-v2/s11-duty-handed-over-privacy-v2.png",
-          "role": "first_frame"
+          "url": "./stills-v2/s11-duty-handed-over-privacy-v2.png"
         }
       ]
     },
     {
       "id": "s12-next-watch",
       "prompt": "The opening frame matches the provided keyframe: at the next ink dusk, THE RELIEF stands in the windowless machinery room behind a repaired clockwork drive with one clean chain link visible, while the dark iron key and grey meter share the narrow foreground ledge.\nShot 1: macro on the repaired link moving through the guard; she clamps the meter to the housing, sees its blank needle settle evenly and removes the probe; <even clockwork, meter clamp click, chain running cleanly>.\nShot 2: cut upstairs into the single dark lamp room; in a hard-lit medium profile she winds with the dark iron key, stops with one hand on the housing, listens to the rhythm exactly once and starts the lamp; <ratchet, exact tick, ignition thump>.\nShot 3: cut outside to an almost-square aerial pulling away; the pale beam carves a full plane through salt haze and reaches a very distant anonymous vessel, the relief small behind the glass; <steady wind, gentle surf, deep mechanical turn>.",
+      "castPrompt": "THE RELIEF is a woman in her early thirties with cropped dark curls, pale slick oilskin, black sweater and brown canvas tool roll.",
+      "cast": ["relief"],
       "ratio": "adaptive",
       "seed": 8212,
       "transition": 0.8,
       "references": [
         {
+          "role": "first_frame",
           "type": "image",
-          "url": "./stills-v2/s12-next-watch-privacy-v2.png",
-          "role": "first_frame"
+          "url": "./stills-v2/s12-next-watch-privacy-v2.png"
         }
       ]
     }

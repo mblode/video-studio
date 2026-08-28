@@ -36,14 +36,27 @@ Copy `.env.example` to `.env`, add your `AI_GATEWAY_API_KEY` from [Vercel AI Gat
 Try the sample film in [`films/lighthouse/`](films/lighthouse/):
 
 ```bash
-vs generate films/lighthouse/shots.json --dry-run
-vs stills   films/lighthouse/stills.json
-vs animatic films/lighthouse/shots.json
-vs generate films/lighthouse/shots.json --max-cost 18
-vs stitch   films/lighthouse/shots.json --xfade 0.4
+vs cast sync films/lighthouse/shots.json
+vs generate  films/lighthouse/shots.json --dry-run
+vs stills    films/lighthouse/stills.json
+vs animatic  films/lighthouse/shots.json
+vs generate  films/lighthouse/shots.json --max-cost 18
+vs stitch    films/lighthouse/shots.json --xfade 0.4
 ```
 
 Start your own with `vs init films/my-film`.
+
+## Characters
+
+Describe each character once in `characters.json`, list them in a shot's
+`cast`, and `vs cast sync` writes the rest: a multi-view character sheet into
+`stills.json`, the reference into the shot, and the binding sentence that tells
+the model which `@Image` is whose face. It counts the ordinals for you, which
+is the part that is easy to get wrong and expensive to discover.
+
+Sync writes literal text into `shots.json` and `stills.json` — nothing at
+generate time reads `characters.json` — so you review the diff before you spend,
+and `vs cast sync --check` fails a build that has drifted.
 
 ## Spend less
 

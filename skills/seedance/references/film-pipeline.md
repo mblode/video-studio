@@ -71,6 +71,12 @@ still.** That likeness lives in prompt text, so generating a sheet for it burns
 an image call for nothing. A character bound as `@Image 1` across several acts
 does need one, and one sheet serves all of them.
 
+`vs cast sync` applies this rule for you. Give a character a `sheet` in
+`characters.json` and it is bound wherever it can be; on a 2.0-family or H3
+shot that already carries a frame role the two modes cannot coexist, so that
+shot gets the block as text only and sync says so. A sheet no shot ends up
+binding is not generated at all.
+
 ### Long action across a cut
 
 There is no chaining option. A film longer than one generation is **several
@@ -103,13 +109,21 @@ averaged plate produces one averaged location.
 A still prompt is the style block, plus the palette, plus the relevant
 character or prop block, plus the composition line. For a keyframe that
 composition line is the literal opening frame of the shot. For a character
-sheet it is "full body character sheet, neutral pose, front and three-quarter
-view, plain background". A likeness photo, if you have one, goes in the still's
-`references` array; a style-only still with none is valid. Keep a still prompt
-under 200 words: it is one composition, not a timed sequence.
+sheet it is a front, three-quarter and profile view of one person, neutral
+pose, plain background — and an explicit "no text, no labels, no numbering"
+clause, because the sheet is bound as a reference image and Seedance renders
+lettering it finds in a reference into the video. A likeness photo, if you have
+one, goes in the still's `references` array; a style-only still with none is
+valid. Keep a still prompt under 200 words: it is one composition, not a timed
+sequence.
 
-When a character ages, generate one sheet per age block and point each shot at
-the right one. For a clean age cut, give two consecutive shots the **same**
+**Do not hand-write character sheets.** Put the character in `characters.json`
+and let `vs cast sync` compose the sheet still, including that clause, from the
+file's `style` and the character's `block`.
+
+When a character ages, give the character a `variant` per age block and address
+it from a shot as `id:variant`; sync generates one sheet each and points every
+shot at the right one. For a clean age cut, give two consecutive shots the **same**
 still as `first_frame`, and make that shared still an empty environment plate
 so each shot's prompt paints in its own-age character rather than fighting a
 baked-in one.
@@ -120,7 +134,11 @@ Each generation in the beat sheet becomes one shot. Its prompt is:
 
 1. **The binding block.** One sentence per reference, in ordinal order, naming
    the single job that reference does and nothing else. Count ordinals per
-   media type, and remember a `first_frame` takes `@Image 1`.
+   media type, and remember a `first_frame` takes `@Image 1`. For CHARACTERS,
+   do not write this by hand: list them in the shot's `cast` and let
+   `vs cast sync` write `castPrompt`, which is prepended ahead of your prompt
+   and counts the ordinals for you. Hand-write only the plate and staging
+   sentences, and keep them in `prompt`.
 2. **The plan.** On 2.5, the beats as a timestamp plan whose ranges are
    contiguous and cover the whole duration. On 2.0, or on a short multi-cut
    shot, `Shot N:` lines. If the shot has a keyframe, one line at the top saying

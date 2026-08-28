@@ -69,6 +69,61 @@ same id as its shot so the two files stay in lockstep.
 Stills run on Nano Banana through the AI SDK and need `GEMINI_API_KEY`. See
 `../../vs/references/models.md`.
 
+## characters.json
+
+Optional, and authoring-time only: **nothing at generate time reads it.**
+`vs cast sync` expands it into literal content in `shots.json` and
+`stills.json`, which stay the source of truth for what gets sent.
+
+```json
+{
+  "style": "Photorealistic expressionist maritime cinema in stark black-and-white.",
+  "characters": [
+    {
+      "id": "keeper",
+      "name": "THE KEEPER",
+      "block": "a lean weathered man in his late sixties with grey stubble, a near-black wool coat, thick dark scarf and black boots",
+      "binding": "his face, build and wardrobe only",
+      "sheet": { "ratio": "16:9", "seed": 4021, "references": ["./refs/keeper.jpg"] },
+      "variants": [
+        { "id": "young", "block": "the same man at thirty, dark-haired and unlined", "sheet": { "seed": 4022 } }
+      ]
+    }
+  ]
+}
+```
+
+- `block` is the verbatim appearance sentence and **must not end in
+  punctuation** — sync joins it into `{name} is {block}; use @Image N for
+  {binding}.` and the schema refuses a trailing terminator.
+- `binding` names the ONE job the reference does. Required once the character
+  has a `sheet`; a binding that names more than one job is how you get the model
+  averaging references together.
+- `sheet` **omitted entirely** makes the character text-only: its block still
+  goes into every shot it appears in, but it gets no still, no reference and no
+  ordinal. That is the right shape for a character who only ever appears in
+  frame-mode shots — the likeness is already in the keyframe.
+- `sheet.prompt` replaces the composition line only. The style block, the
+  character block and the no-text clause still wrap it, and that clause is
+  load-bearing: a sheet is bound as a reference image, and Seedance renders
+  lettering it finds in a reference straight into the video.
+- `variants` are age blocks and wardrobe changes, addressed as `id:variant`.
+  Each gets its own sheet, because a character who ages is two likenesses that
+  must not be averaged together.
+- Sheets land as `char-<id>.png` / `char-<id>-<variant>.png`, at 16:9 by default
+  because three panels side by side need a wide frame.
+
+**`cast` and `castPrompt` on a shot.** `cast` is the hand-authored list of who
+is in the shot (`["keeper", "relief:old"]`). `castPrompt` is GENERATED: sync
+rewrites it wholesale every run, so edit `characters.json`, never the block.
+`composePrompt` sends `film.promptPreamble`, then `castPrompt`, then the shot
+prompt — the documented order of binding block, plan, invariants.
+
+Cast references are **appended after** every hand-authored reference, never
+inserted. That is what guarantees an `@Image 2` you typed still means the same
+reference after a sync, and that a frame role keeps `@Image 1`. Run
+`vs cast sync --check` in CI: it writes nothing and exits non-zero on drift.
+
 ## shots.json
 
 Generated with `vs generate`. One shot is one paid task.
@@ -114,7 +169,7 @@ That is `examples/shots-2-5.json`, trimmed. Copy from the file, not from here.
 (required), `duration` (optional, 4-30 schema envelope, or `-1` for auto;
 2.5 allows up to 30, Seedance 2.0 still caps at 15 at generate time), `ratio`,
 `resolution` (only emitted when set), `cameraFixed` (bool, sends
-`camera_fixed`), `references`, `output`
+`camera_fixed`), `references`, `cast` and `castPrompt` (see below), `output`
 (filename, defaults `${id}.mp4`, must stay inside the film dir), `seed` (int),
 `transition` (0.05 to 2, the crossfade **into** this shot). Omit it and use
 `--xfade 0` on stitch/assemble for a true hard cut; 0.05 is the minimum ffmpeg

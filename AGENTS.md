@@ -157,6 +157,30 @@ it, delete it.
   cards are rasterised through `qlmanage` and `sips`. `--font` fails loudly for
   a family that is not installed, because qlmanage substitutes a default face
   and exits 0.
+- **`vs cast sync` is authoring-time codegen, and it is the only command that
+  writes a film's JSON back.** `characters.json` is read by nothing at generate
+  time: sync expands it into literal `castPrompt` text and literal sheet
+  references in `shots.json`, plus sheet stills in `stills.json`, so
+  `payloadHash` stays an audit record of a body you can read. Three things
+  bite. (1) It mutates the RAW `JSON.parse` object, never zod's `parsed.data`,
+  which comes back in schema key order and would reorder every shot in the film
+  on the first sync. (2) `--check` compares semantically, not by bytes, because
+  oxfmt collapses short arrays and a byte diff would fight the formatter
+  forever in CI. (3) Cast references are APPENDED after every hand-authored
+  reference, never inserted — that is what guarantees a hand-typed `@Image 2`
+  still means the same reference after a sync, and that a frame role keeps
+  `@Image 1`. On a model where `framesExcludeReferences` is true (2.0, H3) a
+  keyframed shot cannot carry both, so it degrades to a text-only block per
+  shot rather than writing a file that no longer loads; `films/lighthouse` is
+  entirely that case.
+- **A stills file is a DAG, and `vs stills` now generates it in waves.** A
+  keyframe that references the character sheet the same file produces is an
+  edge, and `films/lighthouse` already chained nine stills off one plate; the
+  old flat `Promise.allSettled` raced its own inputs on a first run. The edge is
+  inferred by matching a reference's resolved path against `join(outputDir,
+  id + ".png")` — no schema change — and a cycle is a hard error. `lintStillsFile`
+  is finally wired in, and takes `outputDir` so it does not warn about a png this
+  same run is about to write.
 - **`films/` is a gitignored workspace.** Only `films/lighthouse` is public, and
   a media backstop blocks every video, audio, and image file under `films/`.
   Your own films stay local. A film's `tasks.json` is committable on purpose so
