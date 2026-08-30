@@ -190,24 +190,45 @@ function planShot(input: {
 }): ShotPlan {
   const { characters, members, modelId, shot, stillsRefPrefix, warnings } =
     input;
-  // Everything sync wrote last run goes first, so the plan is computed from the
-  // hand-authored file every time and a re-sync is a no-op rather than a build-up.
-  const authored = (shot.references ?? []).filter(
-    (ref) => ref.cast === undefined
-  );
   const cast = dedupeCast(shot.cast ?? [], shot.id, warnings);
   if (cast.length === 0) {
-    return { bound: [], references: authored };
+    return {
+      bound: [],
+      references: (shot.references ?? []).filter(
+        (ref) => ref.cast === undefined
+      ),
+    };
   }
-
   const textOnly = textOnlyShot(shot, modelId);
   const resolved = cast.map((key) => {
     assertWellFormedKey(key, shot.id);
     return resolveMember(key, members, characters, shot.id);
   });
+  // Which members should carry a reference in this shot at all.
+  const wanted = new Map(
+    resolved
+      .filter((member) => member.sheet && !textOnly)
+      .map(
+        (member) => [sheetPath(member.key, stillsRefPrefix), member] as const
+      )
+  );
+
+  // SYNC NEVER MOVES AN EXISTING REFERENCE. Start from the array exactly as
+  // authored, drop only the sheets that are no longer cast, and adopt or append
+  // the rest in place. Rebuilding from the unmarked references instead — which
+  // is what this did first — quietly re-appended every previously adopted sheet
+  // at the end, so the second sync of a migrated film shifted every hand-written
+  // ordinal that came after it. The marker means "sync owns this", never "sync
+  // may relocate it".
+  const references: ShotReference[] = [];
+  for (const ref of shot.references ?? []) {
+    if (ref.cast !== undefined && !wanted.has(ref.url)) {
+      continue;
+    }
+    references.push(ref);
+  }
 
   const bound: string[] = [];
-  const references = [...authored];
   // Position in `references`, per member — not the reference object. Keying by
   // object would collapse an aliased array to one entry and report the wrong
   // ordinal, which is the exact hazard `referenceOrdinals` documents.
@@ -217,32 +238,22 @@ function planShot(input: {
       continue;
     }
     const url = sheetPath(member.key, stillsRefPrefix);
-    // ADOPT an existing reference to the same sheet rather than appending a
-    // second one. This is what makes migrating a hand-authored film painless:
-    // point the reference you already have at the sheet path, add `cast`, and
-    // the reference keeps its position — so every other `@Image N` in the
-    // prompt still means what it meant. Appending here would duplicate the
-    // image and shift every ordinal after it.
-    const existing = authored.findIndex(
-      (ref) => ref.url === url && ref.role === "reference_image"
-    );
-    if (existing !== -1) {
-      references[existing] = { ...references[existing], cast: member.key };
-      slotOf.set(member.key, existing);
+    const at = references.findIndex((ref) => ref.url === url);
+    if (at !== -1) {
+      // Already there, whoever put it there. Keep its position and take
+      // ownership, unless it is a frame role — a sheet used as the opening
+      // composition is a different intent, so bind its ordinal and leave the
+      // role alone.
+      const ref = references[at] as ShotReference;
+      if (ref.role === "reference_image") {
+        references[at] = { ...ref, cast: member.key };
+      }
+      slotOf.set(member.key, at);
       bound.push(member.key);
       continue;
     }
-    // A frame role at the sheet's path is a different intent — the sheet is the
-    // opening composition, not a likeness pack. Bind its ordinal so the block
-    // names a real image, but leave the role alone.
-    const asFrame = authored.findIndex((ref) => ref.url === url);
-    if (asFrame !== -1) {
-      slotOf.set(member.key, asFrame);
-      bound.push(member.key);
-      continue;
-    }
-    // APPEND, never insert. A hand-authored `@Image 2` in the shot prompt must
-    // never move under the author, and a frame role must keep `@Image 1`.
+    // APPEND, never insert: appending is the only position that cannot shift a
+    // hand-written `@Image N`, and it keeps a frame role at `@Image 1`.
     slotOf.set(member.key, references.length);
     references.push({
       cast: member.key,

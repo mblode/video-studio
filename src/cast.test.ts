@@ -145,6 +145,77 @@ describe("planCastSync is idempotent", () => {
     expect(second.shots.get("a1")).toEqual(first.shots.get("a1"));
   });
 
+  it("does not move an adopted reference on the SECOND sync", () => {
+    // The bug this exists for: run one adopted the sheet at position 0, run two
+    // treated every marked reference as sync's to rebuild, dropped it, and
+    // re-appended it at the end. The shot's own "@Image 2 for the room" then
+    // silently meant something else — the exact miss the append rule exists to
+    // prevent, caused by the tool that promised it.
+    const shot = {
+      cast: ["keeper"],
+      id: "a1",
+      prompt: "Use @Image 2 for the room.",
+      references: [
+        {
+          role: "reference_image" as const,
+          type: "image" as const,
+          url: "./stills/char-keeper.png",
+        },
+        {
+          role: "reference_image" as const,
+          type: "image" as const,
+          url: "./stills/room.png",
+        },
+      ],
+    };
+    const first = plan(shotsFile([shot])).shots.get("a1");
+    const second = plan(
+      shotsFile([
+        {
+          ...shot,
+          castPrompt: first?.castPrompt,
+          references: first?.references,
+        },
+      ])
+    ).shots.get("a1");
+    expect(second).toEqual(first);
+    expect(second?.references.map((r) => r.url)).toEqual([
+      "./stills/char-keeper.png",
+      "./stills/room.png",
+    ]);
+    expect(second?.castPrompt).toContain("use @Image 1 for");
+  });
+
+  it("keeps an appended reference at its position on re-sync", () => {
+    const shot = {
+      cast: ["keeper"],
+      id: "a1",
+      prompt: "Use @Image 1 for the room.",
+      references: [
+        {
+          role: "reference_image" as const,
+          type: "image" as const,
+          url: "./stills/room.png",
+        },
+      ],
+    };
+    const first = plan(shotsFile([shot])).shots.get("a1");
+    expect(first?.references.map((r) => r.url)).toEqual([
+      "./stills/room.png",
+      "./stills/char-keeper.png",
+    ]);
+    const second = plan(
+      shotsFile([
+        {
+          ...shot,
+          castPrompt: first?.castPrompt,
+          references: first?.references,
+        },
+      ])
+    ).shots.get("a1");
+    expect(second).toEqual(first);
+  });
+
   it("drops the cast block and references when cast is removed", () => {
     const result = plan(
       shotsFile([
