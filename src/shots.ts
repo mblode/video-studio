@@ -13,6 +13,7 @@ import {
 import type { AuthoringLimits } from "./models.js";
 import { isLocalPathSafe } from "./paths.js";
 import { referenceCountsByType } from "./payload.js";
+import { stillOutputPath } from "./stills.js";
 import {
   ASPECT_RATIOS,
   DURATION_AUTO,
@@ -758,13 +759,12 @@ export function lintStillsFile(
 ): string[] {
   const warnings: string[] = [];
   const seen = new Set<string>();
+  const { outputDir, stillsDir } = options;
   // The pngs this run will write, so a reference to one is not "missing".
   const producedHere = new Set(
-    options.outputDir === undefined
+    outputDir === undefined
       ? []
-      : file.stills.map((still) =>
-          resolve(options.outputDir as string, `${still.id}.png`)
-        )
+      : file.stills.map((still) => stillOutputPath(outputDir, still.id))
   );
   for (const still of file.stills) {
     // Unreachable via loadStillsFile (the schema rejects duplicates); reachable
@@ -786,7 +786,6 @@ export function lintStillsFile(
         `${still.id}: size "${still.size}" is ignored — Nano Banana takes an aspect ratio, not pixels; set \`ratio\` instead`
       );
     }
-    const { stillsDir } = options;
     if (stillsDir === undefined) {
       continue;
     }

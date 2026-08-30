@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { rename, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -12,7 +13,7 @@ import {
   parseShotsFile,
   parseStillsFile,
 } from "../shots.js";
-import type { ShotsFile, Still, StillsFile } from "../types.js";
+import type { CharactersFile, ShotsFile, Still, StillsFile } from "../types.js";
 import { emit, note, ok, warn } from "./output.js";
 
 export interface CastSyncOptions {
@@ -118,7 +119,7 @@ function applyStills(raw: RawStillsFile, sheets: Still[]): void {
  * schema rejects — so find out here, with a message that names the cause,
  * rather than at load time with a message about `..`.
  */
-function stillsRefPrefix(shotsDir: string, outputDir: string): string {
+export function stillsRefPrefix(shotsDir: string, outputDir: string): string {
   const rel = relative(shotsDir, outputDir).replaceAll("\\", "/");
   const prefix = rel === "" ? "./" : `./${rel}/`;
   if (!isLocalPathSafe(`${prefix}probe.png`)) {
@@ -131,6 +132,21 @@ function stillsRefPrefix(shotsDir: string, outputDir: string): string {
     );
   }
   return prefix;
+}
+
+/**
+ * `characters.json` is optional, so a film that has never had one reaches the
+ * generic loader — whose hint is "scaffold a new film with `vs init <dir>`".
+ * That is actively wrong advice for a film that already exists and would
+ * clobber it, so say what is actually missing and what it looks like.
+ */
+async function loadCast(path: string): Promise<CharactersFile> {
+  if (!existsSync(path)) {
+    throw new VsError("file_not_found", `no characters.json at ${path}`, {
+      hint: 'this film has no cast yet: create the file with {"characters": [{"id": "keeper", "name": "THE KEEPER", "block": "a lean weathered man in a near-black wool coat"}]}, then list ids in a shot\'s `cast`',
+    });
+  }
+  return await loadCharactersFile(path);
 }
 
 async function writeAtomic(path: string, value: unknown): Promise<void> {
@@ -156,7 +172,7 @@ export async function runCastSync(
     ? resolve(options.stills)
     : siblingOf(shotsPath, "stills.json");
 
-  const characters = await loadCharactersFile(charactersPath);
+  const characters = await loadCast(charactersPath);
   // Twice each, on purpose: the raw object is what gets written back, the
   // validated one is what the planner reads. See RawShotsFile above.
   const shotsRaw = (await loadRawFilmJson(shotsPath)) as RawShotsFile;

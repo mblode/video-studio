@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { planCastSync } from "./cast.js";
 import type { VsError } from "./errors.js";
-import type { CharactersFile, ShotsFile, StillsFile } from "./types.js";
+import type { CharactersFile, ShotsFile, Still, StillsFile } from "./types.js";
 
 const KEEPER = {
   binding: "his face, build and wardrobe only",
@@ -260,6 +260,39 @@ describe("planCastSync sheets", () => {
     expect(result.stills[0]?.prompt).toContain("Seated at a desk.");
   });
 
+  it("clears a sheet field the character no longer sets", () => {
+    // Merging over the existing still made removal impossible: dropping
+    // `references` or `seed` left the old value in place, `--check` reported
+    // the film in sync, and the sheet kept generating against a reference the
+    // author had deleted.
+    const shots = shotsFile([{ cast: ["keeper"], id: "a1", prompt: "p" }]);
+    const withExtras = plan(
+      shots,
+      characters({
+        characters: [
+          {
+            ...KEEPER,
+            sheet: { references: ["./refs/keeper.jpg"], seed: 4021 },
+          },
+        ],
+      })
+    );
+    expect(withExtras.stills[0]).toMatchObject({
+      references: ["./refs/keeper.jpg"],
+      seed: 4021,
+    });
+
+    // Same film, same still already on disk, but the character no longer sets
+    // either field.
+    const stripped = plan(
+      shots,
+      characters({ characters: [{ ...KEEPER, sheet: {} }] }),
+      { stills: [withExtras.stills[0] as Still] }
+    );
+    expect(stripped.stills[0]?.references).toBeUndefined();
+    expect(stripped.stills[0]?.seed).toBeUndefined();
+  });
+
   it("refuses to overwrite a hand-written still that shares the derived id", () => {
     expect(() =>
       plan(
@@ -346,7 +379,10 @@ describe("planCastSync refuses what generate would refuse", () => {
     expect(result.warnings.join(" ")).toContain("listed twice");
   });
 
-  it("warns when a sheet is also referenced by hand", () => {
+  it("binds the hand-written copy when a sheet is referenced twice", () => {
+    // The sheet IS in the payload, just not under sync's marker. Emitting a
+    // block that named no image would leave a reference bound to nothing —
+    // the very thing lintOrdinalBinding flags.
     const result = plan(
       shotsFile([
         {
@@ -354,6 +390,7 @@ describe("planCastSync refuses what generate would refuse", () => {
           id: "a1",
           prompt: "p",
           references: [
+            { role: "first_frame", type: "image", url: "./stills/open.png" },
             {
               role: "reference_image",
               type: "image",
@@ -363,7 +400,8 @@ describe("planCastSync refuses what generate would refuse", () => {
         },
       ])
     );
-    expect(result.shots.get("a1")?.references).toHaveLength(1);
+    expect(result.shots.get("a1")?.references).toHaveLength(2);
+    expect(result.shots.get("a1")?.castPrompt).toContain("use @Image 2 for");
     expect(result.warnings.join(" ")).toContain(
       "by hand as well as through cast"
     );

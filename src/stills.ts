@@ -4,33 +4,35 @@ import { VsError } from "./errors.js";
 import type { Still } from "./types.js";
 
 /**
- * A stills file is a DAG, not a list.
- *
- * `films/lighthouse` chains nine of its twelve stills off one earlier still's
- * png, and a character sheet makes that structural rather than incidental:
- * every keyframe that binds a likeness references a sheet the same file
- * produces. Generating the whole file concurrently therefore races its own
- * inputs — on a first run the dependants read a png that does not exist yet.
- *
- * Nothing in the schema declares the edge, and nothing needs to. A reference
- * that resolves to the path some other still WRITES is an edge, and that is the
- * same `outputDir`-plus-id mapping the rest of the CLI already uses to answer
- * "which still is this shot's keyframe".
+ * Where `vs stills` writes one still. The single spelling of the
+ * `outputDir`-plus-id mapping: the wave graph, the missing-reference lint and
+ * the fixture drift guard all have to agree on it, and three hand-rolled
+ * copies is how they quietly stop agreeing.
  */
+export function stillOutputPath(outputDir: string, id: string): string {
+  return resolve(join(outputDir, `${id}.png`));
+}
+
 function outputPathsById(
   stills: readonly Still[],
   outputDir: string
 ): Map<string, string> {
   return new Map(
-    stills.map((still) => [
-      still.id,
-      resolve(join(outputDir, `${still.id}.png`)),
-    ])
+    stills.map((still) => [still.id, stillOutputPath(outputDir, still.id)])
   );
 }
 
 /**
  * Which stills in this file each still must wait for.
+ *
+ * A stills file is a DAG, not a list. `films/lighthouse` chains nine of its
+ * twelve stills off one earlier still's png, and a character sheet makes that
+ * structural rather than incidental: every keyframe that binds a likeness
+ * references a sheet the same file produces. Generating the whole file
+ * concurrently therefore races its own inputs — on a first run the dependants
+ * read a png that does not exist yet. Nothing in the schema declares the edge,
+ * and nothing needs to: a reference that resolves to the path some other still
+ * WRITES is an edge.
  *
  * Only edges INSIDE the given set count. A reference to a png some earlier run
  * left on disk, or to a still excluded by `--still`, is not a dependency this

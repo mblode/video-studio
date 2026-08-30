@@ -178,7 +178,6 @@ export interface ShotPlan {
   castPrompt?: string;
   /** Members whose sheet this shot binds, so unused sheets can be reported. */
   bound: string[];
-  textOnly: boolean;
 }
 
 function planShot(input: {
@@ -198,7 +197,7 @@ function planShot(input: {
   );
   const cast = dedupeCast(shot.cast ?? [], shot.id, warnings);
   if (cast.length === 0) {
-    return { bound: [], references: authored, textOnly: false };
+    return { bound: [], references: authored };
   }
 
   const textOnly = textOnlyShot(shot, modelId);
@@ -209,19 +208,29 @@ function planShot(input: {
 
   const bound: string[] = [];
   const references = [...authored];
+  // Position in `references`, per member — not the reference object. Keying by
+  // object would collapse an aliased array to one entry and report the wrong
+  // ordinal, which is the exact hazard `referenceOrdinals` documents.
+  const slotOf = new Map<string, number>();
   for (const member of resolved) {
     if (!member.sheet || textOnly) {
       continue;
     }
     const url = sheetPath(member.key, stillsRefPrefix);
-    if (authored.some((ref) => ref.url === url)) {
+    const alreadyThere = authored.findIndex((ref) => ref.url === url);
+    if (alreadyThere !== -1) {
+      // The sheet IS in the payload, just not under sync's marker. Bind the
+      // author's copy rather than emitting a block that names no image at all,
+      // and still say the duplicate should go.
+      slotOf.set(member.key, alreadyThere);
       warnings.push(
-        `${shot.id}: references ${url} by hand as well as through cast — drop the hand-written one, or "${member.key}" from cast, or the model sees the same sheet twice and every later ordinal shifts`
+        `${shot.id}: references ${url} by hand as well as through cast — the block binds the hand-written one; drop it, or "${member.key}" from cast, so sync owns the reference`
       );
       continue;
     }
     // APPEND, never insert. A hand-authored `@Image 2` in the shot prompt must
     // never move under the author, and a frame role must keep `@Image 1`.
+    slotOf.set(member.key, references.length);
     references.push({
       cast: member.key,
       role: "reference_image",
@@ -234,12 +243,12 @@ function planShot(input: {
   // Ordinals come from the FINAL array, so the sentences describe what the
   // model will actually receive rather than what cast alone would imply.
   const ordinals = referenceOrdinals(references);
-  const ordinalFor = new Map(
-    references.map((ref, index) => [ref, ordinals[index]] as const)
-  );
   const sentences = resolved.map((member) => {
-    const ref = references.find((candidate) => candidate.cast === member.key);
-    return castSentence(member, ref ? ordinalFor.get(ref) : undefined);
+    const slot = slotOf.get(member.key);
+    return castSentence(
+      member,
+      slot === undefined ? undefined : ordinals[slot]
+    );
   });
 
   if (textOnly && resolved.some((member) => member.sheet)) {
@@ -252,21 +261,25 @@ function planShot(input: {
     bound,
     castPrompt: sentences.join(" "),
     references,
-    textOnly,
   };
 }
 
-function assertWithinSlots(
-  shot: Shot,
-  references: ShotReference[],
-  modelId: string
-): void {
-  const slots = lookupModel(modelId).referenceSlots;
-  const cap = slots.reference_image;
+/**
+ * Refuse a shot the model would refuse anyway, while sync is still free.
+ *
+ * Only fires when sync ADDED references. A film already over the cap by hand is
+ * `vs generate`'s to report: failing here would blame the cast for an overflow
+ * it did not cause, and would block a sync that makes the file no worse.
+ */
+function assertWithinSlots(shot: Shot, plan: ShotPlan, modelId: string): void {
+  if (plan.bound.length === 0) {
+    return;
+  }
+  const cap = lookupModel(modelId).referenceSlots.reference_image;
   if (cap === undefined) {
     return;
   }
-  const used = references.filter(
+  const used = plan.references.filter(
     (ref) => ref.role === "reference_image"
   ).length;
   if (used <= cap) {
@@ -274,7 +287,7 @@ function assertWithinSlots(
   }
   throw new VsError(
     "invalid_input",
-    `shot ${shot.id}: ${used} reference images after adding its cast, but ${modelId} accepts ${cap}`,
+    `shot ${shot.id}: ${used} reference images once its ${plan.bound.length} cast sheet(s) are added, but ${modelId} accepts ${cap}`,
     {
       hint: "trim `cast`, or trim the hand-authored pack — `vs generate` would refuse this shot anyway, and finding out here costs nothing",
     }
@@ -282,18 +295,19 @@ function assertWithinSlots(
 }
 
 /**
- * The stills entry for one sheet, preserving anything the author edited that
- * sync does not own. Sync owns the prompt, the ratio, the references and the
- * seed — everything derived from characters.json — and nothing else.
+ * The stills entry for one sheet, built wholly from characters.json.
+ *
+ * Deliberately NOT merged over the existing still. Spreading the previous
+ * entry made removal impossible: drop `references` or `seed` from a character
+ * and the old value survived, `--check` reported the film in sync, and the
+ * sheet kept generating against a reference the author had deleted. Every
+ * field here is derived, and a sheet still has no author-owned field to
+ * preserve — `planCastSync` refuses outright to touch a still that is missing
+ * the `cast` marker, so ownership is settled before this is ever called.
  */
-function sheetStill(
-  member: CastMember,
-  style: string | undefined,
-  existing: Still | undefined
-): Still {
+function sheetStill(member: CastMember, style: string | undefined): Still {
   const sheet = member.sheet as CharacterSheet;
   return {
-    ...existing,
     cast: member.key,
     id: sheetStillId(member.key),
     prompt: composeSheetPrompt(member, style),
@@ -341,7 +355,7 @@ export function planCastSync(input: {
       stillsRefPrefix,
       warnings,
     });
-    assertWithinSlots(shot, plan.references, modelId);
+    assertWithinSlots(shot, plan, modelId);
     plans.set(shot.id, plan);
     for (const key of plan.bound) {
       boundAnywhere.add(key);
@@ -372,7 +386,7 @@ export function planCastSync(input: {
         }
       );
     }
-    sheets.push(sheetStill(member, characters.style, existing));
+    sheets.push(sheetStill(member, characters.style));
   }
 
   return { shots: plans, stills: sheets, warnings };

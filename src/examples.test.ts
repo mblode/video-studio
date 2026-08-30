@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { planCastSync } from "./cast.js";
+import { stillsRefPrefix } from "./commands/cast.js";
 import {
   lintShotsFile,
   lintStillsFile,
@@ -104,7 +105,12 @@ describe("shipped examples", () => {
       characters,
       shots,
       stills,
-      stillsRefPrefix: `${(stills.outputDir ?? "./stills").replace(/\/$/u, "")}/`,
+      // The command's own helper, not a second spelling of it: a guard that
+      // computed the prefix differently would pass while testing the wrong path.
+      stillsRefPrefix: stillsRefPrefix(
+        dir,
+        join(dir, stills.outputDir ?? "./stills")
+      ),
     });
     for (const shot of shots.shots) {
       const shotPlan = plan.shots.get(shot.id);
