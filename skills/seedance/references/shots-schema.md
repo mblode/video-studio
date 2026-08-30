@@ -120,9 +120,13 @@ rewrites it wholesale every run, so edit `characters.json`, never the block.
 prompt — the documented order of binding block, plan, invariants.
 
 Cast references are **appended after** every hand-authored reference, never
-inserted. That is what guarantees an `@Image 2` you typed still means the same
-reference after a sync, and that a frame role keeps `@Image 1`. Run
-`vs cast sync --check` in CI: it writes nothing and exits non-zero on drift.
+inserted, and a reference that already points at the sheet's path is **adopted
+in place** rather than duplicated. That is what guarantees an `@Image 2` you
+typed still means the same reference after a sync, and that a frame role keeps
+`@Image 1` — and it is how you migrate a hand-authored film: point the
+reference you already have at `<stills>/char-<id>.png`, add `cast`, and nothing
+renumbers. Run `vs cast sync --check` in CI: it writes nothing and exits
+non-zero on drift.
 
 ## shots.json
 
