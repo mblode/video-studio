@@ -165,8 +165,7 @@ function keyChecks(): DoctorCheck[] {
           status: "ok",
         }
       : {
-          detail:
-            "needed for BytePlus Seedance 2.0 (films/lighthouse) and Seedream stills",
+          detail: "needed for BytePlus Seedance 2.x and `vs status <task-id>`",
           label: "ARK_API_KEY not set",
           status: "skip",
         },

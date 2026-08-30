@@ -200,7 +200,7 @@ export function buildProgram(): Command {
   program
     .command("stills")
     .description(
-      "Generate reference stills (Seedream via Ark, or Nano Banana when the stills file's top-level `model` is a gemini-* id)"
+      "Generate reference stills with Nano Banana (Gemini); set the stills file's top-level `model` to pick the variant"
     )
     .argument("<stills-file>", "path to stills.json")
     .option("--still <id...>", "only generate these still ids")

@@ -30,10 +30,10 @@ import type { ShotsFile, StillsFile } from "../types.js";
 /**
  * Load `.env` and build an authenticated Ark client.
  *
- * Still exported for the STILLS path (Seedream), which is deliberately not
- * behind the video provider spec: it already routes two backends by model id
- * in stills.ts, and it costs cents rather than dollars. Video commands must
- * use `createVideoModel` instead.
+ * Exported for the two commands that talk to the Ark endpoint directly rather
+ * than through a model: `vs status <task-id>`, which fetches a task by id, and
+ * `vs doctor`, which probes the endpoint shape. Video generation must use
+ * `createVideoModel` instead. Stills no longer touch Ark at all.
  */
 export function createArkClient(): ArkClient {
   loadEnv();

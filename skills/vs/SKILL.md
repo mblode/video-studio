@@ -1,6 +1,6 @@
 ---
 name: vs
-description: Runs the video-studio `vs` CLI that turns a shot list into AI-generated video clips via BytePlus Seedance 2.x, with reference stills from Seedream or Nano Banana, Lyria score beds, and ElevenLabs narration. Covers every command (init, doctor, stills, generate, score, narrate, status, use, download, animatic, review, stitch, upscale, share), immutable clip revisions, the draft-to-final cost ladder, the audio mix, and model ids and rate limits. Use when the user wants to "run vs", "generate the film", "generate stills", "make the animatic", "stitch the cut", "score the film", "narrate", "check task status", "roll back a take", "share the film", "upscale for delivery", "do a draft pass", "the mix sounds wrong", "which model should I use", or asks what a vs command or flag does. For authoring the shots.json/stills.json content itself, use seedance.
+description: Runs the video-studio `vs` CLI that turns a shot list into AI-generated video clips via BytePlus Seedance 2.x, with reference stills from Nano Banana, Lyria score beds, and ElevenLabs narration. Covers every command (init, doctor, stills, generate, score, narrate, status, use, download, animatic, review, stitch, upscale, share), immutable clip revisions, the draft-to-final cost ladder, the audio mix, and model ids and rate limits. Use when the user wants to "run vs", "generate the film", "generate stills", "make the animatic", "stitch the cut", "score the film", "narrate", "check task status", "roll back a take", "share the film", "upscale for delivery", "do a draft pass", "the mix sounds wrong", "which model should I use", or asks what a vs command or flag does. For authoring the shots.json/stills.json content itself, use seedance.
 ---
 
 # vs
@@ -103,7 +103,7 @@ commands.
 
 `AI_GATEWAY_API_KEY` (or `VERCEL_OIDC_TOKEN`) in `.env` for the default
 Seedance 2.5 path; `ARK_API_KEY` for BytePlus Seedance 2.0 / lighthouse and
-Seedream stills; `GEMINI_API_KEY` for Nano Banana stills and `vs score` (Lyria);
+`vs status <task-id>`; `GEMINI_API_KEY` for Nano Banana stills and `vs score` (Lyria);
 `ELEVENLABS_API_KEY` (+ `ELEVENLABS_VOICE_ID` or `--voice`) for `vs narrate`.
 See `.env.example`.
 
