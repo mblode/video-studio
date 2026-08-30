@@ -2,6 +2,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { ImageModelV4 } from "@ai-sdk/provider";
 
 import { requireGeminiApiKey } from "./env.js";
+import { VsError } from "./errors.js";
 
 /**
  * Stills, on the AI SDK.
@@ -24,7 +25,30 @@ import { requireGeminiApiKey } from "./env.js";
 /** Nano Banana Pro — the professional-asset Gemini 3 Pro Image model. */
 export const GEMINI_PRO_IMAGE_MODEL = "gemini-3-pro-image";
 
+/**
+ * Every id this file knows how to route. Google is the only backend, so a
+ * `seedream-*` or `flux-*` id left over from an earlier stills file is not a
+ * model this CLI can reach — it would be handed to the Gemini image endpoint
+ * and rejected there, AFTER prompting for a key and spending a round trip.
+ * `--dry-run` never calls this, so nothing else catches it.
+ */
+const GEMINI_IMAGE_MODEL = /^(?:models\/)?gemini-/u;
+
+export function assertImageModelSupported(modelId: string): void {
+  if (GEMINI_IMAGE_MODEL.test(modelId)) {
+    return;
+  }
+  throw new VsError(
+    "invalid_input",
+    `stills model "${modelId}" is not one this CLI can run`,
+    {
+      hint: `stills run on Google only: use "${GEMINI_PRO_IMAGE_MODEL}", or drop the top-level \`model\` to take the default. Seedream and Flux need \`npm i @ai-sdk/fal\` and a line in src/images.ts.`,
+    }
+  );
+}
+
 export function resolveImageModel(modelId: string): ImageModelV4 {
+  assertImageModelSupported(modelId);
   return createGoogleGenerativeAI({ apiKey: requireGeminiApiKey() }).image(
     modelId
   );

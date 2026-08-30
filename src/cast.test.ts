@@ -379,31 +379,42 @@ describe("planCastSync refuses what generate would refuse", () => {
     expect(result.warnings.join(" ")).toContain("listed twice");
   });
 
-  it("binds the hand-written copy when a sheet is referenced twice", () => {
-    // The sheet IS in the payload, just not under sync's marker. Emitting a
-    // block that named no image would leave a reference bound to nothing —
-    // the very thing lintOrdinalBinding flags.
+  it("adopts an existing reference to the sheet in place", () => {
+    // The migration path for a hand-authored film: point the reference you
+    // already have at the sheet path and add `cast`. Appending a second copy
+    // would duplicate the image AND shift every later ordinal, so the shot's
+    // own @Image 3 would quietly start meaning something else.
     const result = plan(
       shotsFile([
         {
           cast: ["keeper"],
           id: "a1",
-          prompt: "p",
+          prompt: "Use @Image 2 for the room.",
           references: [
-            { role: "first_frame", type: "image", url: "./stills/open.png" },
             {
               role: "reference_image",
               type: "image",
               url: "./stills/char-keeper.png",
             },
+            {
+              role: "reference_image",
+              type: "image",
+              url: "./stills/room.png",
+            },
           ],
         },
       ])
     );
-    expect(result.shots.get("a1")?.references).toHaveLength(2);
-    expect(result.shots.get("a1")?.castPrompt).toContain("use @Image 2 for");
-    expect(result.warnings.join(" ")).toContain(
-      "by hand as well as through cast"
-    );
+    const shot = result.shots.get("a1");
+    expect(shot?.references).toHaveLength(2);
+    expect(shot?.references[0]).toMatchObject({
+      cast: "keeper",
+      url: "./stills/char-keeper.png",
+    });
+    // Position kept, so the hand-written @Image 2 still means the room.
+    expect(shot?.references[1]?.url).toBe("./stills/room.png");
+    expect(shot?.castPrompt).toContain("use @Image 1 for");
+    // Adopted counts as bound, so the sheet is still generated.
+    expect(result.stills.map((sheet) => sheet.id)).toEqual(["char-keeper"]);
   });
 });

@@ -217,15 +217,28 @@ function planShot(input: {
       continue;
     }
     const url = sheetPath(member.key, stillsRefPrefix);
-    const alreadyThere = authored.findIndex((ref) => ref.url === url);
-    if (alreadyThere !== -1) {
-      // The sheet IS in the payload, just not under sync's marker. Bind the
-      // author's copy rather than emitting a block that names no image at all,
-      // and still say the duplicate should go.
-      slotOf.set(member.key, alreadyThere);
-      warnings.push(
-        `${shot.id}: references ${url} by hand as well as through cast — the block binds the hand-written one; drop it, or "${member.key}" from cast, so sync owns the reference`
-      );
+    // ADOPT an existing reference to the same sheet rather than appending a
+    // second one. This is what makes migrating a hand-authored film painless:
+    // point the reference you already have at the sheet path, add `cast`, and
+    // the reference keeps its position — so every other `@Image N` in the
+    // prompt still means what it meant. Appending here would duplicate the
+    // image and shift every ordinal after it.
+    const existing = authored.findIndex(
+      (ref) => ref.url === url && ref.role === "reference_image"
+    );
+    if (existing !== -1) {
+      references[existing] = { ...references[existing], cast: member.key };
+      slotOf.set(member.key, existing);
+      bound.push(member.key);
+      continue;
+    }
+    // A frame role at the sheet's path is a different intent — the sheet is the
+    // opening composition, not a likeness pack. Bind its ordinal so the block
+    // names a real image, but leave the role alone.
+    const asFrame = authored.findIndex((ref) => ref.url === url);
+    if (asFrame !== -1) {
+      slotOf.set(member.key, asFrame);
+      bound.push(member.key);
       continue;
     }
     // APPEND, never insert. A hand-authored `@Image 2` in the shot prompt must

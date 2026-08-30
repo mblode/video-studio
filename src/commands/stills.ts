@@ -6,7 +6,11 @@ import { generateImage } from "ai";
 import pLimit from "p-limit";
 
 import { formatError, VsError } from "../errors.js";
-import { GEMINI_PRO_IMAGE_MODEL, resolveImageModel } from "../images.js";
+import {
+  assertImageModelSupported,
+  GEMINI_PRO_IMAGE_MODEL,
+  resolveImageModel,
+} from "../images.js";
 import { safeJoin } from "../paths.js";
 import { lintStillsFile } from "../shots.js";
 import { stillIdFor, stillWaves } from "../stills.js";
@@ -151,6 +155,10 @@ export async function runStills(
   // file produces), so decide the order before anything else reads it: a cycle
   // is unrunnable and should say so for free rather than after the first call.
   const waves = stillWaves(stills, { outputDir, stillsDir });
+  // Before the dry-run branch on purpose: a model this CLI cannot route is the
+  // kind of thing a free preflight exists to catch, and `resolveImageModel` is
+  // only reached once you are already spending.
+  assertImageModelSupported(model);
 
   // `vs generate` has printed its lints since before `--dry-run` existed; the
   // stills side had the same lints written and never called. `outputDir` is
