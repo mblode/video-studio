@@ -310,7 +310,6 @@ uses the wrong reference for the wrong job and looks like a model failure.
 | --- | --- |
 | Duplicate still id | The later one overwrites the earlier one's png |
 | No `seed` | A re-run rolls a new face and composition instead of reproducing the keyframe |
-| Prompt over 200 words | An image prompt is one composition, not a timed sequence; it dilutes past ~200. Move the shared look into the shots file's `film.promptPreamble` |
 | `size` set on a `gemini-*` model | Nano Banana takes an aspect ratio, not pixels. Set `ratio` |
 | Local reference not on disk | The still generates without it, silently losing that likeness or style |
 

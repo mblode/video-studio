@@ -114,8 +114,9 @@ pose, plain background — and an explicit "no text, no labels, no numbering"
 clause, because the sheet is bound as a reference image and Seedance renders
 lettering it finds in a reference into the video. A likeness photo, if you have
 one, goes in the still's `references` array; a style-only still with none is
-valid. Keep a still prompt under 200 words: it is one composition, not a timed
-sequence.
+valid. Length is not the constraint it once was: Nano Banana Pro takes 131,072
+input tokens and reasons over the whole prompt, so a narrative paragraph beats a
+terse one. Write what the frame needs.
 
 **Do not hand-write character sheets.** Put the character in `characters.json`
 and let `vs cast sync` compose the sheet still, including that clause, from the

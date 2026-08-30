@@ -656,22 +656,24 @@ describe("loadJson failures", () => {
 });
 
 describe("lintStillsFile", () => {
-  it("warns on a bloated prompt but no longer demands a seed", async () => {
-    // The seed advice went with Seedream: Nano Banana rolls its own, so telling
-    // an author to set one was pointing at a field the model discards.
+  it("demands neither a seed nor a short prompt", async () => {
+    // Both rules went with Seedream. Nano Banana rolls its own seed, and its
+    // input context is 131,072 tokens, so the old 200-word cap was three
+    // orders of magnitude below the real limit — fitted to films/lighthouse
+    // (125 words at its longest), not to any model. It also advised moving the
+    // shared look into `film.promptPreamble`, which a stills file has no such
+    // field for.
     const { lintStillsFile } = await import("./shots.js");
     const warnings = lintStillsFile({
       stills: [
         { id: "unseeded", prompt: "one clean composition" },
         {
-          id: "bloated",
-          prompt: Array.from({ length: 220 }, () => "word").join(" "),
+          id: "long",
+          prompt: Array.from({ length: 420 }, () => "word").join(" "),
         },
       ],
     });
-    expect(warnings.filter((w) => w.includes("no seed"))).toHaveLength(0);
-    const long = warnings.find((w) => w.includes("220 words"));
-    expect(long?.startsWith("bloated:")).toBe(true);
+    expect(warnings).toEqual([]);
   });
 
   it("warns that a pixel size is ignored, whatever the model", async () => {

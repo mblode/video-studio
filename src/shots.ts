@@ -119,10 +119,6 @@ function boundOrdinals(prompt: string): Map<ShotReference["type"], number> {
   return highest;
 }
 
-// A still is one composition, not a timed sequence, so its budget is far
-// tighter: past this the image models start averaging the description away.
-const MAX_STILL_PROMPT_WORDS = 200;
-
 // Seedance renders "languid" vocabulary literally as slow-motion. A cluster of
 // these terms in one prompt drags the whole shot; warn past two so a single
 // "gently" is fine but a soft-motion pile-up gets flagged toward brisk verbs.
@@ -746,6 +742,15 @@ export function lintShotsFile(
  * regenerate identically later, and Nano Banana ignores Seedream's pixel
  * `size` outright.
  *
+ * There is deliberately NO prompt-length warning here. The 200-word cap that
+ * used to live here was fitted to `films/lighthouse` (whose longest still
+ * prompt is 125 words) rather than to a model: Nano Banana Pro takes 131,072
+ * input tokens, so a 400-word prompt is a fraction of a percent of its budget,
+ * and `skills/nano-banana-2` explicitly prefers a narrative paragraph to a
+ * terse one. It also told you to move the shared look into
+ * `film.promptPreamble`, which a stills file does not have. It fired on every
+ * keyframe of a real film, all of which had produced approved images.
+ *
  * Pass `stillsDir` to also check that local references resolve on disk (a
  * reference that is not there produces a still with none of the likeness you
  * asked for, and no error). Pass `outputDir` too when the caller is about to
@@ -775,12 +780,6 @@ export function lintStillsFile(
       );
     }
     seen.add(still.id);
-    const words = wordCount(still.prompt);
-    if (words > MAX_STILL_PROMPT_WORDS) {
-      warnings.push(
-        `${still.id}: prompt is ${words} words — an image prompt dilutes past ~${MAX_STILL_PROMPT_WORDS}; describe one composition and move the shared look into the shots file's film.promptPreamble`
-      );
-    }
     if (still.size !== undefined) {
       warnings.push(
         `${still.id}: size "${still.size}" is ignored — Nano Banana takes an aspect ratio, not pixels; set \`ratio\` instead`
