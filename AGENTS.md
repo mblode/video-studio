@@ -167,12 +167,14 @@ it, delete it.
   on the first sync. (2) `--check` compares semantically, not by bytes, because
   oxfmt collapses short arrays and a byte diff would fight the formatter
   forever in CI. (3) Cast references are APPENDED after every hand-authored
-  reference, never inserted — that is what guarantees a hand-typed `@Image 2`
-  still means the same reference after a sync, and that a frame role keeps
-  `@Image 1`. On a model where `framesExcludeReferences` is true (2.0, H3) a
-  keyframed shot cannot carry both, so it degrades to a text-only block per
-  shot rather than writing a file that no longer loads; `films/lighthouse` is
-  entirely that case.
+  reference, never inserted, and a reference that ALREADY points at the sheet
+  path is adopted in place rather than duplicated — that is what guarantees a
+  hand-typed `@Image 2` still means the same reference after a sync, that a
+  frame role keeps `@Image 1`, and that pointing an existing reference at the
+  sheet is all it takes to migrate a hand-authored film. On a model where
+  `framesExcludeReferences` is true (2.0, H3) a keyframed shot cannot carry
+  both, so it degrades to a text-only block per shot rather than writing a file
+  that no longer loads; `films/lighthouse` is entirely that case.
 - **A stills file is a DAG, and `vs stills` now generates it in waves.** A
   keyframe that references the character sheet the same file produces is an
   edge, and `films/lighthouse` already chained nine stills off one plate; the

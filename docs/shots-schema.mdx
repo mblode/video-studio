@@ -66,8 +66,10 @@ from a shot as `id:variant`.
 
 A shot then carries `cast` (hand-authored) and `castPrompt` (generated — sync
 rewrites it wholesale, so edit `characters.json` instead). Cast references are
-appended after every hand-authored reference, so an `@Image 2` you typed keeps
-meaning the same reference and a frame role keeps `@Image 1`.
+appended after every hand-authored reference, and a reference already pointing
+at the sheet's path is adopted in place rather than duplicated — so an
+`@Image 2` you typed keeps meaning the same reference and a frame role keeps
+`@Image 1`.
 `vs cast sync --check` writes nothing and exits non-zero on drift.
 
 ## shots.json
