@@ -3,9 +3,12 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { planCastSync } from "./cast.js";
+import { stillsRefPrefix } from "./commands/cast.js";
 import {
   lintShotsFile,
   lintStillsFile,
+  loadCharactersFile,
   loadShotsFile,
   loadStillsFile,
 } from "./shots.js";
@@ -88,6 +91,39 @@ describe("shipped examples", () => {
         expect(produced).toContain(ref.url);
       }
     }
+  });
+
+  // `castPrompt` and the cast references are GENERATED, so the committed film
+  // can drift from its own generator the moment someone edits a block by hand.
+  // This is the same check `vs cast sync --check` runs in a film directory.
+  it("lighthouse is in sync with its characters.json", async () => {
+    const dir = join(repoRoot, "films/lighthouse");
+    const shots = await loadShotsFile(join(dir, "shots.json"));
+    const stills = await loadStillsFile(join(dir, "stills.json"));
+    const characters = await loadCharactersFile(join(dir, "characters.json"));
+    const plan = planCastSync({
+      characters,
+      shots,
+      stills,
+      // The command's own helper, not a second spelling of it: a guard that
+      // computed the prefix differently would pass while testing the wrong path.
+      stillsRefPrefix: stillsRefPrefix(
+        dir,
+        join(dir, stills.outputDir ?? "./stills")
+      ),
+    });
+    for (const shot of shots.shots) {
+      const shotPlan = plan.shots.get(shot.id);
+      expect([shot.id, shotPlan?.castPrompt]).toEqual([
+        shot.id,
+        shot.castPrompt,
+      ]);
+      expect(shotPlan?.references ?? []).toEqual(shot.references ?? []);
+    }
+    // Every shot is keyframed on a 2.0 model, so no sheet is bound and none is
+    // generated — the documented shape for a character that only ever appears
+    // in frame mode, and what keeps the 12/12 assertion above true.
+    expect(plan.stills).toEqual([]);
   });
 
   it("lighthouse ships the complete planning ladder", () => {

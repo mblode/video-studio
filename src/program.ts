@@ -1,6 +1,7 @@
 import { Command, InvalidArgumentError } from "commander";
 
 import { runAnimatic } from "./commands/animatic.js";
+import { runCastSync } from "./commands/cast.js";
 import { packageInfo } from "./commands/context.js";
 import { runDoctor } from "./commands/doctor.js";
 import { runDownload } from "./commands/download.js";
@@ -199,7 +200,7 @@ export function buildProgram(): Command {
   program
     .command("stills")
     .description(
-      "Generate reference stills (Seedream via Ark, or Nano Banana when the stills file's top-level `model` is a gemini-* id)"
+      "Generate reference stills with Nano Banana (Gemini); set the stills file's top-level `model` to pick the variant"
     )
     .argument("<stills-file>", "path to stills.json")
     .option("--still <id...>", "only generate these still ids")
@@ -223,6 +224,39 @@ export function buildProgram(): Command {
         force: options.force,
         output: options.output,
         still: options.still,
+      });
+    });
+
+  const cast = program
+    .command("cast")
+    .description(
+      "Character sheets: expand characters.json into shots.json and stills.json"
+    );
+
+  cast
+    .command("sync")
+    .description(
+      "Write each shot's cast block and sheet references into shots.json, and its sheets into stills.json"
+    )
+    .argument("<shots-file>", "path to shots.json")
+    .option(
+      "--characters <file>",
+      "path to characters.json (default: beside the shots file)"
+    )
+    .option(
+      "--stills <file>",
+      "path to stills.json (default: beside the shots file)"
+    )
+    .option(
+      "--check",
+      "report drift and write nothing; exits non-zero when out of sync",
+      false
+    )
+    .action(async (shotsFile: string, options) => {
+      await runCastSync(shotsFile, {
+        characters: options.characters,
+        check: options.check,
+        stills: options.stills,
       });
     });
 

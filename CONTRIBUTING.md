@@ -67,6 +67,13 @@ purpose, so it will not reformat anything you did not touch.
 - **Pure planners, thin commands.** The arg builders and planners in `src/` are
   pure functions with unit tests; the `commands/` layer does IO. New logic goes
   in the pure half where it can be tested without a network or a GPU.
+- **`vs cast sync` is the only command that writes a film's JSON back.** It
+  mutates the raw `JSON.parse` object rather than zod's output, because zod
+  rebuilds its result in schema key order and serialising that would reorder
+  every shot in the film. It also compares semantically rather than by bytes:
+  the formatter collapses short arrays onto one line, so a byte comparison
+  would have `--check` and `ultracite` disagreeing forever. After syncing a
+  film that lives in this repo, run `npx ultracite fix <files>`.
 - ESM only. Relative imports carry a `.js` extension or the build fails.
 
 `AGENTS.md` carries the gotchas that are not visible from the code, and the

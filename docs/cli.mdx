@@ -11,6 +11,7 @@ description: Every vs command and the flags that matter across the pipeline.
 | --- | --- |
 | `vs init <dir>` | Scaffold a film (`shots.json`, `stills.json`, README) |
 | `vs doctor [task-id]` | Check Node, `.env`, keys, ffmpeg, card tools |
+| `vs cast sync <shots-file>` | Expand `characters.json` into cast blocks and sheet references |
 | `vs stills <stills-file>` | Generate reference stills into `stills/` |
 | `vs generate <shots-file>` | Submit, poll, download clips to `output/clips/<shot>/vNNN.mp4` |
 | `vs score <prompt>` | Lyria instrumental bed → `score-vNNN.mp3` |
@@ -60,7 +61,7 @@ description: Every vs command and the flags that matter across the pipeline.
 | Key | Needed for |
 | --- | --- |
 | `AI_GATEWAY_API_KEY` | Default Seedance 2.5 (`bytedance/seedance-2.5`) |
-| `ARK_API_KEY` | BytePlus Seedance 2.0 / `dreamina-*`, Seedream stills |
+| `ARK_API_KEY` | BytePlus Seedance 2.x / `dreamina-*` ids |
 | `GEMINI_API_KEY` | Nano Banana stills, `vs score` |
 | `ELEVENLABS_API_KEY` (+ voice) | `vs narrate` |
 

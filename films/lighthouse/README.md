@@ -23,8 +23,9 @@ The preproduction documents are part of the example:
 3. [Beat sheet](beat-sheet.md) — escalation, setups/payoffs, anchor map
 4. [Screenplay](screenplay.md) — the silent story in scene order
 5. [Shot list](shot-list.md) — camera, action, audio, continuity per generation
-6. [Stills](stills.json) — literal first-frame keyframes
-7. [Shots](shots.json) — validated Seedance requests
+6. [Characters](characters.json) — the cast, defined once
+7. [Stills](stills.json) — literal first-frame keyframes
+8. [Shots](shots.json) — validated Seedance requests
 
 The documents progress from story decisions to build instructions. If an idea
 changes upstream, update everything below it before paying for a generation.
@@ -43,6 +44,9 @@ vs doctor
 Then climb the cost ladder:
 
 ```bash
+# Free: write each shot's cast block from characters.json.
+vs cast sync films/lighthouse/shots.json
+
 # Free: validate every request and see the full price.
 vs generate films/lighthouse/shots.json --dry-run
 
@@ -149,6 +153,15 @@ adaptive ratio, while vertical tower, stair, chain, and bodies make the
 almost-square composition feel claustrophobic. Orthochromatic monochrome,
 crushed shadows, halation, grain, and gate weave define the look without
 copying another film's shots or characters.
+
+**The cast is defined once and carried as text.** `characters.json` holds THE
+KEEPER and THE RELIEF; `vs cast sync` writes each shot's `castPrompt` from it,
+so the two blocks are stated in one place instead of being retyped on every
+shot. No character sheet is generated here on purpose: every shot is keyframed
+on Seedance 2.0, which refuses a `first_frame` mixed with reference images, so
+the likeness rides in the prompt text — a sheet would be an image call nothing
+could bind. On a 2.5 film the same `characters.json` would bind sheets at
+`@Image 2` instead.
 
 **Every generation is independently anchored.** Each shot has one dedicated
 `first_frame` still and matching seed. Privacy-safe variants keep versioned

@@ -1,6 +1,6 @@
 ---
 name: vs
-description: Runs the video-studio `vs` CLI that turns a shot list into AI-generated video clips via BytePlus Seedance 2.x, with reference stills from Seedream or Nano Banana, Lyria score beds, and ElevenLabs narration. Covers every command (init, doctor, stills, generate, score, narrate, status, use, download, animatic, review, stitch, upscale, share), immutable clip revisions, the draft-to-final cost ladder, the audio mix, and model ids and rate limits. Use when the user wants to "run vs", "generate the film", "generate stills", "make the animatic", "stitch the cut", "score the film", "narrate", "check task status", "roll back a take", "share the film", "upscale for delivery", "do a draft pass", "the mix sounds wrong", "which model should I use", or asks what a vs command or flag does. For authoring the shots.json/stills.json content itself, use seedance.
+description: Runs the video-studio `vs` CLI that turns a shot list into AI-generated video clips via BytePlus Seedance 2.x, with reference stills from Nano Banana, Lyria score beds, and ElevenLabs narration. Covers every command (init, doctor, stills, generate, score, narrate, status, use, download, animatic, review, stitch, upscale, share), immutable clip revisions, the draft-to-final cost ladder, the audio mix, and model ids and rate limits. Use when the user wants to "run vs", "generate the film", "generate stills", "make the animatic", "stitch the cut", "score the film", "narrate", "check task status", "roll back a take", "share the film", "upscale for delivery", "do a draft pass", "the mix sounds wrong", "which model should I use", or asks what a vs command or flag does. For authoring the shots.json/stills.json content itself, use seedance.
 ---
 
 # vs
@@ -26,6 +26,7 @@ spend, and `--dry-run` costs nothing.
 | ------------------------------ | ------------------------------------------------------------------------ |
 | `vs init <dir>`                | Scaffold a film (shots.json, stills.json, README) with 720p defaults    |
 | `vs doctor [task-id]`          | Check Node, `.env`, keys, ffmpeg, card tools; with an id, the endpoint shape |
+| `vs cast sync <shots-file>`    | Expand `characters.json` into cast blocks, sheet references and sheet stills |
 | `vs stills <stills-file>`      | Generate reference stills into `stills/`                                |
 | `vs generate <shots-file>`     | Submit, poll, download immutable clips to `output/clips/<shot>/vNNN.mp4` |
 | `vs score <prompt>`            | Lyria 3 Pro instrumental bed → `score-vNNN.mp3` at the film root        |
@@ -56,6 +57,20 @@ commands.
 
 ## The things that bite
 
+- **`vs cast sync` is authoring-time codegen, and it runs BEFORE `vs stills`.**
+  Nothing at generate time reads `characters.json`: sync writes literal
+  `castPrompt` text and literal sheet references into `shots.json`, and the
+  sheet stills into `stills.json`, which stay the only source of truth for what
+  gets sent. So review the diff, then generate the new sheets. `castPrompt` is
+  rewritten wholesale on every run — hand-edit `characters.json`, never the
+  block. `vs cast sync --check` writes nothing and exits non-zero on drift.
+- **A keyframed shot on Seedance 2.0 or MiniMax H3 gets the cast block as text
+  only.** Those models refuse a `first_frame` mixed with reference images, so
+  sync does not bind the sheet there — it is per shot, so the same character can
+  bind by ordinal in a reference-mode shot and by text in the keyframed one
+  beside it. On 2.5 both modes coexist and the sheet is bound at `@Image 2`,
+  after the frame. A character bound nowhere gets no sheet generated, and sync
+  says so rather than billing you for an image nothing references.
 - **A plain `vs stitch` with no `--music`/`--narration` is an SFX-only cut and
   will sound empty.** Per-shot prompts only ask for sound effects. Happy path:
   `vs score` → `vs narrate` → `vs narrate assemble --xfade …` →
@@ -88,7 +103,7 @@ commands.
 
 `AI_GATEWAY_API_KEY` (or `VERCEL_OIDC_TOKEN`) in `.env` for the default
 Seedance 2.5 path; `ARK_API_KEY` for BytePlus Seedance 2.0 / lighthouse and
-Seedream stills; `GEMINI_API_KEY` for Nano Banana stills and `vs score` (Lyria);
+`vs status <task-id>`; `GEMINI_API_KEY` for Nano Banana stills and `vs score` (Lyria);
 `ELEVENLABS_API_KEY` (+ `ELEVENLABS_VOICE_ID` or `--voice`) for `vs narrate`.
 See `.env.example`.
 

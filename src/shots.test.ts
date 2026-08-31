@@ -656,22 +656,24 @@ describe("loadJson failures", () => {
 });
 
 describe("lintStillsFile", () => {
-  it("warns on a bloated prompt but no longer demands a seed", async () => {
-    // The seed advice went with Seedream: Nano Banana rolls its own, so telling
-    // an author to set one was pointing at a field the model discards.
+  it("demands neither a seed nor a short prompt", async () => {
+    // Both rules went with Seedream. Nano Banana rolls its own seed, and its
+    // input context is 131,072 tokens, so the old 200-word cap was three
+    // orders of magnitude below the real limit — fitted to films/lighthouse
+    // (125 words at its longest), not to any model. It also advised moving the
+    // shared look into `film.promptPreamble`, which a stills file has no such
+    // field for.
     const { lintStillsFile } = await import("./shots.js");
     const warnings = lintStillsFile({
       stills: [
         { id: "unseeded", prompt: "one clean composition" },
         {
-          id: "bloated",
-          prompt: Array.from({ length: 220 }, () => "word").join(" "),
+          id: "long",
+          prompt: Array.from({ length: 420 }, () => "word").join(" "),
         },
       ],
     });
-    expect(warnings.filter((w) => w.includes("no seed"))).toHaveLength(0);
-    const long = warnings.find((w) => w.includes("220 words"));
-    expect(long?.startsWith("bloated:")).toBe(true);
+    expect(warnings).toEqual([]);
   });
 
   it("warns that a pixel size is ignored, whatever the model", async () => {
@@ -690,6 +692,27 @@ describe("lintStillsFile", () => {
         stills: [{ id: "a", prompt: "p", ratio: "1:1" }],
       })
     ).toEqual([]);
+  });
+
+  it("does not warn about a reference this same run will generate", async () => {
+    // A stills file is a DAG: films/lighthouse chains nine stills off one
+    // earlier still's png. Warning that a file this run is about to write does
+    // not exist yet turns a correct film into nine warnings on every first run.
+    const { lintStillsFile } = await import("./shots.js");
+    const dir = await mkdtemp(join(tmpdir(), "vs-stills-dag-"));
+    const file = {
+      outputDir: "./out",
+      stills: [
+        { id: "anchor", prompt: "the plate" },
+        { id: "derived", prompt: "p", references: ["./out/anchor.png"] },
+        { id: "orphan", prompt: "p", references: ["./out/nobody-writes.png"] },
+      ],
+    };
+    expect(
+      lintStillsFile(file, { outputDir: join(dir, "out"), stillsDir: dir })
+    ).toEqual([expect.stringContaining("nobody-writes.png")]);
+    // Without outputDir the checker cannot know, so it stays conservative.
+    expect(lintStillsFile(file, { stillsDir: dir })).toHaveLength(2);
   });
 
   it("warns only about local references that are not on disk", async () => {

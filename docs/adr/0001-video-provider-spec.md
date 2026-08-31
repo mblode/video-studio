@@ -198,7 +198,7 @@ promote it.
 | Middleware / `wrapVideoModel` | No current requirement. Retry and rate limiting already live at the seam (`ModelLimiter`, the shared HTTP loop). | A cross-cutting concern appears that is not retry or concurrency. |
 | A plugin loader for third-party providers | Providers are compiled in; a dynamic loader is an attack surface for a tool that spends money. `vs` ships no library entry at all now, so there is nothing for a plugin to link against. | Never, unless `vs` becomes a library. |
 | Streaming | Video generation is submit-then-poll. There is no token stream. | A provider ships partial-frame streaming. |
-| Unifying the stills backends (Seedream, Gemini) behind the spec | Stills cost cents, not dollars, and are already routed by model id in `stills.ts`. `src/provider.ts` already documents this as deliberate. | A third stills backend, or stills start costing dollars. |
+| Unifying stills behind the spec | Stills cost cents, not dollars, and run on one backend through the AI SDK. `src/images.ts` documents this as deliberate. | A second stills backend, or stills start costing dollars. |
 | Extracting the model registry into its own package | Same reason as the provider split. | Same trigger. |
 | A cross-provider capability *negotiation* layer (auto-picking a model that fits a shot) | Speculative. Model choice is an authoring decision with cost and look consequences the tool should not make silently. | An explicit user request for it. |
 

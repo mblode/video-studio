@@ -46,9 +46,11 @@ for structure, anchoring, and planning documents. Its 8s `Shot N:` clips are
 ```text
 - [ ] 1. Lock the idea: logline, throughline, length, look, generation budget
 - [ ] 2. Write the planning documents (storycraft)
-- [ ] 3. Derive the keyframes and any character/prop/environment stills -> stills.json
+- [ ] 3. Derive the keyframes and any prop/environment stills -> stills.json,
+         and the cast -> characters.json
 - [ ] 4. Write shots.json: prompts, anchoring, ordinal bindings, seeds, cards
-- [ ] 5. Dry-run both files, fix every warning, report cost
+- [ ] 5. Run `vs cast sync` to write the cast blocks and sheet references
+- [ ] 6. Dry-run both files, fix every warning, report cost
 ```
 
 **Step 1.** Pin down the logline, the emotional throughline, total runtime,

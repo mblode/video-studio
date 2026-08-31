@@ -76,6 +76,13 @@ quality, so the model and the audience read the same person every appearance.
   brisk; "moving slowly and deliberately" is both a description and an
   instruction the video model will obey literally.
 
+Write each block so it drops straight into a `characters.json` `block` field:
+one sentence, no leading name (the `name` field supplies it), and **no trailing
+full stop** — `vs cast sync` joins it into a longer sentence, and the schema
+refuses a block that carries its own terminator. An age block becomes a
+`variant`. From there the CLI writes the character into every shot that lists
+it and generates its sheet still.
+
 The lighthouse pair:
 
 ```text

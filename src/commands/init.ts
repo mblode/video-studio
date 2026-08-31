@@ -187,7 +187,7 @@ pipeline from the repo root:
 
 \`\`\`bash
 vs doctor                          # confirm setup before any paid call
-vs stills ${slug}/stills.json      # 1. generate reference stills (Seedream)
+vs stills ${slug}/stills.json      # 1. generate reference stills (Nano Banana)
 vs animatic ${slug}/shots.json     # 2. story reel from the stills, $0 of video
 vs generate ${slug}/shots.json     # 3. submit, poll, download clips (Seedance)
 vs score "…instrumental bed…" --shots ${slug}/shots.json

@@ -98,7 +98,7 @@ export function requireGeminiApiKey(): string {
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
     throw new VsError("missing_credential", "GEMINI_API_KEY is not set", {
-      hint: "add `GEMINI_API_KEY=...` to a .env file (see .env.example), or set stills.json `model` to a seedream-* id to use Ark instead",
+      hint: "add `GEMINI_API_KEY=...` to a .env file (see .env.example) — stills run on Google, so this is the only key that works for them",
     });
   }
   return key;

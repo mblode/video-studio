@@ -37,6 +37,41 @@ A still with `id: foo` writes to `<outputDir>/foo.png` and is referenced from a 
 
 Nano Banana needs `GEMINI_API_KEY`. `size` and `seed` still parse but are ignored on `gemini-*` models.
 
+## characters.json
+
+Optional and authoring-time only — nothing at generate time reads it.
+`vs cast sync` expands it into literal content in `shots.json` and
+`stills.json`.
+
+```json
+{
+  "style": "Photorealistic expressionist maritime cinema in stark black-and-white.",
+  "characters": [
+    {
+      "id": "keeper",
+      "name": "THE KEEPER",
+      "block": "a lean weathered man in a near-black wool coat and thick dark scarf",
+      "binding": "his face, build and wardrobe only",
+      "sheet": { "ratio": "16:9", "seed": 4021 }
+    }
+  ]
+}
+```
+
+`block` must not end in punctuation: sync joins it into
+`{name} is {block}; use @Image N for {binding}.` Omit `sheet` to make a
+character text-only — the right shape for one who only ever appears in
+frame-mode shots. `variants` add age blocks and wardrobe changes, addressed
+from a shot as `id:variant`.
+
+A shot then carries `cast` (hand-authored) and `castPrompt` (generated — sync
+rewrites it wholesale, so edit `characters.json` instead). Cast references are
+appended after every hand-authored reference, and a reference already pointing
+at the sheet's path is adopted in place rather than duplicated — so an
+`@Image 2` you typed keeps meaning the same reference and a frame role keeps
+`@Image 1`.
+`vs cast sync --check` writes nothing and exits non-zero on drift.
+
 ## shots.json
 
 One shot is one paid task.
@@ -128,7 +163,7 @@ Printed by `vs generate`; free under `--dry-run`. Fix all of them.
 
 Notable shots warnings: no image reference, no `seed`, too many references, prompt over word cap (700 on 2.5 / 400 on 2.0), ordinal mismatches, unbound references, `draftModel` envelope mismatch.
 
-Notable stills warnings: duplicate id, prompt over ~200 words, `size` on `gemini-*`, missing local reference file.
+Notable stills warnings: duplicate id, `size` on `gemini-*`, missing local reference file.
 
 ## Allowed values
 
