@@ -1,16 +1,17 @@
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
+import { VsError } from "../errors.js";
 import {
   isComplete,
-  isInFlight,
+  isRevisionComplete,
   latestRevision,
   loadManifest,
   saveManifest,
   selectedRevision,
   upsertEntry,
 } from "../manifest.js";
-import { DEFAULT_VIDEO_MODEL } from "../models.js";
+import type { ProviderId } from "../models.js";
 import type { Pass } from "../paths.js";
 import { filmFileNotFound } from "../shots.js";
 import type { VideoModelV4 } from "../spec/video-model.js";
@@ -70,25 +71,65 @@ export async function runStatus(
     // client for the whole film. A MiniMax or bridged task id sent to BytePlus
     // comes back as a baffling 4xx, and a film that changed `film.model` between
     // passes has entries belonging to two different backends at once. Legacy
-    // entries predate `params`, so they fall back to the default model, which is
-    // exactly what they were generated on.
+    // entries without recorded identity fail closed below: guessing a backend
+    // can attach a task id to an unrelated provider.
+    const refreshable = entries.flatMap((entry) => {
+      const revision = latestRevision(entry);
+      if (!revision?.taskId) {
+        return [];
+      }
+      const pending =
+        revision.status === "submitted" ||
+        revision.status === "queued" ||
+        revision.status === "running";
+      const awaitingDownload =
+        revision.status === "succeeded" &&
+        !isRevisionComplete(revision, manifestDir);
+      return pending || awaitingDownload ? [{ entry, revision }] : [];
+    });
     const clients = new Map<string, VideoModelV4>();
-    const clientFor = (modelId: string): VideoModelV4 => {
-      const existing = clients.get(modelId);
+    const clientFor = (modelId: string, provider: ProviderId): VideoModelV4 => {
+      const key = `${provider}:${modelId}`;
+      const existing = clients.get(key);
       if (existing) {
         return existing;
       }
       const created = createVideoModel(modelId);
-      clients.set(modelId, created);
+      if (created.provider !== provider) {
+        throw new VsError(
+          "invalid_input",
+          `cannot refresh ${modelId}: it was submitted through ${provider}, but that model now routes through ${created.provider}`,
+          {
+            hint: "restore a model spelling that routes to the recorded provider; polling a task on a different backend cannot recover it",
+          }
+        );
+      }
+      clients.set(key, created);
       return created;
     };
-    for (const entry of entries.filter((candidate) => isInFlight(candidate))) {
-      const client = clientFor(entry.params?.model ?? DEFAULT_VIDEO_MODEL);
-      const task = await client.doStatus(entry.taskId);
+    // Validate and construct every route before the first request. If one
+    // legacy attempt lacks identity, refreshing must make zero guesses and
+    // zero network calls rather than partially updating the film.
+    const routed = refreshable.map(({ entry, revision }) => {
+      const model = revision.params?.model;
+      const provider = revision.params?.provider;
+      if (!(model && provider)) {
+        throw new VsError(
+          "invalid_input",
+          `${entry.shotId} task ${revision.taskId} has no recorded provider/model and cannot be refreshed safely`,
+          {
+            hint: "inspect the task in the provider console; legacy pending tasks cannot be assigned to a backend automatically",
+          }
+        );
+      }
+      return { client: clientFor(model, provider), entry, revision };
+    });
+    for (const { client, entry, revision } of routed) {
+      const task = await client.doStatus(revision.taskId);
       upsertEntry(manifest, {
         shotId: entry.shotId,
         status: task.status,
-        taskId: entry.taskId,
+        taskId: revision.taskId,
         videoUrl: task.content?.video_url,
       });
     }

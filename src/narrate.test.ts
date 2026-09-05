@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   assertLastLineBeforeFade,
+  assertLinesWithinRuntime,
   buildAssembleFfmpegArgs,
   buildAssembleSegments,
   buildNarrateLineRequests,
@@ -30,6 +31,11 @@ describe("parseLinesTsv", () => {
       { number: 2, text: "Second line." },
     ]);
   });
+
+  it("rejects duplicate and fractional line ids", () => {
+    expect(() => parseLinesTsv("1\tOne\n1\tAgain\n")).toThrow(/duplicate/u);
+    expect(() => parseLinesTsv("1.5\tHalf\n")).toThrow(/invalid/u);
+  });
 });
 
 describe("parsePlacementTsv", () => {
@@ -41,6 +47,13 @@ describe("parsePlacementTsv", () => {
       { line: 1, offsetIntoShot: 2, shotId: "s01-eric-builds" },
       { line: 2, offsetIntoShot: 1.5, shotId: "s02-victor-sells" },
     ]);
+  });
+
+  it("rejects duplicate and fractional line ids", () => {
+    expect(() => parsePlacementTsv("1\ts01\t0\n1\ts02\t0\n")).toThrow(
+      /duplicate/u
+    );
+    expect(() => parsePlacementTsv("1.5\ts01\t0\n")).toThrow(/invalid/u);
   });
 });
 
@@ -107,11 +120,48 @@ describe("assemble timeline math", () => {
       dir
     );
     expect(placed[0]?.start).toBe(0);
+    expect(placed[0]?.requestedStart).toBe(0);
+    expect(placed[0]?.shiftSeconds).toBe(0);
     // Second overlaps the first; shifted to firstEnd + MIN_GAP.
     expect(placed[1]?.start).toBeCloseTo(2.25, 2);
+    expect(placed[1]?.requestedStart).toBe(0);
+    expect(placed[1]?.shiftSeconds).toBeCloseTo(2.25, 2);
     const args = buildAssembleFfmpegArgs(placed, 30, join(dir, "out.mp3"));
     expect(args.join(" ")).toContain("adelay=");
     expect(args.at(-1)).toBe(join(dir, "out.mp3"));
+  });
+
+  it("rejects invalid probed durations", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vs-narr-"));
+    await writeFile(join(dir, "line-01.mp3"), "x");
+    expect(() =>
+      placeLines(
+        [{ line: 1, offsetIntoShot: 0, shotId: "s01" }],
+        { s01: 0 },
+        { 1: Number.NaN },
+        dir
+      )
+    ).toThrow(/invalid duration/u);
+  });
+});
+
+describe("assertLinesWithinRuntime", () => {
+  it("rejects narration that runs beyond the assembled program", () => {
+    expect(() =>
+      assertLinesWithinRuntime(
+        [
+          {
+            duration: 2,
+            line: 1,
+            path: "line-01.mp3",
+            requestedStart: 9,
+            shiftSeconds: 0,
+            start: 9,
+          },
+        ],
+        10
+      )
+    ).toThrow(/program ends/u);
   });
 });
 
@@ -125,7 +175,16 @@ describe("assertLastLineBeforeFade", () => {
   it("passes when the last line clears the fade window", () => {
     expect(() =>
       assertLastLineBeforeFade(
-        [{ duration: 4, line: 1, path: "line-01.mp3", start: 14 }],
+        [
+          {
+            duration: 4,
+            line: 1,
+            path: "line-01.mp3",
+            requestedStart: 14,
+            shiftSeconds: 0,
+            start: 14,
+          },
+        ],
         starts,
         segments,
         "s02",
@@ -137,13 +196,28 @@ describe("assertLastLineBeforeFade", () => {
   it("throws when the last line runs into the fade window", () => {
     expect(() =>
       assertLastLineBeforeFade(
-        [{ duration: 4, line: 1, path: "line-01.mp3", start: 18 }],
+        [
+          {
+            duration: 4,
+            line: 1,
+            path: "line-01.mp3",
+            requestedStart: 18,
+            shiftSeconds: 0,
+            start: 18,
+          },
+        ],
         starts,
         segments,
         "s02",
         1.5
       )
     ).toThrow(/fade begins/u);
+  });
+
+  it("rejects an unknown fade shot instead of skipping the guard", () => {
+    expect(() =>
+      assertLastLineBeforeFade([], starts, segments, "missing", 1.5)
+    ).toThrow(/unknown fade shot/u);
   });
 });
 

@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import {
@@ -9,12 +10,16 @@ import {
   requireElevenLabsApiKey,
   requireElevenLabsVoiceId,
 } from "../elevenlabs.js";
-import type { ElevenLabsClient } from "../elevenlabs.js";
+import type {
+  ElevenLabsClient,
+  ElevenLabsSpeechRequest,
+} from "../elevenlabs.js";
 import { loadEnv } from "../env.js";
 import { VsError } from "../errors.js";
 import { isComplete, loadManifest } from "../manifest.js";
 import {
   assertLastLineBeforeFade,
+  assertLinesWithinRuntime,
   buildAssembleFfmpegArgs,
   buildAssembleSegments,
   buildNarrateLineRequests,
@@ -76,6 +81,135 @@ function probeDuration(path: string): number {
   return Number(out.trim());
 }
 
+async function speechIdentity(path: string, request: ElevenLabsSpeechRequest) {
+  const effectiveRequest = {
+    body: buildSpeechBody(request),
+    outputFormat: request.outputFormat ?? "mp3_44100_128",
+    voiceId: request.voiceId,
+  };
+  return {
+    audioSha256: createHash("sha256")
+      .update(await readFile(path))
+      .digest("hex"),
+    modelId: request.modelId,
+    requestSha256: createHash("sha256")
+      .update(JSON.stringify(effectiveRequest))
+      .digest("hex"),
+    schemaVersion: 2,
+    text: request.text,
+    voiceId: request.voiceId,
+  };
+}
+
+/** Existing audio is reusable only when its recorded script, voice and bytes match. */
+async function assertReusableSpeech(
+  path: string,
+  request: ElevenLabsSpeechRequest
+): Promise<void> {
+  let recorded: unknown;
+  try {
+    recorded = JSON.parse(await readFile(`${path}.json`, "utf-8"));
+  } catch {
+    throw new VsError(
+      "invalid_input",
+      `unverified existing narration: ${path}`,
+      {
+        hint: "use a new --output directory or audit the legacy recording before reuse; filenames alone do not prove which script was spoken",
+      }
+    );
+  }
+  const expected = await speechIdentity(path, request);
+  if (
+    !recorded ||
+    typeof recorded !== "object" ||
+    Object.entries(expected).some(
+      ([key, value]) => (recorded as Record<string, unknown>)[key] !== value
+    )
+  ) {
+    throw new VsError("invalid_input", `stale narration: ${path}`, {
+      hint: "script, voice, model or audio changed; use a new --output directory, or --force to deliberately regenerate",
+    });
+  }
+}
+
+async function recordSpeech(
+  path: string,
+  request: ElevenLabsSpeechRequest
+): Promise<void> {
+  await writeFile(
+    `${path}.json`,
+    JSON.stringify(await speechIdentity(path, request))
+  );
+}
+
+async function validateAssemblyProvenance(
+  linesDir: string,
+  placements: Awaited<ReturnType<typeof loadPlacementFile>>
+): Promise<void> {
+  const linesPath = join(linesDir, "lines.tsv");
+  if (!existsSync(linesPath)) {
+    warn(
+      `no ${linesPath}; assembling curated external audio without script provenance verification`
+    );
+    return;
+  }
+  const lines = await loadLinesFile(linesPath);
+  const currentText = new Map(lines.map((entry) => [entry.number, entry.text]));
+  for (const placement of placements) {
+    const expectedText = currentText.get(placement.line);
+    if (expectedText === undefined) {
+      throw new VsError(
+        "invalid_input",
+        `placement references narration line ${placement.line} missing from ${linesPath}`,
+        {
+          hint: "update placement.tsv to use only current lines.tsv line numbers",
+        }
+      );
+    }
+    const audio = lineAudioPath(linesDir, placement.line);
+    if (!existsSync(audio)) {
+      throw new VsError("invalid_input", `missing line audio: ${audio}`, {
+        hint: "run `vs narrate <lines.tsv>` first",
+      });
+    }
+    const sidecarPath = `${audio}.json`;
+    if (!existsSync(sidecarPath)) {
+      warn(
+        `line ${placement.line} has no provenance sidecar; assembling curated legacy audio without verification`
+      );
+      continue;
+    }
+    let sidecar: unknown;
+    try {
+      sidecar = JSON.parse(await readFile(sidecarPath, "utf-8"));
+    } catch {
+      throw new VsError(
+        "invalid_input",
+        `invalid narration provenance: ${sidecarPath}`,
+        { hint: "repair or remove the sidecar after auditing the audio" }
+      );
+    }
+    if (!sidecar || typeof sidecar !== "object") {
+      throw new VsError(
+        "invalid_input",
+        `invalid narration provenance: ${sidecarPath}`
+      );
+    }
+    const recorded = sidecar as Record<string, unknown>;
+    const audioSha256 = createHash("sha256")
+      .update(await readFile(audio))
+      .digest("hex");
+    if (
+      recorded.text !== expectedText ||
+      recorded.audioSha256 !== audioSha256
+    ) {
+      throw new VsError("invalid_input", `stale narration: ${audio}`, {
+        hint: "the current line text or audio bytes do not match the provenance sidecar",
+      });
+    }
+  }
+}
+
 export async function runNarrate(
   linesFilePath: string | undefined,
   options: NarrateOptions,
@@ -115,7 +249,8 @@ export async function runNarrate(
     }
 
     if (existsSync(outPath) && !options.force) {
-      note(`${outPath} exists, skipping (pass --force to regenerate)`);
+      await assertReusableSpeech(outPath, request);
+      note(`${outPath} matches the recorded script and voice, skipping`);
       emit(
         { output: outPath, status: "skipped", textFile: resolvedText },
         () => {
@@ -129,6 +264,7 @@ export async function runNarrate(
     const client = injected.client ?? createElevenClient();
     const bytes = await client.textToSpeech(request);
     await writeFile(outPath, bytes);
+    await recordSpeech(outPath, request);
     emit({ output: outPath, status: "ok", textFile: resolvedText }, () => {
       ok(`scratch VO → ${outPath}`);
     });
@@ -168,6 +304,16 @@ export async function runNarrate(
     return;
   }
 
+  // Validate the entire batch before any paid request; an added line must not
+  // hide stale or shifted existing recordings later in the script.
+  if (!options.force) {
+    for (const entry of requests) {
+      const path = lineAudioPath(linesDir, entry.line);
+      if (existsSync(path)) {
+        await assertReusableSpeech(path, entry.request);
+      }
+    }
+  }
   await mkdir(linesDir, { recursive: true });
   const client = injected.client ?? createElevenClient();
 
@@ -187,6 +333,11 @@ export async function runNarrate(
       voiceId,
     });
     await writeFile(outPath, bytes);
+    await recordSpeech(outPath, {
+      ...entry.request,
+      nextText,
+      previousText,
+    });
     ok(`${entry.path} → ${outPath}`);
   }
 
@@ -206,6 +357,7 @@ export async function runNarrateAssemble(
   const placementPath = resolve(shotsDir, options.placement);
   const linesDir = dirname(placementPath);
   const placements = await loadPlacementFile(placementPath);
+  await validateAssemblyProvenance(linesDir, placements);
   const manifest = await loadManifest(shotsFilePath, pass);
 
   const shotDurations: Record<string, number> = {};
@@ -246,6 +398,7 @@ export async function runNarrateAssemble(
   }
 
   const placed = placeLines(placements, starts, lineDurations, linesDir);
+  assertLinesWithinRuntime(placed, total);
   assertLastLineBeforeFade(
     placed,
     starts,
@@ -259,6 +412,7 @@ export async function runNarrateAssemble(
     : join(shotsDir, "narration.mp3");
 
   const ffmpegArgs = buildAssembleFfmpegArgs(placed, total, outPath);
+  const shifted = placed.filter((entry) => entry.shiftSeconds > 0);
 
   if (options.dryRun) {
     emit(
@@ -276,8 +430,12 @@ export async function runNarrateAssemble(
           );
         }
         for (const entry of placed) {
+          const shift =
+            entry.shiftSeconds > 0
+              ? ` (shifted +${entry.shiftSeconds.toFixed(2)}s from ${entry.requestedStart.toFixed(2)}s to avoid overlap)`
+              : "";
           line(
-            `line ${String(entry.line).padStart(2, "0")}: ${entry.start.toFixed(2)} → ${(entry.start + entry.duration).toFixed(2)}`
+            `line ${String(entry.line).padStart(2, "0")}: ${entry.start.toFixed(2)} → ${(entry.start + entry.duration).toFixed(2)}${shift}`
           );
         }
         note(`total ${total.toFixed(2)}s; would write ${outPath}`);
@@ -289,11 +447,25 @@ export async function runNarrateAssemble(
   if (options.output) {
     assertNewVideoOutput(outPath);
   }
+  for (const entry of shifted) {
+    warn(
+      `line ${entry.line} shifted +${entry.shiftSeconds.toFixed(2)}s from ${entry.requestedStart.toFixed(2)}s to avoid overlap`
+    );
+  }
   await mkdir(dirname(outPath), { recursive: true });
   execFileSync("ffmpeg", ["-y", "-loglevel", "error", ...ffmpegArgs], {
     stdio: "inherit",
   });
-  emit({ output: outPath, status: "ok", totalRuntime: total }, () => {
-    ok(`narration → ${outPath} (${probeDuration(outPath).toFixed(2)}s)`);
-  });
+  emit(
+    {
+      output: outPath,
+      placed,
+      shiftedLines: shifted.length,
+      status: "ok",
+      totalRuntime: total,
+    },
+    () => {
+      ok(`narration → ${outPath} (${probeDuration(outPath).toFixed(2)}s)`);
+    }
+  );
 }

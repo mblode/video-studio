@@ -349,3 +349,12 @@ node dist/cli.js generate films/<slug>/shots.json --dry-run
 
 Full validation and lint, request payloads printed, nothing written, nothing
 spent. Retakes: `--shot <id> --force` / `--still <id> --force`.
+
+## Visual approval policy
+
+`film.requireVisualApproval` is an optional boolean. When true, selecting or
+stitching footage requires an explicit approved review receipt bound to the
+media bytes and the target shot's cast-bound image references. Each `shot.cast`
+entry must have exactly one matching image `reference.cast`; orphan cast-bound
+references are invalid for review. Local reference files must be materialized
+before review hashing. This policy is not part of the provider request.

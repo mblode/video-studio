@@ -93,7 +93,7 @@ function versionArgument(value: string): number {
  * the commands and flags without running the CLI.
  */
 export function buildProgram(): Command {
-  const program = new Command();
+  const program = new Command().enablePositionalOptions();
 
   program
     .name("vs")
@@ -320,6 +320,16 @@ export function buildProgram(): Command {
     )
     .option("--narration <file>", "narration track mixed at full level")
     .option(
+      "--effects <file>",
+      "timeline-aligned effects and ambience stem, starting at film time zero"
+    )
+    .option(
+      "--effects-gain <dB>",
+      "effects stem level in dB",
+      numberArgument("--effects-gain"),
+      0
+    )
+    .option(
       "--narration-gain <dB>",
       "narration level in dB",
       numberArgument("--narration-gain"),
@@ -353,6 +363,8 @@ export function buildProgram(): Command {
       await runStitch(shotsFile, {
         draft: options.draft,
         dryRun: options.dryRun,
+        effects: options.effects,
+        effectsGain: Number(options.effectsGain),
         font: options.font,
         grade: options.grade,
         latest: options.latest,
@@ -487,7 +499,7 @@ export function buildProgram(): Command {
 
   program
     .command("review")
-    .description("Extract frames from downloaded clips into a contact sheet")
+    .description("Extract review frames or record an explicit visual verdict")
     .argument("<shots-file>", "path to shots.json")
     .option(
       "--frames <n>",
@@ -504,13 +516,28 @@ export function buildProgram(): Command {
       "--output <dir>",
       "review directory, relative to the cwd (default <filmDir>/review)"
     )
+    .option("--shot <id>", "shot to record a visual verdict for")
+    .option(
+      "--version <n>",
+      "downloaded revision to review",
+      numberArgument("--version", { integer: true, min: 1 })
+    )
+    .option(
+      "--verdict <verdict>",
+      "approved or rejected after inspecting moving footage"
+    )
+    .option("--note <text>", "specific visual findings supporting the verdict")
     .option("--dry-run", "print ffmpeg commands without running them", false)
     .action(async (shotsFile: string, options) => {
       await runReview(shotsFile, {
         draft: options.draft,
         dryRun: options.dryRun,
         frames: Number(options.frames),
+        note: options.note,
         output: options.output,
+        shot: options.shot,
+        verdict: options.verdict,
+        version: options.version,
       });
     });
 
@@ -556,6 +583,7 @@ export function buildProgram(): Command {
 
   const narrate = program
     .command("narrate")
+    .enablePositionalOptions()
     .description(
       "Generate ElevenLabs narration from a TSV (NN\\ttext) or --text-file scratch VO"
     )
@@ -680,7 +708,9 @@ export function buildProgram(): Command {
 
   // Every subcommand carries these, so `vs generate x --json` parses the same way
   // `vs --json generate x` does.
-  for (const command of program.commands) {
+  const outputCommands = [...program.commands];
+  for (const command of outputCommands) {
+    outputCommands.push(...command.commands);
     command
       .option(
         "--json",

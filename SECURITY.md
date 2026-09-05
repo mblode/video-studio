@@ -50,13 +50,27 @@ manifest *before* it submits, so a crash mid-submit leaves a trace rather than
 nothing. When you see `task_uncertain`, or a shot the tool refuses to resubmit:
 
 1. Check the provider's console for a task created around that time.
-2. If one exists, let it finish and re-run the same command; it re-attaches.
+2. If its task ID and provider/model are recorded, re-run the same command to
+   re-attach. If the ID never came back, reconcile the attempt with the console
+   record first; waiting alone cannot supply the missing ID.
 3. Only if none exists, pass `--force` to submit again.
 
 Passing `--force` on a shot in that state is you accepting the risk of paying
 twice, so do step 1 first.
 
+A retake starts with a fresh task identity, even when an older successful take
+remains selected. An unresolved retake takes precedence over “already complete.”
+Known tasks resume using their recorded provider and model; pending legacy
+records missing that identity fail with a recovery diagnostic instead of
+guessing the current film's backend. `vs status <shots-file> --refresh` also
+refreshes succeeded, undownloaded tasks so their result URLs can be recovered.
+
 ## Scope
 
 This is a local CLI. It has no server, no telemetry, and no network calls beyond
 the generation APIs you configure and the result downloads they hand back.
+
+Downloads have a ten-minute request/body deadline and discard partial files on
+failure. Recover a completed provider task with `status --refresh` and `download`
+before considering a paid retake. Missing provider credentials are rejected
+before generation reserves any manifest attempts.

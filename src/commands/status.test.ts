@@ -1,6 +1,6 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -16,10 +16,19 @@ vi.mock("./context.js", async (importOriginal) => {
       throw new Error("createArkClient must not be called");
     }),
     createVideoModel: vi.fn((modelId: string) => ({
-      doStatus: vi.fn(() =>
-        Promise.resolve({ id: "t", model: modelId, status: "running" })
+      doStatus: vi.fn((taskId: string) =>
+        Promise.resolve({
+          content:
+            taskId === "task-result"
+              ? { video_url: "https://fresh/result.mp4" }
+              : undefined,
+          id: taskId,
+          model: modelId,
+          status: taskId === "task-result" ? "succeeded" : "running",
+        })
       ),
       modelId,
+      provider: modelId === "MiniMax-H3" ? "minimax" : "ark",
     })),
   };
 });
@@ -120,7 +129,13 @@ describe("runStatus", () => {
 
 const inFlight = (shotId: string, model: string) => ({
   attempts: 1,
-  params: { duration: 8, generateAudio: true, model, ratio: "16:9" },
+  params: {
+    duration: 8,
+    generateAudio: true,
+    model,
+    provider: model === "MiniMax-H3" ? "minimax" : "ark",
+    ratio: "16:9",
+  },
   shotId,
   status: "running",
   submittedAt: "2026-01-01T00:00:00.000Z",
@@ -173,5 +188,95 @@ describe("vs status --refresh routing", () => {
       .mock.calls.map(([modelId]) => modelId);
     expect(asked).toContain("dreamina-seedance-2-0-260128");
     expect(asked).toContain("MiniMax-H3");
+  });
+
+  it("fails closed before the network for a pending legacy task", async () => {
+    const shotsPath = await scaffold();
+    await writeFile(
+      join(dirname(shotsPath), "tasks.json"),
+      JSON.stringify({
+        entries: { a: inFlight("a", "dreamina-seedance-2-0-260128") },
+        shotsFile: shotsPath,
+        version: 2,
+      })
+    );
+    const raw = JSON.parse(
+      await readFile(join(dirname(shotsPath), "tasks.json"), "utf-8")
+    ) as { entries: { a: { params?: unknown } } };
+    raw.entries.a.params = undefined;
+    await writeFile(
+      join(dirname(shotsPath), "tasks.json"),
+      JSON.stringify(raw)
+    );
+    const context = await import("./context.js");
+    vi.mocked(context.createVideoModel).mockClear();
+
+    const failure = await runStatus(shotsPath, {
+      draft: false,
+      refresh: true,
+      shots: shotsPath,
+    }).catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ code: "invalid_input" });
+    expect(context.createVideoModel).not.toHaveBeenCalled();
+  });
+
+  it("refreshes a succeeded undownloaded revision through its recorded backend", async () => {
+    const shotsPath = await scaffold();
+    const attempt = {
+      ...inFlight("a", "MiniMax-H3"),
+      status: "succeeded",
+      taskId: "task-result",
+    };
+    await writeFile(
+      join(dirname(shotsPath), "tasks.json"),
+      JSON.stringify({
+        entries: {
+          a: { ...attempt, versions: [{ ...attempt, version: 1 }] },
+        },
+        shotsFile: shotsPath,
+        version: 2,
+      })
+    );
+
+    await runStatus(shotsPath, {
+      draft: false,
+      refresh: true,
+      shots: shotsPath,
+    });
+
+    const manifest = JSON.parse(
+      await readFile(join(dirname(shotsPath), "tasks.json"), "utf-8")
+    ) as { entries: { a: { versions: { videoUrl?: string }[] } } };
+    expect(manifest.entries.a.versions[0]?.videoUrl).toBe(
+      "https://fresh/result.mp4"
+    );
+  });
+
+  it("refreshes the latest revision task rather than stale top-level identity", async () => {
+    const shotsPath = await scaffold();
+    const old = inFlight("a", "dreamina-seedance-2-0-260128");
+    const latest = { ...old, taskId: "task-new", version: 2 };
+    await writeFile(
+      join(dirname(shotsPath), "tasks.json"),
+      JSON.stringify({
+        entries: {
+          a: { ...old, attempts: 2, taskId: "task-old", versions: [latest] },
+        },
+        shotsFile: shotsPath,
+        version: 2,
+      })
+    );
+    const context = await import("./context.js");
+    vi.mocked(context.createVideoModel).mockClear();
+
+    await runStatus(shotsPath, {
+      draft: false,
+      refresh: true,
+      shots: shotsPath,
+    });
+
+    const client = vi.mocked(context.createVideoModel).mock.results[0]?.value;
+    expect(client?.doStatus).toHaveBeenCalledWith("task-new");
   });
 });

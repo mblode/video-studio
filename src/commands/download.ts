@@ -43,7 +43,7 @@ export async function runDownload(
     }
     if (!latest.videoUrl) {
       warn(
-        `${entry.shotId} succeeded but has no stored URL; re-query it with \`vs status ${latest.taskId}\``
+        `${entry.shotId} succeeded but has no stored URL; refresh it with \`vs status ${shotsFilePath} --refresh${options.draft ? " --draft" : ""}\``
       );
       stale.push(entry.shotId);
       continue;

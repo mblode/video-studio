@@ -113,3 +113,22 @@ See `.env.example`.
 - `storycraft` for the treatment, beat sheet, and shot list behind it.
 - `nano-banana-2` to write still prompts when a film's stills model is
   `gemini-*`.
+
+## Explicit visual approval
+
+For a film with `film.requireVisualApproval: true`, download status never
+substitutes for picture review. `vs use` and every `vs stitch` path, including
+`--latest`, require an approved receipt for the exact selected clip and current
+cast sheets. Review stills alone cannot establish stable motion, eyes, anatomy
+or cash handling. Inspect moving footage and record a specific verdict:
+
+```bash
+vs review films/example/shots.json --shot shot-id --version 1 \
+  --verdict rejected --note "At 12–14s the cash changes from a tied bundle into a loose note."
+```
+
+Use `--draft` for a draft revision. `--dry-run` writes no receipt. An explicit
+`approved` verdict permits use only while clip bytes and canonical references
+remain unchanged. The film-local `visual-reviews.json` keeps rejection separate
+from provider status. A review gate prevents unnoticed reuse; it does not
+magically correct bad generated pixels or certify a film's artistic quality.
