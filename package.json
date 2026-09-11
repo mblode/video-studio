@@ -64,7 +64,7 @@
     "tsdown": "^0.22.14",
     "typescript": "7.0.2",
     "ultracite": "7.10.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": ">=24"
