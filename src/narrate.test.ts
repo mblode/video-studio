@@ -58,16 +58,21 @@ describe("parsePlacementTsv", () => {
 });
 
 describe("buildNarrateLineRequests", () => {
-  it("threads previous/next text for continuity", () => {
+  it("builds one request per line with the shared voice and style", () => {
     const requests = buildNarrateLineRequests(
       [
         { number: 1, text: "One." },
         { number: 2, text: "Two." },
       ],
-      "voice-1"
+      "Kore",
+      undefined,
+      "hushed"
     );
-    expect(requests[0]?.request.nextText).toBe("Two.");
-    expect(requests[1]?.request.previousText).toBe("One.");
+    expect(requests[1]?.request).toMatchObject({
+      style: "hushed",
+      text: "Two.",
+      voice: "Kore",
+    });
     expect(requests[0]?.path).toBe("line-01.mp3");
   });
 });

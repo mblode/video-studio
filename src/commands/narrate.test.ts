@@ -6,8 +6,8 @@ import { join } from "node:path";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ElevenLabsClient } from "../elevenlabs.js";
-import { ELEVEN_V3_MODEL } from "../elevenlabs.js";
+import type { GeminiTtsClient } from "../tts.js";
+import { GEMINI_TTS_MODEL } from "../tts.js";
 import { runNarrate, runNarrateAssemble } from "./narrate.js";
 import type * as OutputModule from "./output.js";
 
@@ -36,7 +36,6 @@ describe("runNarrate --text-file", () => {
   beforeEach(() => {
     reported.payloads.length = 0;
     reported.warnings.length = 0;
-    process.env.ELEVENLABS_VOICE_ID = "voice-test";
   });
 
   it("dry-runs a scratch VO from a text file", async () => {
@@ -47,21 +46,23 @@ describe("runNarrate --text-file", () => {
     await runNarrate(undefined, {
       dryRun: true,
       force: false,
-      model: ELEVEN_V3_MODEL,
+      model: GEMINI_TTS_MODEL,
       textFile,
     });
 
     const payload = reported.payloads.at(-1) as {
       dryRun?: boolean;
       output?: string;
-      request?: { model_id: string; text: string };
+      request?: { model: string; input: { content: { text: string }[] }[] };
       textFile?: string;
     };
     expect(payload.dryRun).toBe(true);
     expect(payload.textFile).toBe(textFile);
     expect(payload.output).toBe(join(dir, "narration-scratch.mp3"));
-    expect(payload.request?.model_id).toBe(ELEVEN_V3_MODEL);
-    expect(payload.request?.text).toBe("One monolith voiceover paragraph.");
+    expect(payload.request?.model).toBe(GEMINI_TTS_MODEL);
+    expect(payload.request?.input[0]?.content[0]?.text).toBe(
+      "One monolith voiceover paragraph."
+    );
   });
 });
 
@@ -249,8 +250,8 @@ describe("narration reuse provenance", () => {
   const options = {
     dryRun: false,
     force: false,
-    model: "eleven_multilingual_v2",
-    voice: "charlie",
+    model: GEMINI_TTS_MODEL,
+    voice: "Kore",
   };
 
   it("rejects legacy numbering before submitting a new missing line", async () => {
@@ -263,7 +264,7 @@ describe("narration reuse provenance", () => {
       runNarrate(script, options, {
         client: {
           textToSpeech,
-        } as unknown as ElevenLabsClient,
+        } as unknown as GeminiTtsClient,
       })
     ).rejects.toThrow("unverified existing narration");
     expect(textToSpeech).not.toHaveBeenCalled();
@@ -276,7 +277,7 @@ describe("narration reuse provenance", () => {
     const textToSpeech = vi.fn().mockResolvedValue(Buffer.from("speech bytes"));
     const client = {
       textToSpeech,
-    } as unknown as ElevenLabsClient;
+    } as unknown as GeminiTtsClient;
     await runNarrate(script, options, { client });
     await runNarrate(script, options, { client });
     expect(textToSpeech).toHaveBeenCalledTimes(1);
@@ -290,20 +291,17 @@ describe("narration reuse provenance", () => {
     expect(textToSpeech).toHaveBeenCalledTimes(1);
   });
 
-  it("invalidates neighbouring audio when the effective context changes", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "vs-narr-context-"));
+  it("treats a changed delivery style as stale", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vs-narr-style-"));
     const script = join(dir, "lines.tsv");
-    await writeFile(script, "1\tFirst words\n2\tSecond words\n");
+    await writeFile(script, "1\tFirst words\n");
     const textToSpeech = vi.fn().mockResolvedValue(Buffer.from("speech bytes"));
-    const client = { textToSpeech } as unknown as ElevenLabsClient;
+    const client = { textToSpeech } as unknown as GeminiTtsClient;
     await runNarrate(script, options, { client });
-    expect(textToSpeech).toHaveBeenCalledTimes(2);
-
-    await writeFile(script, "1\tRevised first words\n2\tSecond words\n");
-    await expect(runNarrate(script, options, { client })).rejects.toThrow(
-      "stale narration"
-    );
-    expect(textToSpeech).toHaveBeenCalledTimes(2);
+    await expect(
+      runNarrate(script, { ...options, style: "hushed, tense" }, { client })
+    ).rejects.toThrow("stale narration");
+    expect(textToSpeech).toHaveBeenCalledTimes(1);
   });
 
   it("rejects changed audio bytes before submitting any missing line", async () => {
@@ -311,7 +309,7 @@ describe("narration reuse provenance", () => {
     const script = join(dir, "lines.tsv");
     await writeFile(script, "2\tExisting words\n");
     const textToSpeech = vi.fn().mockResolvedValue(Buffer.from("speech bytes"));
-    const client = { textToSpeech } as unknown as ElevenLabsClient;
+    const client = { textToSpeech } as unknown as GeminiTtsClient;
     await runNarrate(script, options, { client });
     await writeFile(join(dir, "line-02.mp3"), "tampered bytes");
     await writeFile(script, "1\tMissing words\n2\tExisting words\n");
@@ -322,18 +320,18 @@ describe("narration reuse provenance", () => {
     expect(textToSpeech).toHaveBeenCalledTimes(1);
   });
 
-  it("records schema 2 with a full effective-request hash", async () => {
+  it("records schema 3 with a full effective-request hash", async () => {
     const dir = await mkdtemp(join(tmpdir(), "vs-narr-schema-"));
     const script = join(dir, "lines.tsv");
     await writeFile(script, "1\tOriginal words\n");
     const client = {
       textToSpeech: vi.fn().mockResolvedValue(Buffer.from("speech bytes")),
-    } as unknown as ElevenLabsClient;
+    } as unknown as GeminiTtsClient;
     await runNarrate(script, options, { client });
     const sidecar = JSON.parse(
       await readFile(join(dir, "line-01.mp3.json"), "utf-8")
     ) as Record<string, unknown>;
-    expect(sidecar.schemaVersion).toBe(2);
+    expect(sidecar.schemaVersion).toBe(3);
     expect(sidecar.requestSha256).toMatch(/^[a-f0-9]{64}$/u);
   });
 });

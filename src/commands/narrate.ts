@@ -4,17 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
-import {
-  buildSpeechBody,
-  ElevenLabsClient as ElevenClient,
-  requireElevenLabsApiKey,
-  requireElevenLabsVoiceId,
-} from "../elevenlabs.js";
-import type {
-  ElevenLabsClient,
-  ElevenLabsSpeechRequest,
-} from "../elevenlabs.js";
-import { loadEnv } from "../env.js";
+import { geminiBaseUrl, loadEnv, requireGeminiApiKey } from "../env.js";
 import { VsError } from "../errors.js";
 import { isComplete, loadManifest } from "../manifest.js";
 import {
@@ -33,6 +23,8 @@ import {
   shotStartTimes,
 } from "../narrate.js";
 import { resolveOutput } from "../paths.js";
+import { buildSpeechBody, GeminiTtsClient, resolveVoice } from "../tts.js";
+import type { SpeechRequest } from "../tts.js";
 import { assertNewVideoOutput } from "../versions.js";
 import { resolveFilm } from "./context.js";
 import { emit, heading, line, note, ok, warn } from "./output.js";
@@ -48,6 +40,8 @@ export interface NarrateOptions {
   /** Monolith scratch VO from a plain text file (ignores lines TSV). */
   textFile?: string;
   voice?: string;
+  /** Delivery direction (tone, pace, emotion) for every line. */
+  style?: string;
 }
 
 export interface NarrateAssembleOptions {
@@ -67,9 +61,12 @@ export interface NarrateAssembleOptions {
   xfade: number;
 }
 
-function createElevenClient(): ElevenLabsClient {
+function createTtsClient(): GeminiTtsClient {
   loadEnv();
-  return new ElevenClient({ apiKey: requireElevenLabsApiKey() });
+  return new GeminiTtsClient({
+    apiKey: requireGeminiApiKey(),
+    baseUrl: geminiBaseUrl(),
+  });
 }
 
 function probeDuration(path: string): number {
@@ -81,30 +78,25 @@ function probeDuration(path: string): number {
   return Number(out.trim());
 }
 
-async function speechIdentity(path: string, request: ElevenLabsSpeechRequest) {
-  const effectiveRequest = {
-    body: buildSpeechBody(request),
-    outputFormat: request.outputFormat ?? "mp3_44100_128",
-    voiceId: request.voiceId,
-  };
+async function speechIdentity(path: string, request: SpeechRequest) {
   return {
     audioSha256: createHash("sha256")
       .update(await readFile(path))
       .digest("hex"),
-    modelId: request.modelId,
+    model: request.model,
     requestSha256: createHash("sha256")
-      .update(JSON.stringify(effectiveRequest))
+      .update(JSON.stringify(buildSpeechBody(request)))
       .digest("hex"),
-    schemaVersion: 2,
+    schemaVersion: 3,
     text: request.text,
-    voiceId: request.voiceId,
+    voice: request.voice,
   };
 }
 
 /** Existing audio is reusable only when its recorded script, voice and bytes match. */
 async function assertReusableSpeech(
   path: string,
-  request: ElevenLabsSpeechRequest
+  request: SpeechRequest
 ): Promise<void> {
   let recorded: unknown;
   try {
@@ -127,14 +119,14 @@ async function assertReusableSpeech(
     )
   ) {
     throw new VsError("invalid_input", `stale narration: ${path}`, {
-      hint: "script, voice, model or audio changed; use a new --output directory, or --force to deliberately regenerate",
+      hint: "script, voice, style, model or audio changed; use a new --output directory, or --force to deliberately regenerate",
     });
   }
 }
 
 async function recordSpeech(
   path: string,
-  request: ElevenLabsSpeechRequest
+  request: SpeechRequest
 ): Promise<void> {
   await writeFile(
     `${path}.json`,
@@ -213,18 +205,18 @@ async function validateAssemblyProvenance(
 export async function runNarrate(
   linesFilePath: string | undefined,
   options: NarrateOptions,
-  injected: { client?: ElevenLabsClient } = {}
+  injected: { client?: GeminiTtsClient } = {}
 ): Promise<void> {
   loadEnv();
   if (options.textFile) {
     const resolvedText = resolve(options.textFile);
     const text = await loadScratchText(resolvedText);
-    const voiceId = requireElevenLabsVoiceId(options.voice);
     const outPath = scratchAudioPath(resolvedText, options.outputFile);
     const request = {
-      modelId: options.model,
+      model: options.model,
+      style: options.style,
       text,
-      voiceId,
+      voice: resolveVoice(options.voice),
     };
 
     if (options.dryRun) {
@@ -261,7 +253,7 @@ export async function runNarrate(
     }
 
     await mkdir(dirname(outPath), { recursive: true });
-    const client = injected.client ?? createElevenClient();
+    const client = injected.client ?? createTtsClient();
     const bytes = await client.textToSpeech(request);
     await writeFile(outPath, bytes);
     await recordSpeech(outPath, request);
@@ -279,8 +271,12 @@ export async function runNarrate(
   const linesDir = options.outputDir
     ? resolve(process.cwd(), options.outputDir)
     : dirname(resolve(linesFilePath));
-  const voiceId = requireElevenLabsVoiceId(options.voice);
-  const requests = buildNarrateLineRequests(lines, voiceId, options.model);
+  const requests = buildNarrateLineRequests(
+    lines,
+    resolveVoice(options.voice),
+    options.model,
+    options.style
+  );
 
   if (options.dryRun) {
     emit(
@@ -315,29 +311,17 @@ export async function runNarrate(
     }
   }
   await mkdir(linesDir, { recursive: true });
-  const client = injected.client ?? createElevenClient();
+  const client = injected.client ?? createTtsClient();
 
-  for (const [index, entry] of requests.entries()) {
+  for (const entry of requests) {
     const outPath = lineAudioPath(linesDir, entry.line);
     if (existsSync(outPath) && !options.force) {
       note(`${entry.path} exists, skipping (pass --force to regenerate)`);
       continue;
     }
-    const previousText = lines[index - 1]?.text;
-    const nextText = lines[index + 1]?.text;
-    const bytes = await client.textToSpeech({
-      modelId: options.model,
-      nextText,
-      previousText,
-      text: entry.request.text,
-      voiceId,
-    });
+    const bytes = await client.textToSpeech(entry.request);
     await writeFile(outPath, bytes);
-    await recordSpeech(outPath, {
-      ...entry.request,
-      nextText,
-      previousText,
-    });
+    await recordSpeech(outPath, entry.request);
     ok(`${entry.path} → ${outPath}`);
   }
 

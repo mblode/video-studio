@@ -19,7 +19,8 @@ vs score "Warm cinematic underscore, sparse piano and strings" \
   --shots films/<slug>/shots.json
 
 # 2. Per-line VO from narration/lines.tsv (NN<TAB>text)
-vs narrate films/<slug>/narration/lines.tsv --voice <elevenlabs-voice-id>
+vs narrate films/<slug>/narration/lines.tsv --voice Charon \
+  --style "warm, unhurried documentary narration"
 
 # 3. Place lines on the stitch timeline (line<TAB>shotId<TAB>offset)
 vs narrate assemble films/<slug>/shots.json \

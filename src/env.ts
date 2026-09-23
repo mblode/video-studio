@@ -93,12 +93,12 @@ export function minimaxBaseUrl(): string {
   return process.env.MINIMAX_BASE_URL ?? DEFAULT_MINIMAX_BASE_URL;
 }
 
-/** Google Gemini key — only needed to generate stills with Nano Banana (gemini-* models). */
+/** Google Gemini key — Nano Banana stills, Lyria score, and narration. */
 export function requireGeminiApiKey(): string {
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
     throw new VsError("missing_credential", "GEMINI_API_KEY is not set", {
-      hint: "add `GEMINI_API_KEY=...` to a .env file (see .env.example) — stills run on Google, so this is the only key that works for them",
+      hint: "add `GEMINI_API_KEY=...` to a .env file (see .env.example) — stills, score and narration run on Google",
     });
   }
   return key;
@@ -107,9 +107,3 @@ export function requireGeminiApiKey(): string {
 export function geminiBaseUrl(): string {
   return process.env.GEMINI_BASE_URL ?? DEFAULT_GEMINI_BASE_URL;
 }
-
-/** Re-export ElevenLabs key helpers so doctor/env share one surface. */
-export {
-  requireElevenLabsApiKey,
-  requireElevenLabsVoiceId,
-} from "./elevenlabs.js";

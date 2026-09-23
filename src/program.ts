@@ -17,8 +17,8 @@ import { runStills } from "./commands/stills.js";
 import { runStitch } from "./commands/stitch.js";
 import { runUpscale } from "./commands/upscale.js";
 import { runUse } from "./commands/use.js";
-import { ELEVEN_V3_MODEL } from "./elevenlabs.js";
 import { VsError } from "./errors.js";
+import { GEMINI_TTS_MODEL } from "./tts.js";
 
 // Title cards are rasterised by family name, so the default has to be a face
 // every machine already has. Pass --font to use your own (it must be installed;
@@ -585,15 +585,22 @@ export function buildProgram(): Command {
     .command("narrate")
     .enablePositionalOptions()
     .description(
-      "Generate ElevenLabs narration from a TSV (NN\\ttext) or --text-file scratch VO"
+      "Generate Gemini TTS narration from a TSV (NN\\ttext) or --text-file scratch VO"
     )
     .argument("[lines-file]", "path to lines.tsv (omit with --text-file)")
     .option(
       "--text-file <path>",
       "monolith scratch VO from a plain text file (ignores lines TSV)"
     )
-    .option("--voice <id>", "ElevenLabs voice id (or set ELEVENLABS_VOICE_ID)")
-    .option("--model <id>", "ElevenLabs model id", ELEVEN_V3_MODEL)
+    .option(
+      "--voice <name>",
+      "Gemini voice name or library id (or set GEMINI_TTS_VOICE; default Charon)"
+    )
+    .option(
+      "--style <text>",
+      "delivery direction for every line, e.g. 'hushed, tense, slow'"
+    )
+    .option("--model <id>", "Gemini TTS model id", GEMINI_TTS_MODEL)
     .option(
       "--output <path>",
       "output dir for line-NN.mp3, or scratch mp3 path with --text-file"
@@ -611,6 +618,7 @@ export function buildProgram(): Command {
         model: options.model,
         outputDir: options.textFile ? undefined : options.output,
         outputFile: options.textFile ? options.output : undefined,
+        style: options.style,
         textFile: options.textFile,
         voice: options.voice,
       });

@@ -2,10 +2,10 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
-import { ELEVEN_V3_MODEL, buildSpeechBody } from "./elevenlabs.js";
-import type { ElevenLabsSpeechRequest } from "./elevenlabs.js";
 import { fileReadError, VsError } from "./errors.js";
 import type { TimelineSegment } from "./timeline.js";
+import { buildSpeechBody, GEMINI_TTS_MODEL } from "./tts.js";
+import type { SpeechRequest } from "./tts.js";
 
 export {
   buildFilmSegments as buildAssembleSegments,
@@ -140,24 +140,15 @@ export function lineAudioPath(linesDir: string, lineNumber: number): string {
 /** Dry-run / submit payloads for each TSV line. */
 export function buildNarrateLineRequests(
   lines: NarrationLine[],
-  voiceId: string,
-  modelId: string = ELEVEN_V3_MODEL
-): { line: number; path: string; request: ElevenLabsSpeechRequest }[] {
-  return lines.map((entry, index) => {
-    const previousText = lines[index - 1]?.text;
-    const nextText = lines[index + 1]?.text;
-    return {
-      line: entry.number,
-      path: `line-${String(entry.number).padStart(2, "0")}.mp3`,
-      request: {
-        modelId,
-        nextText,
-        previousText,
-        text: entry.text,
-        voiceId,
-      },
-    };
-  });
+  voice: string,
+  model: string = GEMINI_TTS_MODEL,
+  style?: string
+): { line: number; path: string; request: SpeechRequest }[] {
+  return lines.map((entry) => ({
+    line: entry.number,
+    path: `line-${String(entry.number).padStart(2, "0")}.mp3`,
+    request: { model, style, text: entry.text, voice },
+  }));
 }
 
 export function renderNarrateDryRun(
@@ -167,7 +158,7 @@ export function renderNarrateDryRun(
     body: buildSpeechBody(request),
     line,
     path,
-    voiceId: request.voiceId,
+    voice: request.voice,
   }));
 }
 
