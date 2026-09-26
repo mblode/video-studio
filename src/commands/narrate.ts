@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import { geminiBaseUrl, loadEnv, requireGeminiApiKey } from "../env.js";
@@ -78,11 +78,9 @@ function probeDuration(path: string): number {
   return Number(out.trim());
 }
 
-async function speechIdentity(path: string, request: SpeechRequest) {
+function speechIdentity(audio: Buffer, request: SpeechRequest) {
   return {
-    audioSha256: createHash("sha256")
-      .update(await readFile(path))
-      .digest("hex"),
+    audioSha256: createHash("sha256").update(audio).digest("hex"),
     model: request.model,
     requestSha256: createHash("sha256")
       .update(JSON.stringify(buildSpeechBody(request)))
@@ -106,11 +104,11 @@ async function assertReusableSpeech(
       "invalid_input",
       `unverified existing narration: ${path}`,
       {
-        hint: "use a new --output directory or audit the legacy recording before reuse; filenames alone do not prove which script was spoken",
+        hint: "this recording has no provenance sidecar (made before sidecars existed, or by hand), and a filename alone does not prove which script line was spoken. It still assembles as-is; to narrate a revised script, use a new --output directory, or move the sidecar-less files aside so only those lines are regenerated. --force regenerates every line",
       }
     );
   }
-  const expected = await speechIdentity(path, request);
+  const expected = speechIdentity(await readFile(path), request);
   if (
     !recorded ||
     typeof recorded !== "object" ||
@@ -124,14 +122,30 @@ async function assertReusableSpeech(
   }
 }
 
-async function recordSpeech(
+/**
+ * Write the audio and its provenance sidecar via temp files and renames. The
+ * sidecar lands first: a crash between the renames leaves a sidecar with no
+ * audio (the line is simply regenerated) or, under --force, a sidecar whose
+ * hash no longer matches the old audio (reported as stale). Never audio with
+ * no sidecar, which the next run would refuse as unverified.
+ */
+async function writeSpeech(
   path: string,
+  audio: Buffer,
   request: SpeechRequest
 ): Promise<void> {
-  await writeFile(
-    `${path}.json`,
-    JSON.stringify(await speechIdentity(path, request))
-  );
+  const sidecar = `${path}.json`;
+  const audioTmp = `${path}.part`;
+  const sidecarTmp = `${sidecar}.part`;
+  try {
+    await writeFile(audioTmp, audio);
+    await writeFile(sidecarTmp, JSON.stringify(speechIdentity(audio, request)));
+    await rename(sidecarTmp, sidecar);
+    await rename(audioTmp, path);
+  } finally {
+    await rm(audioTmp, { force: true });
+    await rm(sidecarTmp, { force: true });
+  }
 }
 
 async function validateAssemblyProvenance(
@@ -254,9 +268,7 @@ export async function runNarrate(
 
     await mkdir(dirname(outPath), { recursive: true });
     const client = injected.client ?? createTtsClient();
-    const bytes = await client.textToSpeech(request);
-    await writeFile(outPath, bytes);
-    await recordSpeech(outPath, request);
+    await writeSpeech(outPath, await client.textToSpeech(request), request);
     emit({ output: outPath, status: "ok", textFile: resolvedText }, () => {
       ok(`scratch VO → ${outPath}`);
     });
@@ -316,12 +328,14 @@ export async function runNarrate(
   for (const entry of requests) {
     const outPath = lineAudioPath(linesDir, entry.line);
     if (existsSync(outPath) && !options.force) {
-      note(`${entry.path} exists, skipping (pass --force to regenerate)`);
+      note(`${entry.path} matches the recorded script and voice, skipping`);
       continue;
     }
-    const bytes = await client.textToSpeech(entry.request);
-    await writeFile(outPath, bytes);
-    await recordSpeech(outPath, entry.request);
+    await writeSpeech(
+      outPath,
+      await client.textToSpeech(entry.request),
+      entry.request
+    );
     ok(`${entry.path} → ${outPath}`);
   }
 

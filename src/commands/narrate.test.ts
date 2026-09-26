@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -318,6 +318,27 @@ describe("narration reuse provenance", () => {
       "stale narration"
     );
     expect(textToSpeech).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes no audio without its sidecar when synthesis fails", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vs-narr-atomic-"));
+    const script = join(dir, "lines.tsv");
+    await writeFile(script, "1\tFirst words\n2\tSecond words\n");
+    const textToSpeech = vi
+      .fn()
+      .mockResolvedValueOnce(Buffer.from("speech bytes"))
+      .mockRejectedValueOnce(new Error("socket hang up"));
+    await expect(
+      runNarrate(script, options, {
+        client: { textToSpeech } as unknown as GeminiTtsClient,
+      })
+    ).rejects.toThrow("socket hang up");
+    const written = await readdir(dir);
+    expect(written.toSorted()).toEqual([
+      "line-01.mp3",
+      "line-01.mp3.json",
+      "lines.tsv",
+    ]);
   });
 
   it("records schema 3 with a full effective-request hash", async () => {
