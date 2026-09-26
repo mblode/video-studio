@@ -47,6 +47,9 @@ function isPreSendError(error: unknown): boolean {
   return false;
 }
 
+const GENERATE_RECOVERY_HINT =
+  "nothing was retried, because replaying a paid request bills twice; check the provider console for a task created just now, adopt it with `vs status <shots-file> --refresh`, and only then re-run `vs generate`";
+
 /**
  * A request that spends money and did not come back with an answer.
  *
@@ -57,16 +60,14 @@ function isPreSendError(error: unknown): boolean {
 function ambiguousRequestError(
   provider: string,
   what: string | undefined,
-  cause: Error
+  cause: Error,
+  recoveryHint: string = GENERATE_RECOVERY_HINT
 ): VsError {
   const operation = what ?? "a request";
   return new VsError(
     "task_uncertain",
     `${provider} did not answer ${operation}, which may still have been accepted and billed`,
-    {
-      cause,
-      hint: "nothing was retried, because replaying a paid request bills twice; check the provider console for a task created just now, adopt it with `vs status <shots-file> --refresh`, and only then re-run `vs generate`",
-    }
+    { cause, hint: recoveryHint }
   );
 }
 /** Characters of the offending body echoed in a validation error. */
@@ -153,6 +154,11 @@ export interface RequestOptions {
   method: "GET" | "POST";
   /** Provider name, for error messages only. */
   provider: string;
+  /**
+   * Next step when a paid POST gets no answer. Defaults to the `vs generate`
+   * task-adoption path; a caller with no task to adopt names its own.
+   */
+  recoveryHint?: string;
   url: string;
   /** Operation name, for error messages only, e.g. "createTask". */
   what?: string;
@@ -188,7 +194,16 @@ export interface JsonRequestOptions<T> extends RequestOptions {
 export async function requestWithRetry(
   options: RequestOptions
 ): Promise<Response> {
-  const { body, fetchImpl, headers, method, provider, url, what } = options;
+  const {
+    body,
+    fetchImpl,
+    headers,
+    method,
+    provider,
+    recoveryHint,
+    url,
+    what,
+  } = options;
   const init: RequestInit = { headers, method };
   if (body !== undefined) {
     init.body = JSON.stringify(body);
@@ -202,7 +217,7 @@ export async function requestWithRetry(
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       if (!(replayable || isPreSendError(lastError))) {
-        throw ambiguousRequestError(provider, what, lastError);
+        throw ambiguousRequestError(provider, what, lastError, recoveryHint);
       }
       await sleep(backoffMs(attempt));
       continue;
@@ -215,7 +230,7 @@ export async function requestWithRetry(
     if (retryable) {
       lastError = new ApiError(provider, response.status, text);
       if (response.status !== 429 && !replayable) {
-        throw ambiguousRequestError(provider, what, lastError);
+        throw ambiguousRequestError(provider, what, lastError, recoveryHint);
       }
       const retryAfter = Number(response.headers.get("retry-after"));
       await sleep(

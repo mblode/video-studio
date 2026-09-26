@@ -1,4 +1,7 @@
 import { execFileSync } from "node:child_process";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -71,6 +74,71 @@ describe("GeminiTtsClient.textToSpeech", () => {
     );
     // ffmpeg's MP3 muxer leads with an ID3v2 tag.
     expect(mp3.subarray(0, 3).toString()).toBe("ID3");
+  });
+
+  it("converts headerless L16 PCM at the rate its mime type states", async () => {
+    // Half a second of 16 kHz mono s16le silence, with no container header.
+    const pcm = Buffer.alloc(16_000);
+    const client = new GeminiTtsClient({
+      apiKey: "k",
+      baseUrl: "https://example.test",
+      fetchImpl: vi.fn().mockResolvedValue(
+        Response.json({
+          steps: [
+            {
+              content: [
+                {
+                  data: pcm.toString("base64"),
+                  mime_type: "audio/L16;codec=pcm;rate=16000",
+                  type: "audio",
+                },
+              ],
+            },
+          ],
+        })
+      ),
+    });
+
+    const mp3 = await client.textToSpeech({ text: "Hi.", voice: "Kore" });
+
+    expect(mp3.subarray(0, 3).toString()).toBe("ID3");
+    const dir = await mkdtemp(join(tmpdir(), "vs-tts-pcm-"));
+    const path = join(dir, "out.mp3");
+    await writeFile(path, mp3);
+    const seconds = Number(
+      execFileSync(
+        "ffprobe",
+        [
+          "-v",
+          "error",
+          "-show_entries",
+          "format=duration",
+          "-of",
+          "csv=p=0",
+          path,
+        ],
+        { encoding: "utf-8" }
+      ).trim()
+    );
+    // Read at the wrong rate (24 kHz) it would come out at about 0.33s.
+    expect(seconds).toBeGreaterThan(0.45);
+    expect(seconds).toBeLessThan(0.6);
+  });
+
+  it("points an unanswered request at a narrate re-run, not vs generate", async () => {
+    const client = new GeminiTtsClient({
+      apiKey: "k",
+      baseUrl: "https://example.test",
+      fetchImpl: vi
+        .fn()
+        .mockResolvedValue(new Response("bad gateway", { status: 502 })),
+    });
+    await expect(
+      client.textToSpeech({ text: "Hi.", voice: "Kore" })
+    ).rejects.toMatchObject({
+      code: "task_uncertain",
+      hint: expect.stringContaining("Re-run `vs narrate`"),
+    });
   });
 
   it("fails loudly when the response carries no audio", async () => {
