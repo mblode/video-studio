@@ -32,6 +32,15 @@ it, delete it.
 
 ## Gotchas
 
+- **Downloaded is not visually approved.** Films with
+  `film.requireVisualApproval: true` cannot select or stitch an unreviewed,
+  rejected, or stale take, including `--latest` and dry runs. Inspect moving
+  footage against the canonical cast sheets before using
+  `vs review <shots> --shot <id> --version <n> --verdict approved|rejected
+  --note <specific findings>`. Frame extraction does not record approval.
+  Receipts bind the clip bytes and cast-reference bytes; changing either
+  requires a fresh review. Do not disable the flag to assemble rejected takes.
+
 - **ESM only.** Relative imports need a `.js` extension or the NodeNext
   typecheck fails.
 - **One build, one entry point.** `tsdown.config.ts` emits `cli.js` only, with
@@ -76,6 +85,10 @@ it, delete it.
   manifest entry BEFORE it spends, and refuses to resubmit a shot whose id never
   came back (`isUnresolved`) unless you pass `--force`. `isInFlight` cannot
   rescue that case: there is no id to re-attach to.
+  New attempts clear the old task id and record provider/model before the
+  POST. Check unresolved latest attempts before skipping a selected completed
+  take. Recovery reads the latest revision's identity, not the film's current
+  model; missing legacy identity must fail closed.
 - **Generated video is immutable.** Clips live under
   `output/clips/<shot>/vNNN.mp4`; renders and exports also allocate `vNNN`.
   `ManifestEntry.status` describes the latest attempt, while `selectedVersion`
@@ -94,6 +107,15 @@ it, delete it.
   but each clip was scored independently, so N clips means N unrelated beds
   colliding at every junction. `vs stitch --mute-clips` drops them so one
   `vs score` bed runs across the whole timeline.
+- **Narration filenames are not script provenance.** In Smorgon, splitting one
+  line changed a 16-line script to 17 lines while the old numbered MP3s stayed
+  in place. `narrate` now checks complete request and audio hashes before any
+  paid call; assembly checks colocated script IDs and audited text/audio hashes.
+  Keep a separate directory for a revised or manually conformed performance.
+- **Nested command options must stay on their command.** Commander previously
+  consumed `narrate assemble --dry-run --output ...` as parent narration options,
+  causing a real write to the default file. Positional option parsing and the
+  executable routing regression protect both flags; don't remove them.
 - **`vs narrate assemble --xfade` must match `vs stitch --xfade`.** Both default
   to `0`; if you crossfade the cut, use the same value (and per-shot
   `transition` overrides) on assemble so narration lands on the right timeline.

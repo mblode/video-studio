@@ -27,6 +27,9 @@ export interface StitchOptions {
   font: string;
   musicGainDb: number;
   musicPath?: string;
+  /** A separately designed, timeline-aligned effects/ambience stem. */
+  effectsPath?: string;
+  effectsGainDb?: number;
   /** Gain applied to the narration track, in dB. */
   narrationGainDb?: number;
   narrationPath?: string;
@@ -137,12 +140,12 @@ function clipInputArgs(clips: StitchClip[]): {
 }
 
 /**
- * Gold-standard narration-over-music mix:
+ * Narration-over-music mix:
  * - Voiceover is brought forward: de-rumble high-pass, a gentle presence lift
  *   for intelligibility, then loudnorm to a controlled dialogue level.
  * - The score is ducked UNDER the voiceover via sidechain compression keyed by
  *   the narration, so dialogue stays clear instead of muffled by the bed.
- * - The whole program is mastered to the streaming loudness standard
+ * - The whole program targets a web delivery loudness preset
  *   (-14 LUFS integrated, -1 dBTP) so it's audible on phones and laptops.
  *
  * Everything is conformed to stereo/44.1k before mixing so the sidechain and
@@ -165,19 +168,22 @@ function audioMixArgs(
   let narrationLabel: string | null = null;
   let narrationKey: string | null = null;
   let musicLabel: string | null = null;
+  let effectsLabel: string | null = null;
 
   if (options.narrationPath) {
     extraInputs.push("-i", options.narrationPath);
     // De-rumble + presence lift for clarity, controlled level, then split: one
     // copy for the mix, one to key the music ducking.
     filterParts.push(
-      `[${inputIndex}:a]volume=${options.narrationGainDb ?? 0}dB,` +
-        "highpass=f=85,equalizer=f=3000:width_type=q:w=1.2:g=3," +
-        "loudnorm=I=-16:TP=-1.5:LRA=11," +
-        `${stereo},asplit=2[narr_a][narr_key]`
+      `[${inputIndex}:a]highpass=f=85,equalizer=f=3000:width_type=q:w=1.2:g=3,` +
+        `loudnorm=I=-16:TP=-1.5:LRA=11,` +
+        `volume=${options.narrationGainDb ?? 0}dB,${stereo},` +
+        `apad=whole_dur=${totalDuration},atrim=duration=${totalDuration},${
+          options.musicPath ? "asplit=2[narr_a][narr_key]" : "anull[narr_a]"
+        }`
     );
     narrationLabel = "[narr_a]";
-    narrationKey = "[narr_key]";
+    narrationKey = options.musicPath ? "[narr_key]" : null;
     inputIndex += 1;
   }
 
@@ -200,7 +206,19 @@ function audioMixArgs(
     inputIndex += 1;
   }
 
+  if (options.effectsPath) {
+    extraInputs.push("-i", options.effectsPath);
+    filterParts.push(
+      `[${inputIndex}:a]volume=${options.effectsGainDb ?? 0}dB,${stereo},` +
+        `apad=whole_dur=${totalDuration},atrim=duration=${totalDuration}[effects_a]`
+    );
+    effectsLabel = "[effects_a]";
+  }
+
   const mixLabels = ["[base_a]"];
+  if (effectsLabel) {
+    mixLabels.push(effectsLabel);
+  }
   if (musicLabel) {
     mixLabels.push(musicLabel);
   }
@@ -273,8 +291,12 @@ export function buildStitchPlan(
     .slice(1)
     .map((clip) => clip.transition ?? options.xfade);
   const anyFade = junctionFades.some((f) => f > 0);
-  const lossless =
-    !anyFade && !options.musicPath && !options.narrationPath && !options.grade;
+  const hasSoundtrack = [
+    options.musicPath,
+    options.narrationPath,
+    options.effectsPath,
+  ].some(Boolean);
+  const lossless = !anyFade && !hasSoundtrack && !options.grade;
 
   if (lossless) {
     return losslessPlan(sourceClips, options);
@@ -361,7 +383,7 @@ export function buildStitchPlan(
           "256k",
           options.outputPath,
         ],
-        description: `re-encode stitch of ${sourceClips.length} clips${anyFade ? " with per-junction transitions" : ""}${options.musicPath ? " + music bed" : ""}${options.narrationPath ? " + narration" : ""}${options.grade ? " + grade" : ""}`,
+        description: `re-encode stitch of ${sourceClips.length} clips${anyFade ? " with per-junction transitions" : ""}${options.musicPath ? " + music bed" : ""}${options.narrationPath ? " + narration" : ""}${options.effectsPath ? " + effects stem" : ""}${options.grade ? " + grade" : ""}`,
       },
     ],
   };

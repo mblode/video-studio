@@ -2,10 +2,10 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
-import { ELEVEN_V3_MODEL, buildSpeechBody } from "./elevenlabs.js";
-import type { ElevenLabsSpeechRequest } from "./elevenlabs.js";
 import { fileReadError, VsError } from "./errors.js";
 import type { TimelineSegment } from "./timeline.js";
+import { buildSpeechBody, GEMINI_TTS_MODEL } from "./tts.js";
+import type { SpeechRequest } from "./tts.js";
 
 export {
   buildFilmSegments as buildAssembleSegments,
@@ -31,6 +31,8 @@ export type AssembleSegment = TimelineSegment;
 
 export interface PlacedLine {
   line: number;
+  requestedStart: number;
+  shiftSeconds: number;
   start: number;
   duration: number;
   path: string;
@@ -43,6 +45,7 @@ const MIN_GAP = 0.25;
  */
 export function parseLinesTsv(contents: string): NarrationLine[] {
   const lines: NarrationLine[] = [];
+  const seen = new Set<number>();
   for (const raw of contents.split(/\r?\n/u)) {
     const row = raw.trim();
     if (!row || row.startsWith("#")) {
@@ -58,14 +61,18 @@ export function parseLinesTsv(contents: string): NarrationLine[] {
         }
       );
     }
-    const number = Math.trunc(Number(row.slice(0, tab)));
+    const number = Number(row.slice(0, tab));
     const text = row.slice(tab + 1).trim();
-    if (!Number.isFinite(number) || number < 1 || !text) {
+    if (!Number.isInteger(number) || number < 1 || !text) {
       throw new VsError(
         "invalid_input",
         `invalid narration row: ${row.slice(0, 60)}`
       );
     }
+    if (seen.has(number)) {
+      throw new VsError("invalid_input", `duplicate narration line ${number}`);
+    }
+    seen.add(number);
     lines.push({ number, text });
   }
   if (lines.length === 0) {
@@ -80,6 +87,7 @@ export function parseLinesTsv(contents: string): NarrationLine[] {
  */
 export function parsePlacementTsv(contents: string): NarrationPlacement[] {
   const placements: NarrationPlacement[] = [];
+  const seen = new Set<number>();
   for (const raw of contents.split(/\r?\n/u)) {
     const row = raw.trim();
     if (!row || row.startsWith("#")) {
@@ -95,11 +103,12 @@ export function parsePlacementTsv(contents: string): NarrationPlacement[] {
     if (cols[0]?.toLowerCase() === "line") {
       continue;
     }
-    const line = Math.trunc(Number(cols[0] ?? ""));
+    const line = Number(cols[0] ?? "");
     const shotId = cols[1] ?? "";
     const offsetIntoShot = Number(cols[2] ?? "");
     if (
-      !Number.isFinite(line) ||
+      !Number.isInteger(line) ||
+      line < 1 ||
       !shotId ||
       !Number.isFinite(offsetIntoShot) ||
       offsetIntoShot < 0
@@ -109,6 +118,13 @@ export function parsePlacementTsv(contents: string): NarrationPlacement[] {
         `invalid placement row: ${row.slice(0, 60)}`
       );
     }
+    if (seen.has(line)) {
+      throw new VsError(
+        "invalid_input",
+        `duplicate placement for line ${line}`
+      );
+    }
+    seen.add(line);
     placements.push({ line, offsetIntoShot, shotId });
   }
   if (placements.length === 0) {
@@ -124,24 +140,15 @@ export function lineAudioPath(linesDir: string, lineNumber: number): string {
 /** Dry-run / submit payloads for each TSV line. */
 export function buildNarrateLineRequests(
   lines: NarrationLine[],
-  voiceId: string,
-  modelId: string = ELEVEN_V3_MODEL
-): { line: number; path: string; request: ElevenLabsSpeechRequest }[] {
-  return lines.map((entry, index) => {
-    const previousText = lines[index - 1]?.text;
-    const nextText = lines[index + 1]?.text;
-    return {
-      line: entry.number,
-      path: `line-${String(entry.number).padStart(2, "0")}.mp3`,
-      request: {
-        modelId,
-        nextText,
-        previousText,
-        text: entry.text,
-        voiceId,
-      },
-    };
-  });
+  voice: string,
+  model: string = GEMINI_TTS_MODEL,
+  style?: string
+): { line: number; path: string; request: SpeechRequest }[] {
+  return lines.map((entry) => ({
+    line: entry.number,
+    path: `line-${String(entry.number).padStart(2, "0")}.mp3`,
+    request: { model, style, text: entry.text, voice },
+  }));
 }
 
 export function renderNarrateDryRun(
@@ -151,7 +158,7 @@ export function renderNarrateDryRun(
     body: buildSpeechBody(request),
     line,
     path,
-    voiceId: request.voiceId,
+    voice: request.voice,
   }));
 }
 
@@ -188,7 +195,14 @@ export function placeLines(
         `no probed duration for line ${placement.line}`
       );
     }
-    let start = shotStart + placement.offsetIntoShot;
+    if (!(Number.isFinite(duration) && duration > 0)) {
+      throw new VsError(
+        "invalid_input",
+        `invalid duration for line ${placement.line}: ${duration}`
+      );
+    }
+    const requestedStart = shotStart + placement.offsetIntoShot;
+    let start = requestedStart;
     if (prevEnd !== undefined && start < prevEnd + minGap) {
       start = prevEnd + minGap;
     }
@@ -196,11 +210,38 @@ export function placeLines(
       duration,
       line: placement.line,
       path,
+      requestedStart,
+      shiftSeconds: start - requestedStart,
       start,
     });
     prevEnd = start + duration;
   }
   return placed;
+}
+
+/** Refuse output ffmpeg would otherwise extend past and later truncate to the cut. */
+export function assertLinesWithinRuntime(
+  placed: PlacedLine[],
+  totalRuntime: number
+): void {
+  if (!(Number.isFinite(totalRuntime) && totalRuntime > 0)) {
+    throw new VsError(
+      "invalid_input",
+      `invalid program runtime: ${totalRuntime}`
+    );
+  }
+  for (const entry of placed) {
+    const end = entry.start + entry.duration;
+    if (end > totalRuntime) {
+      throw new VsError(
+        "invalid_input",
+        `narration line ${entry.line} ends at ${end.toFixed(2)}s after program ends at ${totalRuntime.toFixed(2)}s`,
+        {
+          hint: "retime placement or shorten the line rather than delivering truncated audio",
+        }
+      );
+    }
+  }
 }
 
 export function buildAssembleFfmpegArgs(
@@ -301,7 +342,7 @@ export async function loadPlacementFile(
 }
 
 /**
- * Soft check used by assemble: last line should finish before a named shot's
+ * Check used by assemble: last line should finish before a named shot's
  * fade window (default: fade begins `fadeLeadSeconds` before that shot ends).
  */
 export function assertLastLineBeforeFade(
@@ -317,7 +358,9 @@ export function assertLastLineBeforeFade(
   const seg = segments.find((s) => s.id === fadeShotId);
   const start = shotStarts[fadeShotId];
   if (!seg || start === undefined) {
-    return;
+    throw new VsError("invalid_input", `unknown fade shot "${fadeShotId}"`, {
+      hint: `valid ids: ${Object.keys(shotStarts).join(", ")}`,
+    });
   }
   const fadeBegins = start + seg.dur - fadeLeadSeconds;
   const last = placed.at(-1);

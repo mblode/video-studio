@@ -1,6 +1,6 @@
 ---
 name: vs
-description: Runs the video-studio `vs` CLI that turns a shot list into AI-generated video clips via BytePlus Seedance 2.x, with reference stills from Nano Banana, Lyria score beds, and ElevenLabs narration. Covers every command (init, doctor, stills, generate, score, narrate, status, use, download, animatic, review, stitch, upscale, share), immutable clip revisions, the draft-to-final cost ladder, the audio mix, and model ids and rate limits. Use when the user wants to "run vs", "generate the film", "generate stills", "make the animatic", "stitch the cut", "score the film", "narrate", "check task status", "roll back a take", "share the film", "upscale for delivery", "do a draft pass", "the mix sounds wrong", "which model should I use", or asks what a vs command or flag does. For authoring the shots.json/stills.json content itself, use seedance.
+description: Runs the video-studio `vs` CLI that turns a shot list into AI-generated video clips via BytePlus Seedance 2.x, with reference stills from Nano Banana, Lyria score beds, and Gemini TTS narration. Covers every command (init, doctor, stills, generate, score, narrate, status, use, download, animatic, review, stitch, upscale, share), immutable clip revisions, the draft-to-final cost ladder, the audio mix, and model ids and rate limits. Use when the user wants to "run vs", "generate the film", "generate stills", "make the animatic", "stitch the cut", "score the film", "narrate", "check task status", "roll back a take", "share the film", "upscale for delivery", "do a draft pass", "the mix sounds wrong", "which model should I use", or asks what a vs command or flag does. For authoring the shots.json/stills.json content itself, use seedance.
 ---
 
 # vs
@@ -30,7 +30,7 @@ spend, and `--dry-run` costs nothing.
 | `vs stills <stills-file>`      | Generate reference stills into `stills/`                                |
 | `vs generate <shots-file>`     | Submit, poll, download immutable clips to `output/clips/<shot>/vNNN.mp4` |
 | `vs score <prompt>`            | Lyria 3 Pro instrumental bed → `score-vNNN.mp3` at the film root        |
-| `vs narrate <lines.tsv>`       | ElevenLabs per-line VO → `line-NN.mp3` (`NN\\ttext` TSV)                 |
+| `vs narrate <lines.tsv>`       | Gemini TTS per-line VO → `line-NN.mp3` (`NN\\ttext` TSV)                |
 | `vs narrate assemble <shots>`  | Place lines on the stitch timeline → `narration.mp3`. `--xfade` must match stitch |
 | `vs status [shots-file-or-task-id]` | Show the manifest, or fetch one task from the API                  |
 | `vs use <shots-file> <shot> <version>` | Select or roll back a downloaded clip revision                |
@@ -103,8 +103,8 @@ commands.
 
 `AI_GATEWAY_API_KEY` (or `VERCEL_OIDC_TOKEN`) in `.env` for the default
 Seedance 2.5 path; `ARK_API_KEY` for BytePlus Seedance 2.0 / lighthouse and
-`vs status <task-id>`; `GEMINI_API_KEY` for Nano Banana stills and `vs score` (Lyria);
-`ELEVENLABS_API_KEY` (+ `ELEVENLABS_VOICE_ID` or `--voice`) for `vs narrate`.
+`vs status <task-id>`; `GEMINI_API_KEY` for Nano Banana stills, `vs score` (Lyria), and `vs narrate`
+(Gemini 3.8 TTS; `--voice`/`GEMINI_TTS_VOICE`, default `Charon`).
 See `.env.example`.
 
 ## Related skills
@@ -113,3 +113,22 @@ See `.env.example`.
 - `storycraft` for the treatment, beat sheet, and shot list behind it.
 - `nano-banana-2` to write still prompts when a film's stills model is
   `gemini-*`.
+
+## Explicit visual approval
+
+For a film with `film.requireVisualApproval: true`, download status never
+substitutes for picture review. `vs use` and every `vs stitch` path, including
+`--latest`, require an approved receipt for the exact selected clip and current
+cast sheets. Review stills alone cannot establish stable motion, eyes, anatomy
+or cash handling. Inspect moving footage and record a specific verdict:
+
+```bash
+vs review films/example/shots.json --shot shot-id --version 1 \
+  --verdict rejected --note "At 12–14s the cash changes from a tied bundle into a loose note."
+```
+
+Use `--draft` for a draft revision. `--dry-run` writes no receipt. An explicit
+`approved` verdict permits use only while clip bytes and canonical references
+remain unchanged. The film-local `visual-reviews.json` keeps rejection separate
+from provider status. A review gate prevents unnoticed reuse; it does not
+magically correct bad generated pixels or certify a film's artistic quality.

@@ -104,6 +104,29 @@ export function createVideoModel(configuredModelId: string): VideoModelV4 {
   );
 }
 
+/**
+ * Resolve the credential a paid video submission will use without making a
+ * request. Keep this separate from `createVideoModel`: dry-runs must remain
+ * able to render provider bodies without credentials.
+ */
+export function assertVideoModelCredential(configuredModelId: string): void {
+  loadEnv();
+  const { provider } = resolveModelId(configuredModelId);
+  if (provider === "minimax") {
+    requireMinimaxApiKey();
+    return;
+  }
+  if (provider === "aisdk") {
+    if (aisdkFactory(configuredModelId) === "google") {
+      requireGeminiApiKey();
+      return;
+    }
+    requireGatewayCredential();
+    return;
+  }
+  requireApiKey();
+}
+
 /** Load `.env` and build a Gemini client for Nano Banana stills (gemini-* models). */
 export function createGeminiClient(): GeminiClient {
   loadEnv();

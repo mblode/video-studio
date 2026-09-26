@@ -191,7 +191,8 @@ function revisionFields(
     payloadHash: update.payloadHash ?? existing?.payloadHash,
     status: update.status,
     submittedAt: existing?.submittedAt ?? now,
-    taskId: update.taskId ?? existing?.taskId ?? "",
+    taskId:
+      update.taskId ?? (update.newAttempt ? "" : (existing?.taskId ?? "")),
     tokensUsed: update.tokensUsed ?? existing?.tokensUsed,
     updatedAt: now,
     version,
@@ -295,7 +296,8 @@ export function upsertEntry(
     shotId: update.shotId,
     status: update.status,
     submittedAt: update.newAttempt ? now : (existing?.submittedAt ?? now),
-    taskId: update.taskId ?? existing?.taskId ?? "",
+    taskId:
+      update.taskId ?? (update.newAttempt ? "" : (existing?.taskId ?? "")),
     updatedAt: now,
     versions,
     videoUrl: currentVideoUrl(existing, update),

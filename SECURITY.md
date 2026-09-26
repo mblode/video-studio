@@ -13,7 +13,7 @@ within about a week.
 about where keys live and what ends up on disk.
 
 **Keys are read from the environment only.** `AI_GATEWAY_API_KEY` (default Seedance 2.5), `ARK_API_KEY` (BytePlus), and the optional
-`GEMINI_API_KEY`, `ELEVENLABS_API_KEY`, and `ELEVENLABS_VOICE_ID` are loaded
+`GEMINI_API_KEY` and `MINIMAX_API_KEY` are loaded
 from a `.env` file or the process environment. They are never written to a
 manifest, a log line, or an error message. `.env` is gitignored. `.env.example`
 holds names with empty values and is the canonical list of what the tool reads.
@@ -50,13 +50,27 @@ manifest *before* it submits, so a crash mid-submit leaves a trace rather than
 nothing. When you see `task_uncertain`, or a shot the tool refuses to resubmit:
 
 1. Check the provider's console for a task created around that time.
-2. If one exists, let it finish and re-run the same command; it re-attaches.
+2. If its task ID and provider/model are recorded, re-run the same command to
+   re-attach. If the ID never came back, reconcile the attempt with the console
+   record first; waiting alone cannot supply the missing ID.
 3. Only if none exists, pass `--force` to submit again.
 
 Passing `--force` on a shot in that state is you accepting the risk of paying
 twice, so do step 1 first.
 
+A retake starts with a fresh task identity, even when an older successful take
+remains selected. An unresolved retake takes precedence over “already complete.”
+Known tasks resume using their recorded provider and model; pending legacy
+records missing that identity fail with a recovery diagnostic instead of
+guessing the current film's backend. `vs status <shots-file> --refresh` also
+refreshes succeeded, undownloaded tasks so their result URLs can be recovered.
+
 ## Scope
 
 This is a local CLI. It has no server, no telemetry, and no network calls beyond
 the generation APIs you configure and the result downloads they hand back.
+
+Downloads have a ten-minute request/body deadline and discard partial files on
+failure. Recover a completed provider task with `status --refresh` and `download`
+before considering a paid retake. Missing provider credentials are rejected
+before generation reserves any manifest attempts.

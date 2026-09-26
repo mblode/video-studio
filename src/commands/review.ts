@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 
+import { VsError } from "../errors.js";
 import { assertFfmpeg, frameAtArgs, probeClip, runFfmpeg } from "../ffmpeg.js";
 import { isComplete, loadManifest, selectedRevision } from "../manifest.js";
 import type { Pass } from "../paths.js";
@@ -8,27 +9,102 @@ import { passSuffix, resolveOutput } from "../paths.js";
 import { frameTimestamps, probeWarnings, renderIndexMd } from "../review.js";
 import type { ReviewRow } from "../review.js";
 import { lintShotsFile } from "../shots.js";
+import type { Manifest, ShotsFile } from "../types.js";
+import { recordVisualReview } from "../visual-review.js";
 import { resolveFilm } from "./context.js";
 import { emit, heading, line, note, ok, warn } from "./output.js";
 
 export interface ReviewOptions {
+  shot?: string;
+  version?: number;
+  verdict?: string;
+  note?: string;
   draft: boolean;
   dryRun: boolean;
   frames: number;
   output?: string;
 }
 
+async function recordRequestedVerdict(
+  shotsFilePath: string,
+  file: ShotsFile,
+  manifest: Manifest,
+  pass: Pass,
+  options: ReviewOptions
+): Promise<boolean> {
+  if (
+    options.verdict === undefined &&
+    options.shot === undefined &&
+    options.version === undefined &&
+    options.note === undefined
+  ) {
+    return false;
+  }
+  if (
+    !(
+      options.shot &&
+      options.version &&
+      options.note?.trim() &&
+      (options.verdict === "approved" || options.verdict === "rejected")
+    )
+  ) {
+    throw new VsError(
+      "invalid_input",
+      "a visual verdict requires --shot, --version, --verdict approved|rejected and a nonblank --note"
+    );
+  }
+  const shot = file.shots.find((candidate) => candidate.id === options.shot);
+  const revision = manifest.entries[options.shot]?.versions?.find(
+    (candidate) => candidate.version === options.version
+  );
+  if (!(shot && revision?.outputPath && revision.status === "downloaded")) {
+    throw new VsError(
+      "missing_clip",
+      "visual verdict requires a known downloaded revision"
+    );
+  }
+  if (options.dryRun) {
+    emit(
+      {
+        dryRun: true,
+        note: options.note,
+        shotId: shot.id,
+        verdict: options.verdict,
+        version: options.version,
+      },
+      () => note("No visual verdict written (dry run).")
+    );
+    return true;
+  }
+  const receipt = await recordVisualReview({
+    mediaPath: revision.outputPath,
+    note: options.note,
+    pass,
+    shot,
+    shotsFile: shotsFilePath,
+    verdict: options.verdict,
+    version: options.version,
+  });
+  emit(receipt, () => ok(`${shot.id} v${options.version}: ${options.verdict}`));
+  return true;
+}
+
 export async function runReview(
   shotsFilePath: string,
   options: ReviewOptions
 ): Promise<void> {
-  await assertFfmpeg();
   const pass: Pass = options.draft ? "draft" : "final";
   const { file, shotsDir } = await resolveFilm(shotsFilePath, { pass });
   for (const warning of lintShotsFile(file)) {
     warn(warning);
   }
   const manifest = await loadManifest(shotsFilePath, pass);
+  if (
+    await recordRequestedVerdict(shotsFilePath, file, manifest, pass, options)
+  ) {
+    return;
+  }
+  await assertFfmpeg();
   const reviewDir = resolveOutput(
     options.output,
     join(shotsDir, `review${passSuffix(pass)}`)

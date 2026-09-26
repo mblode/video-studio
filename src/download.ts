@@ -7,7 +7,7 @@ import { pipeline } from "node:stream/promises";
 import { VsError } from "./errors.js";
 
 const EXPIRY_HINT =
-  "result URLs expire ~24h after generation, so re-run `vs generate <shots-file> --shot <id> --force` to regenerate the clip";
+  "refresh the recorded task with `vs status <shots-file> --refresh`, then retry `vs download <shots-file>`; do not pay for a retake to fix a download";
 
 /** Stream a remote file to disk via a .part temp file, then rename. */
 export async function downloadFile(
@@ -15,17 +15,16 @@ export async function downloadFile(
   outputPath: string
 ): Promise<void> {
   await mkdir(dirname(outputPath), { recursive: true });
-  const response = await fetch(url);
-  if (!(response.ok && response.body)) {
-    throw new VsError(
-      "download_failed",
-      `download failed with HTTP ${response.status} for ${outputPath}`,
-      { hint: EXPIRY_HINT }
-    );
-  }
   const tmp = `${outputPath}.part`;
+  const signal = AbortSignal.timeout(10 * 60 * 1000);
   try {
-    await pipeline(Readable.fromWeb(response.body), createWriteStream(tmp));
+    const response = await fetch(url, { signal });
+    if (!(response.ok && response.body)) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    await pipeline(Readable.fromWeb(response.body), createWriteStream(tmp), {
+      signal,
+    });
     await rename(tmp, outputPath);
   } catch (error) {
     // A mid-stream failure must not leave a stale .part behind for the next run.

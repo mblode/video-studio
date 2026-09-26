@@ -181,6 +181,68 @@ describe("resume logic", () => {
     expect(result?.versions?.[0]?.tokensUsed).toBe(100);
   });
 
+  it("starts an interrupted retake with fresh attempt identity and metadata", () => {
+    const manifest = emptyManifest();
+    const oldParams = {
+      duration: 5,
+      generateAudio: true,
+      model: "old-model",
+      provider: "ark" as const,
+      ratio: "16:9" as const,
+      watermark: false,
+    };
+    upsertEntry(manifest, {
+      newAttempt: true,
+      params: oldParams,
+      payloadHash: "old-payload",
+      shotId: "shot-01",
+      status: "submitted",
+      taskId: "task-old",
+    });
+    upsertEntry(manifest, {
+      outputPath: "v001.mp4",
+      shotId: "shot-01",
+      status: "downloaded",
+      taskId: "task-old",
+      tokensUsed: 100,
+    });
+
+    upsertEntry(manifest, {
+      newAttempt: true,
+      shotId: "shot-01",
+      status: "submitted",
+    });
+
+    const result = manifest.entries["shot-01"];
+    expect(result).toMatchObject({
+      attempts: 2,
+      outputPath: "v001.mp4",
+      selectedVersion: 1,
+      status: "submitted",
+      taskId: "",
+    });
+    expect(result?.params).toBeUndefined();
+    expect(result?.payloadHash).toBeUndefined();
+    expect(result?.tokensUsed).toBeUndefined();
+    expect(result?.versions).toHaveLength(2);
+    expect(result?.versions?.[0]).toMatchObject({
+      outputPath: "v001.mp4",
+      params: oldParams,
+      payloadHash: "old-payload",
+      taskId: "task-old",
+      tokensUsed: 100,
+      version: 1,
+    });
+    expect(result?.versions?.[1]).toMatchObject({
+      status: "submitted",
+      taskId: "",
+      version: 2,
+    });
+    expect(result?.versions?.[1]?.params).toBeUndefined();
+    expect(result?.versions?.[1]?.payloadHash).toBeUndefined();
+    expect(result?.versions?.[1]?.tokensUsed).toBeUndefined();
+  });
+
   it("scrubs an older presigned URL when a new attempt starts", () => {
     const manifest = emptyManifest();
     upsertEntry(manifest, {

@@ -3,6 +3,11 @@ import { dirname, resolve } from "node:path";
 import { VsError } from "../errors.js";
 import { isComplete, loadManifest, saveManifest } from "../manifest.js";
 import type { Pass } from "../paths.js";
+import { loadShotsFile } from "../shots.js";
+import {
+  assertVisualApproval,
+  visualApprovalRequired,
+} from "../visual-review.js";
 import { emit, ok } from "./output.js";
 
 export interface UseOptions {
@@ -35,6 +40,24 @@ export async function runUse(
         hint: `run \`vs status ${shotsFile}\` to see available revisions`,
       }
     );
+  }
+
+  if (await visualApprovalRequired(shotsFile)) {
+    const shots = await loadShotsFile(shotsFile);
+    const shot = shots.shots.find((candidate) => candidate.id === shotId);
+    if (!shot) {
+      throw new VsError(
+        "unknown_id",
+        `no shot named ${shotId} in ${shotsFile}`
+      );
+    }
+    await assertVisualApproval({
+      mediaPath: revision.outputPath,
+      pass,
+      shot,
+      shotsFile,
+      version,
+    });
   }
 
   entry.selectedVersion = version;

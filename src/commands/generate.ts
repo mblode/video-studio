@@ -15,8 +15,7 @@ import { downloadFile, writeVideoFile } from "../download.js";
 import { formatError, isVsError, VsError } from "../errors.js";
 import {
   isComplete,
-  isInFlight,
-  isUnresolved,
+  latestRevision,
   loadManifest,
   saveManifest,
   upsertEntry,
@@ -38,9 +37,21 @@ import type { PayloadOverrides } from "../payload.js";
 import { lintShotsFile } from "../shots.js";
 import type { VideoModelV4 } from "../spec/video-model.js";
 import { DRAFT_RESOLUTION } from "../types.js";
-import type { ArkTask, Manifest, Shot, ShotsFile } from "../types.js";
+import type {
+  ArkTask,
+  Manifest,
+  ManifestEntry,
+  ManifestRevision,
+  Shot,
+  ShotsFile,
+} from "../types.js";
 import { clipRevisionPath } from "../versions.js";
-import { assertInteractive, createVideoModel, resolveFilm } from "./context.js";
+import {
+  assertInteractive,
+  assertVideoModelCredential,
+  createVideoModel,
+  resolveFilm,
+} from "./context.js";
 import {
   emit,
   fail,
@@ -81,6 +92,121 @@ function selectShots(file: ShotsFile, ids: string[] | undefined): Shot[] {
     }
     return shot;
   });
+}
+
+function latestOperation(
+  entry: ManifestEntry | undefined
+): ManifestRevision | undefined {
+  const revision = latestRevision(entry);
+  if (revision || !entry || (entry.versions?.length ?? 0) > 0) {
+    return revision;
+  }
+  // A v1 unresolved submit has no task id, so manifest migration cannot build
+  // a revision for it. Preserve that exact top-level state without borrowing
+  // identity from an older/selected revision.
+  return {
+    error: entry.error,
+    params: entry.params,
+    payloadHash: entry.payloadHash,
+    status: entry.status,
+    submittedAt: entry.submittedAt,
+    taskId: entry.taskId,
+    updatedAt: entry.updatedAt,
+    version: Math.max(entry.attempts, 1),
+  };
+}
+
+function latestIsInFlight(entry: ManifestEntry | undefined): boolean {
+  const latest = latestOperation(entry);
+  return Boolean(
+    latest?.taskId &&
+    (latest.status === "submitted" ||
+      latest.status === "queued" ||
+      latest.status === "running")
+  );
+}
+
+function latestIsUnresolved(entry: ManifestEntry | undefined): boolean {
+  const latest = latestOperation(entry);
+  return latest?.status === "submitted" && latest.taskId === "";
+}
+
+function selectPendingShots(
+  shots: Shot[],
+  manifest: Manifest,
+  shotsDir: string,
+  force: boolean
+): Shot[] {
+  return shots.filter((shot) => {
+    const entry = manifest.entries[shot.id];
+    if (force || latestIsUnresolved(entry) || latestIsInFlight(entry)) {
+      return true;
+    }
+    if (isComplete(entry, shotsDir)) {
+      note(`${shot.id} already complete, skipping`);
+      return false;
+    }
+    return true;
+  });
+}
+
+function submissionClient(
+  modelId: string,
+  injected: VideoModelV4 | undefined
+): VideoModelV4 {
+  if (!injected) {
+    return createVideoModel(modelId);
+  }
+  const expectedProvider = lookupModel(modelId).provider;
+  if (injected.modelId !== modelId || injected.provider !== expectedProvider) {
+    throw new VsError(
+      "invalid_input",
+      `injected video model ${injected.provider}/${injected.modelId} does not match requested ${expectedProvider}/${modelId}`
+    );
+  }
+  return injected;
+}
+
+function assertUnresolvedAttempts(
+  shots: Shot[],
+  manifest: Manifest,
+  force: boolean
+): void {
+  const unresolved = shots.filter((shot) =>
+    latestIsUnresolved(manifest.entries[shot.id])
+  );
+  if (unresolved.length === 0) {
+    return;
+  }
+  const ids = unresolved.map((shot) => shot.id).join(", ");
+  if (!force) {
+    throw new VsError(
+      "task_uncertain",
+      `${unresolved.length} shot(s) were submitted but never returned a task id: ${ids}`,
+      {
+        hint: `a paid task may exist for each; check and reconcile it in the provider console before passing \`--force\` to submit again and accept paying twice`,
+      }
+    );
+  }
+  warn(
+    `--force is resubmitting ${unresolved.length} shot(s) whose previous submit never returned a task id (${ids}); if the provider did create those tasks, they are already billed and this pays for them twice`
+  );
+}
+
+function assertReattachIdentities(shots: Set<Shot>, manifest: Manifest): void {
+  for (const shot of shots) {
+    const latest = latestOperation(manifest.entries[shot.id]);
+    const params = latest?.params;
+    if (!params?.provider || !params.model) {
+      throw new VsError(
+        "task_uncertain",
+        `cannot safely resume ${shot.id}: task ${latest?.taskId ?? "unknown"} has no recorded provider/model identity`,
+        {
+          hint: "check the original provider console; this legacy task cannot be assigned to a backend without guessing",
+        }
+      );
+    }
+  }
 }
 
 function draftOverrides(
@@ -555,9 +681,9 @@ export async function runGenerate(
   for (const warning of lintShotsFile(file, { shotsDir })) {
     warn(warning);
   }
-  assertShotsCapable(shots, file, overrides);
 
   if (options.dryRun) {
+    assertShotsCapable(shots, file, overrides);
     // The ceiling is checked here too, so `--dry-run --max-cost` is a free
     // preflight: the exit code answers "would this run stay under budget?".
     warnUnpricedInput(shots);
@@ -575,23 +701,8 @@ export async function runGenerate(
     return;
   }
 
-  const client = injected.client ?? createVideoModel(modelId);
   const manifest = await loadManifest(shotsFilePath, pass);
-
-  const pending = shots.filter((shot) => {
-    const entry = manifest.entries[shot.id];
-    if (options.force) {
-      return true;
-    }
-    if (isInFlight(entry)) {
-      return true;
-    }
-    if (isComplete(entry, shotsDir)) {
-      note(`${shot.id} already complete, skipping`);
-      return false;
-    }
-    return true;
-  });
+  const pending = selectPendingShots(shots, manifest, shotsDir, options.force);
 
   if (pending.length === 0) {
     emit({ pass, pending: 0, status: "up-to-date" }, () => {
@@ -604,36 +715,19 @@ export async function runGenerate(
   // with an id may already have a paid task at the provider. Resubmitting is
   // the one move that is certainly wrong, so stop and make the operator resolve
   // it. `--force` is the acknowledgement that they have.
-  const unresolved = pending.filter((shot) =>
-    isUnresolved(manifest.entries[shot.id])
-  );
-  if (unresolved.length > 0) {
-    const ids = unresolved.map((shot) => shot.id).join(", ");
-    if (!options.force) {
-      throw new VsError(
-        "task_uncertain",
-        `${unresolved.length} shot(s) were submitted but never returned a task id: ${ids}`,
-        {
-          hint: `a paid task may exist for each; check the provider console, and either wait for it and re-run, or pass \`--force\` to submit again and accept paying twice`,
-        }
-      );
-    }
-    // Say it out loud. `--force` is habitually passed by scripts and agents for
-    // its ordinary meaning (retake a finished shot), and waiving a possible
-    // double charge is a much bigger thing to do by accident.
-    warn(
-      `--force is resubmitting ${unresolved.length} shot(s) whose previous submit never returned a task id (${ids}); if the provider did create those tasks, they are already billed and this pays for them twice`
-    );
-  }
+  assertUnresolvedAttempts(pending, manifest, options.force);
 
   const toSubmit = pending.filter(
-    (shot) => !isInFlight(manifest.entries[shot.id])
+    (shot) => !latestIsInFlight(manifest.entries[shot.id])
   );
   const toReattach = new Set(
-    pending.filter((shot) => isInFlight(manifest.entries[shot.id]))
+    pending.filter((shot) => latestIsInFlight(manifest.entries[shot.id]))
   );
 
+  assertReattachIdentities(toReattach, manifest);
+
   if (toSubmit.length > 0) {
+    assertShotsCapable(toSubmit, file, overrides);
     warnUnpricedInput(toSubmit);
     const estimate = estimateRun(toSubmit, file, overrides);
     assertCostCeiling(estimate, options.maxCost);
@@ -646,9 +740,19 @@ export async function runGenerate(
     }
   }
 
+  const client =
+    toSubmit.length > 0
+      ? (() => {
+          if (!injected.client) {
+            assertVideoModelCredential(modelId);
+          }
+          return submissionClient(modelId, injected.client);
+        })()
+      : undefined;
+
   const concurrency = effectiveConcurrency(
     options.concurrency,
-    pending,
+    toSubmit,
     file,
     overrides
   );
@@ -659,16 +763,31 @@ export async function runGenerate(
   }
   const limit = pLimit(concurrency);
   async function submitShot(shot: Shot): Promise<void> {
+    if (!client) {
+      throw new VsError("invalid_input", `no submission client for ${shot.id}`);
+    }
     const callOptions = await buildCallOptions(shot, file.film, shotsDir, {
       overrides,
     });
     const payloadHash = hashPayload(client.toRequestBody(callOptions));
+    const params = {
+      duration: callOptions.duration,
+      generateAudio: callOptions.generateAudio ?? true,
+      model: client.modelId,
+      provider: client.provider,
+      ratio: callOptions.aspectRatio,
+      // Undefined records that the provider chose its default resolution.
+      resolution: callOptions.resolution,
+      seed: callOptions.seed,
+      watermark: callOptions.watermark ?? false,
+    };
     // Record the intent to spend BEFORE spending. If the process dies between
     // here and the response, this entry (status "submitted", no task id) is
     // what stops the next run from silently submitting and paying a second
     // time. Without it a Ctrl-C in this window leaves no trace at all.
     upsertEntry(manifest, {
       newAttempt: true,
+      params,
       payloadHash,
       shotId: shot.id,
       status: "submitted",
@@ -676,19 +795,7 @@ export async function runGenerate(
     await saveManifest(shotsFilePath, manifest, pass);
     const task = await client.doStart(callOptions);
     upsertEntry(manifest, {
-      params: {
-        duration: callOptions.duration,
-        generateAudio: callOptions.generateAudio ?? true,
-        model: client.modelId,
-        provider: client.provider,
-        ratio: callOptions.aspectRatio,
-        // Exactly what went on the wire: undefined records "we sent no
-        // resolution and let the API choose", which is a different fact from
-        // "we asked for 1080p".
-        resolution: callOptions.resolution,
-        seed: callOptions.seed,
-        watermark: callOptions.watermark ?? false,
-      },
+      params,
       // Hashed once, above, from the PROVIDER'S body, which is what was
       // actually submitted. For Ark that is byte-identical to what this CLI has
       // always hashed, so no existing film's audit trail churns.
@@ -720,10 +827,31 @@ export async function runGenerate(
     if (!entry) {
       return;
     }
-    note(`↻ ${shot.id} re-attaching to task ${entry.taskId}`);
+    const latest = latestOperation(entry);
+    const recorded = latest?.params;
+    if (!latest || !recorded?.provider || !recorded.model) {
+      throw new VsError(
+        "task_uncertain",
+        `cannot safely resume ${shot.id}: latest task has no recorded provider/model identity`
+      );
+    }
+    const recoveryClient =
+      injected.client?.modelId === recorded.model &&
+      injected.client.provider === recorded.provider
+        ? injected.client
+        : createVideoModel(recorded.model);
+    if (recoveryClient.provider !== recorded.provider) {
+      throw new VsError(
+        "task_uncertain",
+        `cannot safely resume ${shot.id}: recorded provider ${recorded.provider} does not match model ${recorded.model}`,
+        { hint: "check the original provider console and manifest identity" }
+      );
+    }
+    const { taskId } = latest;
+    note(`↻ ${shot.id} re-attaching to task ${taskId}`);
     if (options.wait) {
       await settleTask({
-        client,
+        client: recoveryClient,
         download: options.download,
         generateOptions: options,
         manifest,
@@ -732,7 +860,7 @@ export async function runGenerate(
         shot,
         shotsDir,
         shotsFile: shotsFilePath,
-        task: { id: entry.taskId, status: "running" },
+        task: { id: taskId, status: "running" },
       });
     }
   }

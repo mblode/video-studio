@@ -14,7 +14,7 @@ import { cardVideoArgs, renderCardPng } from "../cards.js";
 import { VsError } from "../errors.js";
 import { assertFfmpeg, probeClip, runFfmpeg } from "../ffmpeg.js";
 import type { ClipProbe } from "../ffmpeg.js";
-import { isComplete, loadManifest } from "../manifest.js";
+import { isComplete, loadManifest, selectedRevision } from "../manifest.js";
 import { resolveOutput } from "../paths.js";
 import type { Pass } from "../paths.js";
 import { lintShotsFile } from "../shots.js";
@@ -23,12 +23,14 @@ import type { StitchClip } from "../stitch.js";
 import { ASPECT_RATIOS, DEFAULT_DURATION } from "../types.js";
 import type {
   AspectRatio,
+  Manifest,
   ManifestEntry,
   Shot,
   ShotsFile,
   TitleCard,
 } from "../types.js";
 import { assertNewVideoOutput, nextRenderPath } from "../versions.js";
+import { assertVisualApproval } from "../visual-review.js";
 import { resolveFilm } from "./context.js";
 import { emit, heading, line, note, ok, warn } from "./output.js";
 
@@ -64,6 +66,8 @@ export interface StitchCommandOptions {
   latest: boolean;
   music?: string;
   musicGain: number;
+  effects?: string;
+  effectsGain?: number;
   narration?: string;
   grade: boolean;
   narrationGain: number;
@@ -71,6 +75,33 @@ export interface StitchCommandOptions {
   sfxGain: number;
   muteClips: boolean;
   xfade: number;
+}
+
+async function assertSelectedApprovals(
+  shotsFilePath: string,
+  file: ShotsFile,
+  manifest: Manifest,
+  pass: Pass
+): Promise<void> {
+  if (!file.film.requireVisualApproval) {
+    return;
+  }
+  for (const shot of file.shots) {
+    const revision = selectedRevision(manifest.entries[shot.id]);
+    if (!revision?.outputPath) {
+      throw new VsError(
+        "missing_clip",
+        `${shot.id}: no selected clip to verify visual approval`
+      );
+    }
+    await assertVisualApproval({
+      mediaPath: revision.outputPath,
+      pass,
+      shot,
+      shotsFile: shotsFilePath,
+      version: revision.version,
+    });
+  }
 }
 
 function assertUniformStreams(probes: Map<string, ClipProbe>): ClipProbe {
@@ -282,11 +313,34 @@ async function runLatestStitch(
   }
   if (options.sfxGain !== 0) {
     warn(
-      "--sfx-gain is ignored by --latest: segments are re-encoded silent so mixed sources cut together; score the reel with --music/--narration"
+      "--sfx-gain is ignored by --latest: segments are re-encoded silent so mixed sources cut together; mix the reel with --music/--narration/--effects"
     );
   }
   const finalManifest = await loadManifest(shotsFilePath, "final");
   const draftManifest = await loadManifest(shotsFilePath, "draft");
+  if (file.film.requireVisualApproval) {
+    for (const shot of file.shots) {
+      const finalEntry = finalManifest.entries[shot.id];
+      const selectedPass = isComplete(finalEntry, shotsDir) ? "final" : "draft";
+      const entry =
+        selectedPass === "final" ? finalEntry : draftManifest.entries[shot.id];
+      const revision = selectedRevision(entry);
+      if (!(revision?.outputPath && isComplete(entry, shotsDir))) {
+        throw new VsError(
+          "invalid_input",
+          `${shot.id}: --latest cannot substitute an unreviewed still or slate when visual approval is required`
+        );
+      }
+      await assertVisualApproval({
+        mediaPath: revision.outputPath,
+        pass: selectedPass,
+        shot,
+        shotsFile: shotsFilePath,
+        version: revision.version,
+      });
+    }
+  }
+
   const frame = filmFrame(file);
   const defaultDuration = frame.duration;
   const { dim, fps } = await latestReference(
@@ -340,6 +394,8 @@ async function runLatestStitch(
     {
       cardPaths: new Map(),
       concatListPath,
+      effectsGainDb: options.effectsGain,
+      effectsPath: options.effects,
       font: options.font,
       grade: options.grade,
       musicGainDb: options.musicGain,
@@ -416,6 +472,8 @@ export async function runStitch(
     warn(warning);
   }
   const manifest = await loadManifest(shotsFilePath, pass);
+  await assertSelectedApprovals(shotsFilePath, file, manifest, pass);
+
   const outputPath = resolveOutput(
     options.output,
     nextRenderPath(join(outputDir, "renders", "final"))
@@ -469,6 +527,8 @@ export async function runStitch(
   const plan = buildStitchPlan(clips, {
     cardPaths: new Map(),
     concatListPath,
+    effectsGainDb: options.effectsGain,
+    effectsPath: options.effects,
     font: options.font,
     grade: options.grade,
     musicGainDb: options.musicGain,

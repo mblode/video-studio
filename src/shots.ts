@@ -269,6 +269,7 @@ const shotsFileSchema = z
       model: z.string().optional(),
       outputDir: z.string().optional(),
       promptPreamble: z.string().optional(),
+      requireVisualApproval: z.boolean().optional(),
       title: z.string().min(1),
     }),
     shots: z.array(shotSchema).min(1),

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { clipTokens } from "../cost.js";
 import { loadManifest } from "../manifest.js";
+import type * as ManifestModule from "../manifest.js";
 import { lookupModel } from "../models.js";
 import type { PollOptions } from "../poll.js";
 import { createArk } from "../providers/ark.js";
@@ -27,6 +28,21 @@ vi.mock("../download.js", () => ({
     await writeFile(outputPath, "video");
   }),
 }));
+
+const manifestFailures = vi.hoisted(() => ({ save: false }));
+
+vi.mock("../manifest.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof ManifestModule>();
+  return {
+    ...actual,
+    saveManifest: async (...args: Parameters<typeof actual.saveManifest>) => {
+      if (manifestFailures.save) {
+        throw new Error("manifest write failed");
+      }
+      return await actual.saveManifest(...args);
+    },
+  };
+});
 
 /**
  * Capture what the command reports instead of spying on the process streams:
@@ -185,6 +201,14 @@ async function scaffoldMixed(): Promise<string> {
 function entry(overrides: Partial<ManifestEntry>): ManifestEntry {
   return {
     attempts: 1,
+    params: {
+      duration: 5,
+      generateAudio: true,
+      model: MODEL_ID,
+      provider: "ark",
+      ratio: "16:9",
+      watermark: false,
+    },
     shotId: "x",
     status: "submitted",
     submittedAt: "2026-01-01T00:00:00.000Z",
@@ -196,6 +220,7 @@ function entry(overrides: Partial<ManifestEntry>): ManifestEntry {
 
 describe("runGenerate", () => {
   beforeEach(() => {
+    manifestFailures.save = false;
     reported.lines.length = 0;
     reported.payloads.length = 0;
   });
@@ -235,11 +260,47 @@ describe("runGenerate", () => {
 
     const manifest = await loadManifest(shotsPath);
     expect(manifest.entries.a).toMatchObject({
+      params: {
+        model: MODEL_ID,
+        provider: "ark",
+      },
       status: "submitted",
       taskId: "",
     });
     // The payload hash is what identifies the orphan at the provider.
     expect(manifest.entries.a?.payloadHash).toEqual(expect.any(String));
+  });
+
+  it("makes zero paid calls when persisting intent fails", async () => {
+    const shotsPath = await scaffold([{ id: "a", prompt: "p" }]);
+    const client = fakeClient();
+    manifestFailures.save = true;
+
+    await runGenerate(shotsPath, opts(), { client });
+
+    expect(client.doStart).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("does not mutate the manifest when a required credential is missing", async () => {
+    const shotsPath = await scaffold([{ id: "a", prompt: "p" }]);
+    const previousCwd = process.cwd();
+    const previousKey = process.env.ARK_API_KEY;
+    delete process.env.ARK_API_KEY;
+    process.chdir(dirname(shotsPath));
+    try {
+      await expect(runGenerate(shotsPath, opts())).rejects.toMatchObject({
+        code: "missing_credential",
+      });
+      expect(existsSync(join(dirname(shotsPath), "tasks.json"))).toBe(false);
+    } finally {
+      process.chdir(previousCwd);
+      if (previousKey === undefined) {
+        delete process.env.ARK_API_KEY;
+      } else {
+        process.env.ARK_API_KEY = previousKey;
+      }
+    }
   });
 
   it("refuses to resubmit a shot whose task id was never returned", async () => {
@@ -252,6 +313,36 @@ describe("runGenerate", () => {
       runGenerate(shotsPath, opts(), { client })
     ).rejects.toMatchObject({ code: "task_uncertain" });
     expect(client.doStart).not.toHaveBeenCalled();
+  });
+
+  it("does not hide an unresolved retake behind its selected completed take", async () => {
+    const shotsPath = await scaffold([{ id: "a", prompt: "p" }]);
+    await runGenerate(shotsPath, opts(), { client: fakeClient() });
+
+    const failedRetake = fakeClient();
+    (failedRetake.doStart as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("socket hang up")
+    );
+    await runGenerate(shotsPath, opts({ force: true }), {
+      client: failedRetake,
+    });
+
+    const restartedClient = fakeClient();
+    await expect(
+      runGenerate(shotsPath, opts(), { client: restartedClient })
+    ).rejects.toMatchObject({ code: "task_uncertain" });
+    expect(restartedClient.doStart).not.toHaveBeenCalled();
+    expect(restartedClient.pollTask).not.toHaveBeenCalled();
+
+    const manifest = await loadManifest(shotsPath);
+    expect(manifest.entries.a?.selectedVersion).toBe(1);
+    expect(manifest.entries.a?.outputPath).toBe("output/clips/a/v001.mp4");
+    expect(manifest.entries.a?.versions?.at(-1)).toMatchObject({
+      params: { model: MODEL_ID, provider: "ark" },
+      status: "submitted",
+      taskId: "",
+      version: 2,
+    });
   });
 
   it("submits again under --force, which is the operator saying they checked", async () => {
@@ -333,6 +424,110 @@ describe("runGenerate", () => {
     );
     const manifest = await loadManifest(shotsPath);
     expect(manifest.entries.a?.status).toBe("downloaded");
+  });
+
+  it("resumes a known task with its recorded model after the film model changes", async () => {
+    const recordedModel = "dreamina-seedance-2-5-260628";
+    const shotsPath = await scaffold([{ id: "a", prompt: "p" }], {
+      a: entry({
+        params: {
+          duration: 24,
+          generateAudio: true,
+          model: recordedModel,
+          provider: "ark",
+          ratio: "16:9",
+          watermark: false,
+        },
+        shotId: "a",
+        status: "running",
+        taskId: "task-original",
+      }),
+    });
+    await writeFile(
+      shotsPath,
+      JSON.stringify({
+        film: { model: MODEL_ID, title: "T" },
+        // Invalid for the newly selected 2.0 model, but irrelevant to polling
+        // the already-paid 2.5 task.
+        shots: [{ duration: 24, id: "a", prompt: "p" }],
+      })
+    );
+    const recordedClient = fakeClient([], undefined, recordedModel);
+
+    await runGenerate(shotsPath, opts(), { client: recordedClient });
+
+    expect(recordedClient.doStart).not.toHaveBeenCalled();
+    expect(recordedClient.pollTask).toHaveBeenCalledWith(
+      "task-original",
+      expect.anything()
+    );
+  });
+
+  it("fails closed for a legacy in-flight task with no provider identity", async () => {
+    const shotsPath = await scaffold([{ id: "a", prompt: "p" }], {
+      a: entry({
+        params: undefined,
+        shotId: "a",
+        status: "running",
+        taskId: "task-legacy",
+      }),
+    });
+    const client = fakeClient();
+
+    await expect(
+      runGenerate(shotsPath, opts(), { client })
+    ).rejects.toMatchObject({ code: "task_uncertain" });
+    expect(client.doStart).not.toHaveBeenCalled();
+    expect(client.pollTask).not.toHaveBeenCalled();
+  });
+
+  it("does not borrow top-level identity when the latest v2 attempt is ambiguous", async () => {
+    const base = entry({
+      shotId: "a",
+      status: "running",
+      taskId: "task-latest",
+    });
+    const shotsPath = await scaffold([{ id: "a", prompt: "p" }], {
+      a: {
+        ...base,
+        versions: [
+          {
+            status: "running",
+            submittedAt: base.submittedAt,
+            taskId: "task-latest",
+            updatedAt: base.updatedAt,
+            version: 1,
+          },
+        ],
+      },
+    });
+    const client = fakeClient();
+
+    await expect(
+      runGenerate(shotsPath, opts(), { client })
+    ).rejects.toMatchObject({ code: "task_uncertain" });
+    expect(client.pollTask).not.toHaveBeenCalled();
+  });
+
+  it("refuses a mismatched injected model before starting a paid task", async () => {
+    const shotsPath = await scaffold([{ id: "a", prompt: "p" }]);
+    const client = fakeClient([], undefined, "dreamina-seedance-2-5-260628");
+
+    await expect(
+      runGenerate(shotsPath, opts(), { client })
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(client.doStart).not.toHaveBeenCalled();
+  });
+
+  it("dry-run neither writes a manifest nor starts or polls a task", async () => {
+    const shotsPath = await scaffold([{ id: "a", prompt: "p" }]);
+    const client = fakeClient();
+
+    await runGenerate(shotsPath, opts({ dryRun: true }), { client });
+
+    expect(client.doStart).not.toHaveBeenCalled();
+    expect(client.pollTask).not.toHaveBeenCalled();
+    expect(existsSync(join(dirname(shotsPath), "tasks.json"))).toBe(false);
   });
 
   it("never duplicates an in-flight task, even when --force is passed", async () => {

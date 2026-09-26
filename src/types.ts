@@ -220,6 +220,8 @@ export interface FilmDefaults {
 
 interface FilmConfig {
   title: string;
+  /** Require explicit, hash-bound visual approval before selecting or stitching media. */
+  requireVisualApproval?: boolean;
   /**
    * Style/continuity block auto-prepended to every shot's prompt (a "color
    * script" the whole film inherits) — keep the look bible in one place instead
