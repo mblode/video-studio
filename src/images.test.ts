@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { assertImageModelSupported, GEMINI_PRO_IMAGE_MODEL } from "./images.js";
+import {
+  assertImageModelSupported,
+  GEMINI_PRO_IMAGE_MODEL,
+  imageSizeFor,
+} from "./images.js";
 
 describe("assertImageModelSupported", () => {
   it("accepts the models this CLI can route", () => {
@@ -9,6 +13,9 @@ describe("assertImageModelSupported", () => {
     ).not.toThrow();
     expect(() =>
       assertImageModelSupported("models/gemini-3-pro-image")
+    ).not.toThrow();
+    expect(() =>
+      assertImageModelSupported("gpt-image-2.5-sunburst")
     ).not.toThrow();
   });
 
@@ -23,5 +30,14 @@ describe("assertImageModelSupported", () => {
     expect(() =>
       assertImageModelSupported("fal-ai/bytedance/seedream/v4")
     ).toThrow(/not one this CLI can run/u);
+  });
+});
+
+describe("imageSizeFor", () => {
+  it("maps a ratio to the nearest GPT Image size", () => {
+    expect(imageSizeFor("16:9")).toBe("1536x1024");
+    expect(imageSizeFor("9:16")).toBe("1024x1536");
+    expect(imageSizeFor("1:1")).toBe("1024x1024");
+    expect(imageSizeFor()).toBe("1024x1024");
   });
 });

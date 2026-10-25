@@ -9,6 +9,8 @@ import { formatError, VsError } from "../errors.js";
 import {
   assertImageModelSupported,
   GEMINI_PRO_IMAGE_MODEL,
+  imageSizeFor,
+  isOpenAiImageModel,
   resolveImageModel,
 } from "../images.js";
 import { safeJoin } from "../paths.js";
@@ -101,9 +103,19 @@ async function buildPrompt(
  */
 function callSettings(
   still: Still,
-  file: StillsFile
-): { aspectRatio?: StillAspectRatio; seed?: number } {
+  file: StillsFile,
+  model: string
+): {
+  aspectRatio?: StillAspectRatio;
+  seed?: number;
+  size?: `${number}x${number}`;
+} {
   const ratio = still.ratio ?? file.ratio;
+  // GPT Image takes pixels and no seed; sending either of the others is a
+  // warning the SDK prints and the backend ignores.
+  if (isOpenAiImageModel(model)) {
+    return { size: imageSizeFor(ratio) };
+  }
   return {
     ...(ratio ? { aspectRatio: ratio } : {}),
     ...(still.seed === undefined ? {} : { seed: still.seed }),
@@ -122,7 +134,7 @@ function previewCall(
     ...(still.references?.length
       ? { references: still.references.map((url) => `<bytes from ${url}>`) }
       : {}),
-    ...callSettings(still, file),
+    ...callSettings(still, file, model),
   };
 }
 
@@ -207,7 +219,7 @@ export async function runStills(
     const { image } = await generateImage({
       model: imageModel,
       prompt: await buildPrompt(still, stillsDir),
-      ...callSettings(still, file),
+      ...callSettings(still, file, model),
     });
     await writeFile(outputPath, image.uint8Array);
   }

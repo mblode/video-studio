@@ -48,6 +48,7 @@
   "dependencies": {
     "@ai-sdk/gateway": "^4.0.51",
     "@ai-sdk/google": "^4.0.43",
+    "@ai-sdk/openai": "^4.0.46",
     "@ai-sdk/provider": "^4.0.7",
     "@clack/prompts": "^1.7.0",
     "ai": "^7.0.64",

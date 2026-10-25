@@ -1,7 +1,8 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
 import type { ImageModelV4 } from "@ai-sdk/provider";
 
-import { requireGeminiApiKey } from "./env.js";
+import { requireGeminiApiKey, requireOpenAiApiKey } from "./env.js";
 import { VsError } from "./errors.js";
 
 /**
@@ -34,21 +35,50 @@ export const GEMINI_PRO_IMAGE_MODEL = "gemini-3-pro-image";
  */
 const GEMINI_IMAGE_MODEL = /^(?:models\/)?gemini-/u;
 
+/**
+ * OpenAI's GPT Image family (`gpt-image-2.5-sunburst` for quality,
+ * `gpt-image-2.5-flare` for speed). It takes a pixel `size`, not a ratio, and
+ * no seed; `imageSizeFor` is the one place that difference lives.
+ */
+const OPENAI_IMAGE_MODEL = /^gpt-image-/u;
+
+export function isOpenAiImageModel(modelId: string): boolean {
+  return OPENAI_IMAGE_MODEL.test(modelId);
+}
+
+/**
+ * The pixel size a GPT Image call asks for. Landscape ratios map to its
+ * widest supported landscape size, portrait to its tallest, square to square.
+ */
+export function imageSizeFor(ratio?: string): `${number}x${number}` {
+  if (!ratio) {
+    return "1024x1024";
+  }
+  const [w, h] = ratio.split(":").map(Number);
+  if (w === h) {
+    return "1024x1024";
+  }
+  return w > h ? "1536x1024" : "1024x1536";
+}
+
 export function assertImageModelSupported(modelId: string): void {
-  if (GEMINI_IMAGE_MODEL.test(modelId)) {
+  if (GEMINI_IMAGE_MODEL.test(modelId) || isOpenAiImageModel(modelId)) {
     return;
   }
   throw new VsError(
     "invalid_input",
     `stills model "${modelId}" is not one this CLI can run`,
     {
-      hint: `stills run on Google only: use "${GEMINI_PRO_IMAGE_MODEL}", or drop the top-level \`model\` to take the default. Seedream and Flux need \`npm i @ai-sdk/fal\` and a line in src/images.ts.`,
+      hint: `stills run on Google or OpenAI: use "${GEMINI_PRO_IMAGE_MODEL}" or "gpt-image-2.5-sunburst", or drop the top-level \`model\` to take the default. Seedream and Flux need \`npm i @ai-sdk/fal\` and a line in src/images.ts.`,
     }
   );
 }
 
 export function resolveImageModel(modelId: string): ImageModelV4 {
   assertImageModelSupported(modelId);
+  if (isOpenAiImageModel(modelId)) {
+    return createOpenAI({ apiKey: requireOpenAiApiKey() }).image(modelId);
+  }
   return createGoogleGenerativeAI({ apiKey: requireGeminiApiKey() }).image(
     modelId
   );

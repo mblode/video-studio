@@ -104,6 +104,17 @@ export function requireGeminiApiKey(): string {
   return key;
 }
 
+/** OpenAI key — GPT Image stills. */
+export function requireOpenAiApiKey(): string {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) {
+    throw new VsError("missing_credential", "OPENAI_API_KEY is not set", {
+      hint: "add `OPENAI_API_KEY=...` to a .env file — GPT Image stills run on OpenAI",
+    });
+  }
+  return key;
+}
+
 export function geminiBaseUrl(): string {
   return process.env.GEMINI_BASE_URL ?? DEFAULT_GEMINI_BASE_URL;
 }

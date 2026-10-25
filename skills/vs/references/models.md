@@ -182,6 +182,10 @@ Stills run on **Google's Nano Banana** through the AI SDK's `generateImage`.
 The stills file's top-level `model` names the Gemini image model, and
 `GEMINI_API_KEY` is the only key involved. `gemini-3-pro-image` is the default.
 
+OpenAI's GPT Image also works: name a `gpt-image-*` model (for example
+`gpt-image-2.5-sunburst`) and set `OPENAI_API_KEY`. It takes a pixel size, so
+the `ratio` maps to 1536x1024, 1024x1536, or 1024x1024, and `seed` is dropped.
+
 Nano Banana takes an aspect **`ratio`**, not pixels, and rolls its own seed, so
 a per-still `size` or `seed` is ignored and `vs stills` says so once. Both stay
 in the schema only so a stills file from the Seedream era still loads.
