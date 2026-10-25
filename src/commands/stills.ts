@@ -9,14 +9,13 @@ import { formatError, VsError } from "../errors.js";
 import {
   assertImageModelSupported,
   GEMINI_PRO_IMAGE_MODEL,
-  imageSizeFor,
-  isOpenAiImageModel,
+  imageCallOptions,
   resolveImageModel,
 } from "../images.js";
 import { safeJoin } from "../paths.js";
 import { lintStillsFile } from "../shots.js";
 import { stillIdFor, stillWaves } from "../stills.js";
-import type { Still, StillAspectRatio, StillsFile } from "../types.js";
+import type { Still, StillsFile } from "../types.js";
 import { resolveStills } from "./context.js";
 import {
   emit,
@@ -97,29 +96,11 @@ async function buildPrompt(
  *
  * ONE definition, shared by the real call and by `--dry-run`. Two copies is how
  * a dry-run drifts from what is actually sent, which turns the free preflight
- * into a confident lie. `size` is deliberately absent: Nano Banana ignores
- * pixel sizes, so passing one through would be dead weight the preview then
- * advertised.
+ * into a confident lie. Which of `size`, `aspectRatio` and `seed` a model
+ * takes is decided in src/images.ts, never here.
  */
-function callSettings(
-  still: Still,
-  file: StillsFile,
-  model: string
-): {
-  aspectRatio?: StillAspectRatio;
-  seed?: number;
-  size?: `${number}x${number}`;
-} {
-  const ratio = still.ratio ?? file.ratio;
-  // GPT Image takes pixels and no seed; sending either of the others is a
-  // warning the SDK prints and the backend ignores.
-  if (isOpenAiImageModel(model)) {
-    return { size: imageSizeFor(ratio) };
-  }
-  return {
-    ...(ratio ? { aspectRatio: ratio } : {}),
-    ...(still.seed === undefined ? {} : { seed: still.seed }),
-  };
+function callSettings(still: Still, file: StillsFile, model: string) {
+  return imageCallOptions(model, still.ratio ?? file.ratio, still.seed);
 }
 
 /** What `--dry-run` prints. Reads no bytes: it is the free preflight. */

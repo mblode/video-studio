@@ -4,6 +4,7 @@ import type { ImageModelV4 } from "@ai-sdk/provider";
 
 import { requireGeminiApiKey, requireOpenAiApiKey } from "./env.js";
 import { VsError } from "./errors.js";
+import type { StillAspectRatio } from "./types.js";
 
 /**
  * Stills, on the AI SDK.
@@ -27,22 +28,21 @@ import { VsError } from "./errors.js";
 export const GEMINI_PRO_IMAGE_MODEL = "gemini-3-pro-image";
 
 /**
- * Every id this file knows how to route. Google is the only backend, so a
- * `seedream-*` or `flux-*` id left over from an earlier stills file is not a
- * model this CLI can reach — it would be handed to the Gemini image endpoint
- * and rejected there, AFTER prompting for a key and spending a round trip.
- * `--dry-run` never calls this, so nothing else catches it.
+ * Every id this file knows how to route: Google and OpenAI are the only
+ * backends, so a `seedream-*` or `flux-*` id left over from an earlier stills
+ * file is not a model this CLI can reach. `--dry-run` never resolves a model,
+ * so this check is what catches it before a key prompt and a round trip.
  */
 const GEMINI_IMAGE_MODEL = /^(?:models\/)?gemini-/u;
 
 /**
  * OpenAI's GPT Image family (`gpt-image-2.5-sunburst` for quality,
  * `gpt-image-2.5-flare` for speed). It takes a pixel `size`, not a ratio, and
- * no seed; `imageSizeFor` is the one place that difference lives.
+ * no seed; `imageCallOptions` is the one place that difference lives.
  */
 const OPENAI_IMAGE_MODEL = /^gpt-image-/u;
 
-export function isOpenAiImageModel(modelId: string): boolean {
+function isOpenAiImageModel(modelId: string): boolean {
   return OPENAI_IMAGE_MODEL.test(modelId);
 }
 
@@ -50,7 +50,7 @@ export function isOpenAiImageModel(modelId: string): boolean {
  * The pixel size a GPT Image call asks for. Landscape ratios map to its
  * widest supported landscape size, portrait to its tallest, square to square.
  */
-export function imageSizeFor(ratio?: string): `${number}x${number}` {
+function imageSizeFor(ratio?: string): `${number}x${number}` {
   if (!ratio) {
     return "1024x1024";
   }
@@ -59,6 +59,30 @@ export function imageSizeFor(ratio?: string): `${number}x${number}` {
     return "1024x1024";
   }
   return w > h ? "1536x1024" : "1024x1536";
+}
+
+/**
+ * The per-model half of a `generateImage` call. Gemini takes a ratio and a
+ * seed; GPT Image takes pixels and no seed, and sending it either of the
+ * others is a warning the SDK prints and the backend ignores. Commands pass
+ * the still's own settings and never branch on the provider.
+ */
+export function imageCallOptions(
+  modelId: string,
+  ratio?: StillAspectRatio,
+  seed?: number
+): {
+  aspectRatio?: StillAspectRatio;
+  seed?: number;
+  size?: `${number}x${number}`;
+} {
+  if (isOpenAiImageModel(modelId)) {
+    return { size: imageSizeFor(ratio) };
+  }
+  return {
+    ...(ratio ? { aspectRatio: ratio } : {}),
+    ...(seed === undefined ? {} : { seed }),
+  };
 }
 
 export function assertImageModelSupported(modelId: string): void {

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertImageModelSupported,
   GEMINI_PRO_IMAGE_MODEL,
-  imageSizeFor,
+  imageCallOptions,
 } from "./images.js";
 
 describe("assertImageModelSupported", () => {
@@ -33,11 +33,17 @@ describe("assertImageModelSupported", () => {
   });
 });
 
-describe("imageSizeFor", () => {
-  it("maps a ratio to the nearest GPT Image size", () => {
-    expect(imageSizeFor("16:9")).toBe("1536x1024");
-    expect(imageSizeFor("9:16")).toBe("1024x1536");
-    expect(imageSizeFor("1:1")).toBe("1024x1024");
-    expect(imageSizeFor()).toBe("1024x1024");
+describe("imageCallOptions", () => {
+  it("gives GPT Image a pixel size and Gemini a ratio and seed", () => {
+    const gpt = "gpt-image-2.5-sunburst";
+    expect(imageCallOptions(gpt, "16:9", 7)).toEqual({ size: "1536x1024" });
+    expect(imageCallOptions(gpt, "9:16")).toEqual({ size: "1024x1536" });
+    expect(imageCallOptions(gpt, "1:1")).toEqual({ size: "1024x1024" });
+    expect(imageCallOptions(gpt)).toEqual({ size: "1024x1024" });
+    expect(imageCallOptions("gemini-3-pro-image", "16:9", 7)).toEqual({
+      aspectRatio: "16:9",
+      seed: 7,
+    });
+    expect(imageCallOptions("gemini-3-pro-image")).toEqual({});
   });
 });
