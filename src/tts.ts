@@ -124,6 +124,19 @@ async function audioToMp3(
   }
 }
 
+/**
+ * A TTS request the server never answers would otherwise hang `vs narrate`
+ * forever, which it did mid-script on Sedona. A line is a few seconds of
+ * audio, so two minutes is far past any real response.
+ */
+const TTS_TIMEOUT_MS = 120_000;
+
+const fetchWithTimeout: typeof fetch = (input, init) =>
+  fetch(input, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(TTS_TIMEOUT_MS),
+  });
+
 export class GeminiTtsClient {
   private readonly apiKey: string;
   private readonly base: string;
@@ -136,7 +149,7 @@ export class GeminiTtsClient {
   }) {
     this.apiKey = options.apiKey;
     this.base = options.baseUrl.replace(/\/$/u, "");
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.fetchImpl = options.fetchImpl ?? fetchWithTimeout;
   }
 
   /** Synthesize one utterance; returns MP3 bytes. */
