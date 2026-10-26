@@ -15,6 +15,8 @@ const VS_ERROR_CODES = [
   "file_not_found",
   /** The path exists but could not be read (permissions, or it is a directory). */
   "file_unreadable",
+  /** Another live `vs` process holds the film's manifest lock. */
+  "film_locked",
   /** A shots/stills file failed schema validation or could not be parsed. */
   "invalid_input",
   /** A clip the command needs has not been generated/downloaded yet. */

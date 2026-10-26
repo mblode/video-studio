@@ -94,6 +94,14 @@ it, delete it.
   used to sleep through in silence. `requestWithRetry` now throws
   `quota_exhausted` with the provider's body and the reset time when a 429 asks
   for more than `MAX_RETRY_AFTER_SECONDS` (60); shorter waits still replay.
+- **One manifest writer at a time.** Two `vs generate` runs on one film each
+  save their own in-memory `tasks.json` whole, so the later save erased the
+  other's freshly succeeded task id, a paid take. `generate`, `download`, `use`
+  and `status --refresh` now hold `<manifest>.lock` (created `wx`, per pass)
+  from load to save and refuse with `film_locked` while a live pid holds it; a
+  dead holder's lock is taken over with a warning. `--dry-run`, plain `status`,
+  `stitch` and `review` (which writes `visual-reviews.json`, not the manifest)
+  stay lock-free. Take the lock before the load, never after.
 - **Generated video is immutable.** Clips live under
   `output/clips/<shot>/vNNN.mp4`; renders and exports also allocate `vNNN`.
   `ManifestEntry.status` describes the latest attempt, while `selectedVersion`

@@ -15,7 +15,9 @@ import type { ProviderId } from "../models.js";
 import type { Pass } from "../paths.js";
 import { filmFileNotFound } from "../shots.js";
 import type { VideoModelV4 } from "../spec/video-model.js";
+import type { Manifest } from "../types.js";
 import { createArkClient, createVideoModel } from "./context.js";
+import { withManifestLock } from "./lock.js";
 import { color, emit, line, note } from "./output.js";
 
 export interface StatusOptions {
@@ -31,6 +33,90 @@ export interface StatusOptions {
  */
 export function looksLikeShotsFile(value: string): boolean {
   return value.toLowerCase().endsWith(".json");
+}
+
+/**
+ * Poll every pending or undownloaded task and save what came back. Loads the
+ * manifest itself so the caller can hold the lock across load and save.
+ */
+async function refreshManifest(
+  shotsFile: string,
+  pass: Pass,
+  manifestDir: string
+): Promise<Manifest> {
+  const manifest = await loadManifest(shotsFile, pass);
+  const entries = Object.values(manifest.entries);
+  if (entries.length === 0) {
+    return manifest;
+  }
+  // Routed PER ENTRY off the model recorded at submit time, not off one Ark
+  // client for the whole film. A MiniMax or bridged task id sent to BytePlus
+  // comes back as a baffling 4xx, and a film that changed `film.model` between
+  // passes has entries belonging to two different backends at once. Legacy
+  // entries without recorded identity fail closed below: guessing a backend
+  // can attach a task id to an unrelated provider.
+  const refreshable = entries.flatMap((entry) => {
+    const revision = latestRevision(entry);
+    if (!revision?.taskId) {
+      return [];
+    }
+    const pending =
+      revision.status === "submitted" ||
+      revision.status === "queued" ||
+      revision.status === "running";
+    const awaitingDownload =
+      revision.status === "succeeded" &&
+      !isRevisionComplete(revision, manifestDir);
+    return pending || awaitingDownload ? [{ entry, revision }] : [];
+  });
+  const clients = new Map<string, VideoModelV4>();
+  const clientFor = (modelId: string, provider: ProviderId): VideoModelV4 => {
+    const key = `${provider}:${modelId}`;
+    const existing = clients.get(key);
+    if (existing) {
+      return existing;
+    }
+    const created = createVideoModel(modelId);
+    if (created.provider !== provider) {
+      throw new VsError(
+        "invalid_input",
+        `cannot refresh ${modelId}: it was submitted through ${provider}, but that model now routes through ${created.provider}`,
+        {
+          hint: "restore a model spelling that routes to the recorded provider; polling a task on a different backend cannot recover it",
+        }
+      );
+    }
+    clients.set(key, created);
+    return created;
+  };
+  // Validate and construct every route before the first request. If one
+  // legacy attempt lacks identity, refreshing must make zero guesses and
+  // zero network calls rather than partially updating the film.
+  const routed = refreshable.map(({ entry, revision }) => {
+    const model = revision.params?.model;
+    const provider = revision.params?.provider;
+    if (!(model && provider)) {
+      throw new VsError(
+        "invalid_input",
+        `${entry.shotId} task ${revision.taskId} has no recorded provider/model and cannot be refreshed safely`,
+        {
+          hint: "inspect the task in the provider console; legacy pending tasks cannot be assigned to a backend automatically",
+        }
+      );
+    }
+    return { client: clientFor(model, provider), entry, revision };
+  });
+  for (const { client, entry, revision } of routed) {
+    const task = await client.doStatus(revision.taskId);
+    upsertEntry(manifest, {
+      shotId: entry.shotId,
+      status: task.status,
+      taskId: revision.taskId,
+      videoUrl: task.content?.video_url,
+    });
+  }
+  await saveManifest(shotsFile, manifest, pass);
+  return manifest;
 }
 
 export async function runStatus(
@@ -56,84 +142,20 @@ export async function runStatus(
     throw filmFileNotFound(shotsFile);
   }
   const pass: Pass = options.draft ? "draft" : "final";
-  const manifest = await loadManifest(shotsFile, pass);
   const manifestDir = dirname(resolve(shotsFile));
+  // Only `--refresh` writes, so only it takes the lock, and it takes it BEFORE
+  // the load: a copy loaded outside the lock would erase another writer's save.
+  const manifest = options.refresh
+    ? await withManifestLock(shotsFile, pass, "status --refresh", () =>
+        refreshManifest(shotsFile, pass, manifestDir)
+      )
+    : await loadManifest(shotsFile, pass);
   const entries = Object.values(manifest.entries);
   if (entries.length === 0) {
     emit({ entries: [], pass, shotsFile }, () => {
       note(`no tasks recorded yet; run \`vs generate ${shotsFile}\` first`);
     });
     return;
-  }
-
-  if (options.refresh) {
-    // Routed PER ENTRY off the model recorded at submit time, not off one Ark
-    // client for the whole film. A MiniMax or bridged task id sent to BytePlus
-    // comes back as a baffling 4xx, and a film that changed `film.model` between
-    // passes has entries belonging to two different backends at once. Legacy
-    // entries without recorded identity fail closed below: guessing a backend
-    // can attach a task id to an unrelated provider.
-    const refreshable = entries.flatMap((entry) => {
-      const revision = latestRevision(entry);
-      if (!revision?.taskId) {
-        return [];
-      }
-      const pending =
-        revision.status === "submitted" ||
-        revision.status === "queued" ||
-        revision.status === "running";
-      const awaitingDownload =
-        revision.status === "succeeded" &&
-        !isRevisionComplete(revision, manifestDir);
-      return pending || awaitingDownload ? [{ entry, revision }] : [];
-    });
-    const clients = new Map<string, VideoModelV4>();
-    const clientFor = (modelId: string, provider: ProviderId): VideoModelV4 => {
-      const key = `${provider}:${modelId}`;
-      const existing = clients.get(key);
-      if (existing) {
-        return existing;
-      }
-      const created = createVideoModel(modelId);
-      if (created.provider !== provider) {
-        throw new VsError(
-          "invalid_input",
-          `cannot refresh ${modelId}: it was submitted through ${provider}, but that model now routes through ${created.provider}`,
-          {
-            hint: "restore a model spelling that routes to the recorded provider; polling a task on a different backend cannot recover it",
-          }
-        );
-      }
-      clients.set(key, created);
-      return created;
-    };
-    // Validate and construct every route before the first request. If one
-    // legacy attempt lacks identity, refreshing must make zero guesses and
-    // zero network calls rather than partially updating the film.
-    const routed = refreshable.map(({ entry, revision }) => {
-      const model = revision.params?.model;
-      const provider = revision.params?.provider;
-      if (!(model && provider)) {
-        throw new VsError(
-          "invalid_input",
-          `${entry.shotId} task ${revision.taskId} has no recorded provider/model and cannot be refreshed safely`,
-          {
-            hint: "inspect the task in the provider console; legacy pending tasks cannot be assigned to a backend automatically",
-          }
-        );
-      }
-      return { client: clientFor(model, provider), entry, revision };
-    });
-    for (const { client, entry, revision } of routed) {
-      const task = await client.doStatus(revision.taskId);
-      upsertEntry(manifest, {
-        shotId: entry.shotId,
-        status: task.status,
-        taskId: revision.taskId,
-        videoUrl: task.content?.video_url,
-      });
-    }
-    await saveManifest(shotsFile, manifest, pass);
   }
 
   const rows = Object.values(manifest.entries).map((entry) => ({

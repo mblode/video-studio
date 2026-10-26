@@ -11,6 +11,7 @@ import {
 import type { Pass } from "../paths.js";
 import { clipRevisionPath } from "../versions.js";
 import { resolveFilm } from "./context.js";
+import { withManifestLock } from "./lock.js";
 import { emit, note, ok, warn } from "./output.js";
 
 export interface DownloadOptions {
@@ -28,50 +29,52 @@ export async function runDownload(
     output: options.output,
     pass,
   });
-  const manifest = await loadManifest(shotsFilePath, pass);
-  const byId = new Map(file.shots.map((shot) => [shot.id, shot]));
+  await withManifestLock(shotsFilePath, pass, "download", async () => {
+    const manifest = await loadManifest(shotsFilePath, pass);
+    const byId = new Map(file.shots.map((shot) => [shot.id, shot]));
 
-  const downloaded: string[] = [];
-  const stale: string[] = [];
-  for (const entry of Object.values(manifest.entries)) {
-    const latest = latestRevision(entry);
-    if (
-      latest?.status !== "succeeded" ||
-      isRevisionComplete(latest, shotsDir)
-    ) {
-      continue;
-    }
-    if (!latest.videoUrl) {
-      warn(
-        `${entry.shotId} succeeded but has no stored URL; refresh it with \`vs status ${shotsFilePath} --refresh${options.draft ? " --draft" : ""}\``
+    const downloaded: string[] = [];
+    const stale: string[] = [];
+    for (const entry of Object.values(manifest.entries)) {
+      const latest = latestRevision(entry);
+      if (
+        latest?.status !== "succeeded" ||
+        isRevisionComplete(latest, shotsDir)
+      ) {
+        continue;
+      }
+      if (!latest.videoUrl) {
+        warn(
+          `${entry.shotId} succeeded but has no stored URL; refresh it with \`vs status ${shotsFilePath} --refresh${options.draft ? " --draft" : ""}\``
+        );
+        stale.push(entry.shotId);
+        continue;
+      }
+      const shot = byId.get(entry.shotId);
+      const outputPath = clipRevisionPath(
+        outputDir,
+        entry.shotId,
+        latest.version,
+        shot?.output
       );
-      stale.push(entry.shotId);
-      continue;
+      await downloadFile(latest.videoUrl, outputPath);
+      upsertEntry(manifest, {
+        outputPath: relative(shotsDir, outputPath),
+        shotId: entry.shotId,
+        status: "downloaded",
+        taskId: latest.taskId,
+      });
+      await saveManifest(shotsFilePath, manifest, pass);
+      ok(`${entry.shotId} → ${outputPath}`);
+      downloaded.push(entry.shotId);
     }
-    const shot = byId.get(entry.shotId);
-    const outputPath = clipRevisionPath(
-      outputDir,
-      entry.shotId,
-      latest.version,
-      shot?.output
-    );
-    await downloadFile(latest.videoUrl, outputPath);
-    upsertEntry(manifest, {
-      outputPath: relative(shotsDir, outputPath),
-      shotId: entry.shotId,
-      status: "downloaded",
-      taskId: latest.taskId,
-    });
-    await saveManifest(shotsFilePath, manifest, pass);
-    ok(`${entry.shotId} → ${outputPath}`);
-    downloaded.push(entry.shotId);
-  }
 
-  emit({ downloaded, outputDir, pass, stale }, () => {
-    note(
-      downloaded.length === 0
-        ? "nothing to download"
-        : `${downloaded.length} clip(s) downloaded`
-    );
+    emit({ downloaded, outputDir, pass, stale }, () => {
+      note(
+        downloaded.length === 0
+          ? "nothing to download"
+          : `${downloaded.length} clip(s) downloaded`
+      );
+    });
   });
 }

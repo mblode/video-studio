@@ -8,6 +8,7 @@ import {
   assertVisualApproval,
   visualApprovalRequired,
 } from "../visual-review.js";
+import { withManifestLock } from "./lock.js";
 import { emit, ok } from "./output.js";
 
 export interface UseOptions {
@@ -22,65 +23,67 @@ export async function runUse(
   options: UseOptions
 ): Promise<void> {
   const pass: Pass = options.draft ? "draft" : "final";
-  const manifest = await loadManifest(shotsFile, pass);
-  const entry = manifest.entries[shotId];
-  if (!entry) {
-    throw new VsError("unknown_id", `no revisions recorded for ${shotId}`, {
-      hint: `run \`vs status ${shotsFile}\` to list recorded shots`,
-    });
-  }
-  const revision = entry.versions?.find(
-    (candidate) => candidate.version === version
-  );
-  if (!(revision?.outputPath && revision.status === "downloaded")) {
-    throw new VsError(
-      "missing_clip",
-      `${shotId} v${String(version).padStart(3, "0")} is not downloaded`,
+  await withManifestLock(shotsFile, pass, "use", async () => {
+    const manifest = await loadManifest(shotsFile, pass);
+    const entry = manifest.entries[shotId];
+    if (!entry) {
+      throw new VsError("unknown_id", `no revisions recorded for ${shotId}`, {
+        hint: `run \`vs status ${shotsFile}\` to list recorded shots`,
+      });
+    }
+    const revision = entry.versions?.find(
+      (candidate) => candidate.version === version
+    );
+    if (!(revision?.outputPath && revision.status === "downloaded")) {
+      throw new VsError(
+        "missing_clip",
+        `${shotId} v${String(version).padStart(3, "0")} is not downloaded`,
+        {
+          hint: `run \`vs status ${shotsFile}\` to see available revisions`,
+        }
+      );
+    }
+
+    if (await visualApprovalRequired(shotsFile)) {
+      const shots = await loadShotsFile(shotsFile);
+      const shot = shots.shots.find((candidate) => candidate.id === shotId);
+      if (!shot) {
+        throw new VsError(
+          "unknown_id",
+          `no shot named ${shotId} in ${shotsFile}`
+        );
+      }
+      await assertVisualApproval({
+        mediaPath: revision.outputPath,
+        pass,
+        shot,
+        shotsFile,
+        version,
+      });
+    }
+
+    entry.selectedVersion = version;
+    entry.outputPath = revision.outputPath;
+    if (!isComplete(entry, dirname(resolve(shotsFile)))) {
+      throw new VsError(
+        "file_not_found",
+        `${shotId} v${String(version).padStart(3, "0")} is recorded but its file is missing`,
+        { hint: `restore ${revision.outputPath}, or generate a new revision` }
+      );
+    }
+    await saveManifest(shotsFile, manifest, pass);
+    emit(
       {
-        hint: `run \`vs status ${shotsFile}\` to see available revisions`,
+        outputPath: revision.outputPath,
+        pass,
+        selectedVersion: version,
+        shotId,
+      },
+      () => {
+        ok(
+          `${shotId} now uses v${String(version).padStart(3, "0")} → ${revision.outputPath}`
+        );
       }
     );
-  }
-
-  if (await visualApprovalRequired(shotsFile)) {
-    const shots = await loadShotsFile(shotsFile);
-    const shot = shots.shots.find((candidate) => candidate.id === shotId);
-    if (!shot) {
-      throw new VsError(
-        "unknown_id",
-        `no shot named ${shotId} in ${shotsFile}`
-      );
-    }
-    await assertVisualApproval({
-      mediaPath: revision.outputPath,
-      pass,
-      shot,
-      shotsFile,
-      version,
-    });
-  }
-
-  entry.selectedVersion = version;
-  entry.outputPath = revision.outputPath;
-  if (!isComplete(entry, dirname(resolve(shotsFile)))) {
-    throw new VsError(
-      "file_not_found",
-      `${shotId} v${String(version).padStart(3, "0")} is recorded but its file is missing`,
-      { hint: `restore ${revision.outputPath}, or generate a new revision` }
-    );
-  }
-  await saveManifest(shotsFile, manifest, pass);
-  emit(
-    {
-      outputPath: revision.outputPath,
-      pass,
-      selectedVersion: version,
-      shotId,
-    },
-    () => {
-      ok(
-        `${shotId} now uses v${String(version).padStart(3, "0")} → ${revision.outputPath}`
-      );
-    }
-  );
+  });
 }

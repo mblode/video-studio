@@ -11,7 +11,10 @@ import type {
   ManifestStatus,
 } from "./types.js";
 
-function manifestPath(shotsFilePath: string, pass: Pass = "final"): string {
+export function manifestPath(
+  shotsFilePath: string,
+  pass: Pass = "final"
+): string {
   return join(dirname(resolve(shotsFilePath)), `tasks${passSuffix(pass)}.json`);
 }
 

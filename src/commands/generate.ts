@@ -52,6 +52,7 @@ import {
   createVideoModel,
   resolveFilm,
 } from "./context.js";
+import { withManifestLock } from "./lock.js";
 import {
   emit,
   fail,
@@ -701,204 +702,221 @@ export async function runGenerate(
     return;
   }
 
-  const manifest = await loadManifest(shotsFilePath, pass);
-  const pending = selectPendingShots(shots, manifest, shotsDir, options.force);
-
-  if (pending.length === 0) {
-    emit({ pass, pending: 0, status: "up-to-date" }, () => {
-      note("nothing to do, all shots complete");
-    });
-    return;
-  }
-
-  // Before anything is priced or sent: a shot whose last submit never came back
-  // with an id may already have a paid task at the provider. Resubmitting is
-  // the one move that is certainly wrong, so stop and make the operator resolve
-  // it. `--force` is the acknowledgement that they have.
-  assertUnresolvedAttempts(pending, manifest, options.force);
-
-  const toSubmit = pending.filter(
-    (shot) => !latestIsInFlight(manifest.entries[shot.id])
-  );
-  const toReattach = new Set(
-    pending.filter((shot) => latestIsInFlight(manifest.entries[shot.id]))
-  );
-
-  assertReattachIdentities(toReattach, manifest);
-
-  if (toSubmit.length > 0) {
-    assertShotsCapable(toSubmit, file, overrides);
-    warnUnpricedInput(toSubmit);
-    const estimate = estimateRun(toSubmit, file, overrides);
-    assertCostCeiling(estimate, options.maxCost);
-    if (!options.yes && !(await confirmCost(toSubmit, file, pass, estimate))) {
-      // Declining is a decision, not a success: the requested work did not
-      // happen, so the exit code has to say so.
-      fail("aborted at the cost prompt; nothing submitted");
-      process.exitCode = 1;
-      return;
-    }
-  }
-
-  const client =
-    toSubmit.length > 0
-      ? (() => {
-          if (!injected.client) {
-            assertVideoModelCredential(modelId);
-          }
-          return submissionClient(modelId, injected.client);
-        })()
-      : undefined;
-
-  const concurrency = effectiveConcurrency(
-    options.concurrency,
-    toSubmit,
-    file,
-    overrides
-  );
-  if (concurrency < options.concurrency) {
-    note(
-      `capping concurrency at ${concurrency} for this model's rate limits (requested ${options.concurrency})`
+  // Taken after the dry-run return, which writes nothing, and BEFORE the load:
+  // the race is two processes each saving a copy loaded before the other's write.
+  await withManifestLock(shotsFilePath, pass, "generate", async () => {
+    const manifest = await loadManifest(shotsFilePath, pass);
+    const pending = selectPendingShots(
+      shots,
+      manifest,
+      shotsDir,
+      options.force
     );
-  }
-  const limit = pLimit(concurrency);
-  async function submitShot(shot: Shot): Promise<void> {
-    if (!client) {
-      throw new VsError("invalid_input", `no submission client for ${shot.id}`);
-    }
-    const callOptions = await buildCallOptions(shot, file.film, shotsDir, {
-      overrides,
-    });
-    const payloadHash = hashPayload(client.toRequestBody(callOptions));
-    const params = {
-      duration: callOptions.duration,
-      generateAudio: callOptions.generateAudio ?? true,
-      model: client.modelId,
-      provider: client.provider,
-      ratio: callOptions.aspectRatio,
-      // Undefined records that the provider chose its default resolution.
-      resolution: callOptions.resolution,
-      seed: callOptions.seed,
-      watermark: callOptions.watermark ?? false,
-    };
-    // Record the intent to spend BEFORE spending. If the process dies between
-    // here and the response, this entry (status "submitted", no task id) is
-    // what stops the next run from silently submitting and paying a second
-    // time. Without it a Ctrl-C in this window leaves no trace at all.
-    upsertEntry(manifest, {
-      newAttempt: true,
-      params,
-      payloadHash,
-      shotId: shot.id,
-      status: "submitted",
-    });
-    await saveManifest(shotsFilePath, manifest, pass);
-    const task = await client.doStart(callOptions);
-    upsertEntry(manifest, {
-      params,
-      // Hashed once, above, from the PROVIDER'S body, which is what was
-      // actually submitted. For Ark that is byte-identical to what this CLI has
-      // always hashed, so no existing film's audit trail churns.
-      payloadHash,
-      shotId: shot.id,
-      status: "submitted",
-      taskId: task.id,
-    });
-    await saveManifest(shotsFilePath, manifest, pass);
-    note(`↑ ${shot.id} submitted (${task.id})`);
-    if (options.wait) {
-      await settleTask({
-        client,
-        download: options.download,
-        generateOptions: options,
-        manifest,
-        outputDir,
-        pass,
-        shot,
-        shotsDir,
-        shotsFile: shotsFilePath,
-        task,
-      });
-    }
-  }
 
-  async function reattachShot(shot: Shot): Promise<void> {
-    const entry = manifest.entries[shot.id];
-    if (!entry) {
+    if (pending.length === 0) {
+      emit({ pass, pending: 0, status: "up-to-date" }, () => {
+        note("nothing to do, all shots complete");
+      });
       return;
     }
-    const latest = latestOperation(entry);
-    const recorded = latest?.params;
-    if (!latest || !recorded?.provider || !recorded.model) {
-      throw new VsError(
-        "task_uncertain",
-        `cannot safely resume ${shot.id}: latest task has no recorded provider/model identity`
-      );
-    }
-    const recoveryClient =
-      injected.client?.modelId === recorded.model &&
-      injected.client.provider === recorded.provider
-        ? injected.client
-        : createVideoModel(recorded.model);
-    if (recoveryClient.provider !== recorded.provider) {
-      throw new VsError(
-        "task_uncertain",
-        `cannot safely resume ${shot.id}: recorded provider ${recorded.provider} does not match model ${recorded.model}`,
-        { hint: "check the original provider console and manifest identity" }
-      );
-    }
-    const { taskId } = latest;
-    note(`↻ ${shot.id} re-attaching to task ${taskId}`);
-    if (options.wait) {
-      await settleTask({
-        client: recoveryClient,
-        download: options.download,
-        generateOptions: options,
-        manifest,
-        outputDir,
-        pass,
-        shot,
-        shotsDir,
-        shotsFile: shotsFilePath,
-        task: { id: taskId, status: "running" },
-      });
-    }
-  }
 
-  const jobs = pending.map((shot) =>
-    limit(() => (toReattach.has(shot) ? reattachShot(shot) : submitShot(shot)))
-  );
+    // Before anything is priced or sent: a shot whose last submit never came back
+    // with an id may already have a paid task at the provider. Resubmitting is
+    // the one move that is certainly wrong, so stop and make the operator resolve
+    // it. `--force` is the acknowledgement that they have.
+    assertUnresolvedAttempts(pending, manifest, options.force);
 
-  const results = await Promise.allSettled(jobs);
-  const failures = results.filter((result) => result.status === "rejected");
-  for (const failure of failures) {
-    const { hint, message } = formatError(failure.reason, isVerbose());
-    fail(message);
-    if (hint) {
-      note(`  ${hint}`);
-    }
-  }
-  const billing = billingReport(toSubmit, file, overrides, manifest);
-  emit(
-    {
-      cost: billing,
-      failed: failures.length,
-      pass,
-      submitted: pending.length - failures.length,
-      waited: options.wait,
-    },
-    () => {
-      if (billing) {
-        reportBilling(billing);
+    const toSubmit = pending.filter(
+      (shot) => !latestIsInFlight(manifest.entries[shot.id])
+    );
+    const toReattach = new Set(
+      pending.filter((shot) => latestIsInFlight(manifest.entries[shot.id]))
+    );
+
+    assertReattachIdentities(toReattach, manifest);
+
+    if (toSubmit.length > 0) {
+      assertShotsCapable(toSubmit, file, overrides);
+      warnUnpricedInput(toSubmit);
+      const estimate = estimateRun(toSubmit, file, overrides);
+      assertCostCeiling(estimate, options.maxCost);
+      if (
+        !options.yes &&
+        !(await confirmCost(toSubmit, file, pass, estimate))
+      ) {
+        // Declining is a decision, not a success: the requested work did not
+        // happen, so the exit code has to say so.
+        fail("aborted at the cost prompt; nothing submitted");
+        process.exitCode = 1;
+        return;
       }
-      if (!options.wait) {
-        note(
-          `submitted ${pending.length} shot(s); poll with \`vs status ${shotsFilePath} --refresh\``
+    }
+
+    const client =
+      toSubmit.length > 0
+        ? (() => {
+            if (!injected.client) {
+              assertVideoModelCredential(modelId);
+            }
+            return submissionClient(modelId, injected.client);
+          })()
+        : undefined;
+
+    const concurrency = effectiveConcurrency(
+      options.concurrency,
+      toSubmit,
+      file,
+      overrides
+    );
+    if (concurrency < options.concurrency) {
+      note(
+        `capping concurrency at ${concurrency} for this model's rate limits (requested ${options.concurrency})`
+      );
+    }
+    const limit = pLimit(concurrency);
+    async function submitShot(shot: Shot): Promise<void> {
+      if (!client) {
+        throw new VsError(
+          "invalid_input",
+          `no submission client for ${shot.id}`
         );
       }
+      const callOptions = await buildCallOptions(shot, file.film, shotsDir, {
+        overrides,
+      });
+      const payloadHash = hashPayload(client.toRequestBody(callOptions));
+      const params = {
+        duration: callOptions.duration,
+        generateAudio: callOptions.generateAudio ?? true,
+        model: client.modelId,
+        provider: client.provider,
+        ratio: callOptions.aspectRatio,
+        // Undefined records that the provider chose its default resolution.
+        resolution: callOptions.resolution,
+        seed: callOptions.seed,
+        watermark: callOptions.watermark ?? false,
+      };
+      // Record the intent to spend BEFORE spending. If the process dies between
+      // here and the response, this entry (status "submitted", no task id) is
+      // what stops the next run from silently submitting and paying a second
+      // time. Without it a Ctrl-C in this window leaves no trace at all.
+      upsertEntry(manifest, {
+        newAttempt: true,
+        params,
+        payloadHash,
+        shotId: shot.id,
+        status: "submitted",
+      });
+      await saveManifest(shotsFilePath, manifest, pass);
+      const task = await client.doStart(callOptions);
+      upsertEntry(manifest, {
+        params,
+        // Hashed once, above, from the PROVIDER'S body, which is what was
+        // actually submitted. For Ark that is byte-identical to what this CLI has
+        // always hashed, so no existing film's audit trail churns.
+        payloadHash,
+        shotId: shot.id,
+        status: "submitted",
+        taskId: task.id,
+      });
+      await saveManifest(shotsFilePath, manifest, pass);
+      note(`↑ ${shot.id} submitted (${task.id})`);
+      if (options.wait) {
+        await settleTask({
+          client,
+          download: options.download,
+          generateOptions: options,
+          manifest,
+          outputDir,
+          pass,
+          shot,
+          shotsDir,
+          shotsFile: shotsFilePath,
+          task,
+        });
+      }
     }
-  );
-  if (failures.length > 0) {
-    process.exitCode = 1;
-  }
+
+    async function reattachShot(shot: Shot): Promise<void> {
+      const entry = manifest.entries[shot.id];
+      if (!entry) {
+        return;
+      }
+      const latest = latestOperation(entry);
+      const recorded = latest?.params;
+      if (!latest || !recorded?.provider || !recorded.model) {
+        throw new VsError(
+          "task_uncertain",
+          `cannot safely resume ${shot.id}: latest task has no recorded provider/model identity`
+        );
+      }
+      const recoveryClient =
+        injected.client?.modelId === recorded.model &&
+        injected.client.provider === recorded.provider
+          ? injected.client
+          : createVideoModel(recorded.model);
+      if (recoveryClient.provider !== recorded.provider) {
+        throw new VsError(
+          "task_uncertain",
+          `cannot safely resume ${shot.id}: recorded provider ${recorded.provider} does not match model ${recorded.model}`,
+          { hint: "check the original provider console and manifest identity" }
+        );
+      }
+      const { taskId } = latest;
+      note(`↻ ${shot.id} re-attaching to task ${taskId}`);
+      if (options.wait) {
+        await settleTask({
+          client: recoveryClient,
+          download: options.download,
+          generateOptions: options,
+          manifest,
+          outputDir,
+          pass,
+          shot,
+          shotsDir,
+          shotsFile: shotsFilePath,
+          task: { id: taskId, status: "running" },
+        });
+      }
+    }
+
+    const jobs = pending.map((shot) =>
+      limit(() =>
+        toReattach.has(shot) ? reattachShot(shot) : submitShot(shot)
+      )
+    );
+
+    const results = await Promise.allSettled(jobs);
+    const failures = results.filter((result) => result.status === "rejected");
+    for (const failure of failures) {
+      const { hint, message } = formatError(failure.reason, isVerbose());
+      fail(message);
+      if (hint) {
+        note(`  ${hint}`);
+      }
+    }
+    const billing = billingReport(toSubmit, file, overrides, manifest);
+    emit(
+      {
+        cost: billing,
+        failed: failures.length,
+        pass,
+        submitted: pending.length - failures.length,
+        waited: options.wait,
+      },
+      () => {
+        if (billing) {
+          reportBilling(billing);
+        }
+        if (!options.wait) {
+          note(
+            `submitted ${pending.length} shot(s); poll with \`vs status ${shotsFilePath} --refresh\``
+          );
+        }
+      }
+    );
+    if (failures.length > 0) {
+      process.exitCode = 1;
+    }
+  });
 }
