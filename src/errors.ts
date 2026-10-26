@@ -29,6 +29,11 @@ const VS_ERROR_CODES = [
   "path_escape",
   /** ffprobe could not make sense of a media file. */
   "probe_failed",
+  /**
+   * A 429 asked for a wait longer than the CLI will sleep through (a daily
+   * quota, not a rate limit). Nothing was accepted; re-run after the reset.
+   */
+  "quota_exhausted",
   /** Rasterising a title card failed (qlmanage/sips, or an unresolvable font). */
   "render_failed",
   /** Clips cannot be concatenated because their streams differ. */

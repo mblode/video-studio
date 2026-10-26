@@ -89,6 +89,11 @@ it, delete it.
   POST. Check unresolved latest attempts before skipping a selected completed
   take. Recovery reads the latest revision's identity, not the film's current
   model; missing legacy identity must fail closed.
+- **A long `Retry-After` is a spent quota, not a backoff.** Gemini TTS at its
+  daily cap answers 429 with `retry-after: 26782` (7.4 hours), which the CLI
+  used to sleep through in silence. `requestWithRetry` now throws
+  `quota_exhausted` with the provider's body and the reset time when a 429 asks
+  for more than `MAX_RETRY_AFTER_SECONDS` (60); shorter waits still replay.
 - **Generated video is immutable.** Clips live under
   `output/clips/<shot>/vNNN.mp4`; renders and exports also allocate `vNNN`.
   `ManifestEntry.status` describes the latest attempt, while `selectedVersion`

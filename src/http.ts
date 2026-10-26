@@ -18,6 +18,43 @@ const MAX_RETRIES = 3;
 const BACKOFF_MS = [1000, 4000, 16_000];
 
 /**
+ * The longest `Retry-After` a 429 is allowed to sleep through. A short one is
+ * a per-minute rate limit and waiting is free; a long one is a daily quota
+ * (Gemini TTS answers `retry-after: 26782`, 7.4 hours), and sleeping through
+ * it silently looks exactly like a hung run.
+ */
+const MAX_RETRY_AFTER_SECONDS = 60;
+
+function formatWait(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h${String(minutes).padStart(2, "0")}m`;
+  }
+  return minutes > 0 ? `${minutes}m` : `${Math.ceil(seconds)}s`;
+}
+
+/** A 429 whose wait is a quota reset, not a backoff. Nothing was accepted. */
+function quotaExhaustedError(
+  provider: string,
+  cause: ApiError,
+  retryAfterSeconds: number
+): VsError {
+  const wait = formatWait(retryAfterSeconds);
+  const resetsAt = new Date(
+    Date.now() + retryAfterSeconds * 1000
+  ).toISOString();
+  return new VsError(
+    "quota_exhausted",
+    `${cause.message} (Retry-After ${retryAfterSeconds}s)`,
+    {
+      cause,
+      hint: `the ${provider} quota is exhausted and resets in about ${wait} (around ${resetsAt}); nothing was accepted or billed, so re-run after that, or switch to a key with quota left`,
+    }
+  );
+}
+
+/**
  * Failures raised before any byte of the request reached the server, so a
  * replay cannot produce a second task. Anything else on a POST is AMBIGUOUS:
  * a reset mid-response, a read timeout, or a gateway 502 can all mean the
@@ -180,7 +217,9 @@ export interface JsonRequestOptions<T> extends RequestOptions {
  * the second decision while keeping the first.
  *
  * Retries 429 and, on a GET, 5xx and network errors, with exponential backoff
- * honouring `Retry-After`. Every other 4xx fails immediately.
+ * honouring `Retry-After`. Every other 4xx fails immediately, and so does a
+ * 429 whose `Retry-After` exceeds `MAX_RETRY_AFTER_SECONDS`: that is a spent
+ * quota, and the operator needs to hear when it resets rather than wait hours.
  *
  * A POST is never replayed after an ambiguous failure. Every POST this CLI
  * sends spends money — it creates a generation task, a score, or a narration
@@ -228,11 +267,19 @@ export async function requestWithRetry(
     const text = await response.text();
     const retryable = response.status === 429 || response.status >= 500;
     if (retryable) {
-      lastError = new ApiError(provider, response.status, text);
+      const apiError = new ApiError(provider, response.status, text);
+      lastError = apiError;
       if (response.status !== 429 && !replayable) {
-        throw ambiguousRequestError(provider, what, lastError, recoveryHint);
+        throw ambiguousRequestError(provider, what, apiError, recoveryHint);
       }
       const retryAfter = Number(response.headers.get("retry-after"));
+      if (
+        response.status === 429 &&
+        Number.isFinite(retryAfter) &&
+        retryAfter > MAX_RETRY_AFTER_SECONDS
+      ) {
+        throw quotaExhaustedError(provider, apiError, retryAfter);
+      }
       await sleep(
         Number.isFinite(retryAfter) && retryAfter > 0
           ? retryAfter * 1000
