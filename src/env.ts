@@ -115,6 +115,21 @@ export function requireOpenAiApiKey(): string {
   return key;
 }
 
+/** ElevenLabs key — narration on an `eleven_*` model. */
+export function requireElevenLabsApiKey(): string {
+  const key = process.env.ELEVENLABS_API_KEY;
+  if (!key) {
+    throw new VsError("missing_credential", "ELEVENLABS_API_KEY is not set", {
+      hint: "add `ELEVENLABS_API_KEY=...` to a .env file — `vs narrate --model eleven_v4` runs on ElevenLabs",
+    });
+  }
+  return key;
+}
+
+export function elevenLabsBaseUrl(): string {
+  return process.env.ELEVENLABS_BASE_URL ?? "https://api.elevenlabs.io";
+}
+
 export function geminiBaseUrl(): string {
   return process.env.GEMINI_BASE_URL ?? DEFAULT_GEMINI_BASE_URL;
 }

@@ -4,6 +4,19 @@ import { join } from "node:path";
 
 import { z } from "zod";
 
+import {
+  buildElevenLabsSpeechBody,
+  ElevenLabsTtsClient,
+  isElevenLabsModel,
+} from "./elevenlabs.js";
+import {
+  elevenLabsBaseUrl,
+  geminiBaseUrl,
+  loadEnv,
+  requireElevenLabsApiKey,
+  requireGeminiApiKey,
+} from "./env.js";
+import { VsError } from "./errors.js";
 import { runFfmpeg } from "./ffmpeg.js";
 import { requestJson, ResponseShapeError } from "./http.js";
 
@@ -31,7 +44,7 @@ export interface SpeechRequest {
   style?: string;
 }
 
-export function buildSpeechBody(request: SpeechRequest): unknown {
+function buildGeminiSpeechBody(request: SpeechRequest): unknown {
   return {
     generation_config: { speech_config: [{ voice: request.voice }] },
     input: [
@@ -54,6 +67,18 @@ export function buildSpeechBody(request: SpeechRequest): unknown {
     model: request.model ?? GEMINI_TTS_MODEL,
     response_format: { type: "audio" },
   };
+}
+
+/** Which backend a narration model id runs on; recorded in each sidecar. */
+export function speechProvider(model: string): "elevenlabs" | "gemini" {
+  return isElevenLabsModel(model) ? "elevenlabs" : "gemini";
+}
+
+/** The exact JSON body a request sends, for dry runs and the sidecar hash. */
+export function buildSpeechBody(request: SpeechRequest): unknown {
+  return speechProvider(request.model ?? GEMINI_TTS_MODEL) === "elevenlabs"
+    ? buildElevenLabsSpeechBody(request)
+    : buildGeminiSpeechBody(request);
 }
 
 // The audio is base64 inside `steps[].content[]`: a WAV today, but the
@@ -183,6 +208,44 @@ export class GeminiTtsClient {
   }
 }
 
-export function resolveVoice(explicit?: string): string {
-  return explicit ?? process.env.GEMINI_TTS_VOICE ?? DEFAULT_VOICE;
+/** What `vs narrate` calls; each backend returns MP3 bytes. */
+export interface TtsClient {
+  textToSpeech: (request: SpeechRequest) => Promise<Buffer>;
+}
+
+/**
+ * The one place a narration model id picks a backend, mirroring
+ * `resolveImageModel` in src/images.ts. Adding a provider is a branch here and
+ * one adapter file; the narrate command only ever sees `TtsClient`.
+ */
+export function createTtsClient(model: string): TtsClient {
+  loadEnv();
+  if (speechProvider(model) === "elevenlabs") {
+    return new ElevenLabsTtsClient({
+      apiKey: requireElevenLabsApiKey(),
+      baseUrl: elevenLabsBaseUrl(),
+      fetchImpl: fetchWithTimeout,
+    });
+  }
+  return new GeminiTtsClient({
+    apiKey: requireGeminiApiKey(),
+    baseUrl: geminiBaseUrl(),
+  });
+}
+
+/**
+ * ElevenLabs voices are opaque per-account ids with no sensible default, so
+ * one must be named; Gemini falls back to a prebuilt voice.
+ */
+export function resolveVoice(model: string, explicit?: string): string {
+  if (speechProvider(model) === "gemini") {
+    return explicit ?? process.env.GEMINI_TTS_VOICE ?? DEFAULT_VOICE;
+  }
+  const voice = explicit ?? process.env.ELEVENLABS_VOICE_ID;
+  if (!voice) {
+    throw new VsError("invalid_input", `${model} needs a voice id`, {
+      hint: "pass --voice <voice_id> (from `GET /v1/voices`), or set ELEVENLABS_VOICE_ID",
+    });
+  }
+  return voice;
 }

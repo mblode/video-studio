@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
-import { geminiBaseUrl, loadEnv, requireGeminiApiKey } from "../env.js";
+import { loadEnv } from "../env.js";
 import { VsError } from "../errors.js";
 import { isComplete, loadManifest } from "../manifest.js";
 import {
@@ -23,8 +23,14 @@ import {
   shotStartTimes,
 } from "../narrate.js";
 import { resolveOutput } from "../paths.js";
-import { buildSpeechBody, GeminiTtsClient, resolveVoice } from "../tts.js";
-import type { SpeechRequest } from "../tts.js";
+import {
+  buildSpeechBody,
+  createTtsClient,
+  GEMINI_TTS_MODEL,
+  resolveVoice,
+  speechProvider,
+} from "../tts.js";
+import type { SpeechRequest, TtsClient } from "../tts.js";
 import { assertNewVideoOutput } from "../versions.js";
 import { resolveFilm } from "./context.js";
 import { emit, heading, line, note, ok, warn } from "./output.js";
@@ -61,14 +67,6 @@ export interface NarrateAssembleOptions {
   xfade: number;
 }
 
-function createTtsClient(): GeminiTtsClient {
-  loadEnv();
-  return new GeminiTtsClient({
-    apiKey: requireGeminiApiKey(),
-    baseUrl: geminiBaseUrl(),
-  });
-}
-
 function probeDuration(path: string): number {
   const out = execFileSync(
     "ffprobe",
@@ -82,6 +80,7 @@ function speechIdentity(audio: Buffer, request: SpeechRequest) {
   return {
     audioSha256: createHash("sha256").update(audio).digest("hex"),
     model: request.model,
+    provider: speechProvider(request.model ?? GEMINI_TTS_MODEL),
     requestSha256: createHash("sha256")
       .update(JSON.stringify(buildSpeechBody(request)))
       .digest("hex"),
@@ -113,7 +112,11 @@ async function assertReusableSpeech(
     !recorded ||
     typeof recorded !== "object" ||
     Object.entries(expected).some(
-      ([key, value]) => (recorded as Record<string, unknown>)[key] !== value
+      ([key, value]) =>
+        // Sidecars written before ElevenLabs carry no provider; all were Gemini.
+        (({ provider: "gemini", ...recorded }) as Record<string, unknown>)[
+          key
+        ] !== value
     )
   ) {
     throw new VsError("invalid_input", `stale narration: ${path}`, {
@@ -219,7 +222,7 @@ async function validateAssemblyProvenance(
 export async function runNarrate(
   linesFilePath: string | undefined,
   options: NarrateOptions,
-  injected: { client?: GeminiTtsClient } = {}
+  injected: { client?: TtsClient } = {}
 ): Promise<void> {
   loadEnv();
   if (options.textFile) {
@@ -230,7 +233,7 @@ export async function runNarrate(
       model: options.model,
       style: options.style,
       text,
-      voice: resolveVoice(options.voice),
+      voice: resolveVoice(options.model, options.voice),
     };
 
     if (options.dryRun) {
@@ -267,7 +270,7 @@ export async function runNarrate(
     }
 
     await mkdir(dirname(outPath), { recursive: true });
-    const client = injected.client ?? createTtsClient();
+    const client = injected.client ?? createTtsClient(options.model);
     await writeSpeech(outPath, await client.textToSpeech(request), request);
     emit({ output: outPath, status: "ok", textFile: resolvedText }, () => {
       ok(`scratch VO → ${outPath}`);
@@ -285,7 +288,7 @@ export async function runNarrate(
     : dirname(resolve(linesFilePath));
   const requests = buildNarrateLineRequests(
     lines,
-    resolveVoice(options.voice),
+    resolveVoice(options.model, options.voice),
     options.model,
     options.style
   );
@@ -323,7 +326,7 @@ export async function runNarrate(
     }
   }
   await mkdir(linesDir, { recursive: true });
-  const client = injected.client ?? createTtsClient();
+  const client = injected.client ?? createTtsClient(options.model);
 
   for (const entry of requests) {
     const outPath = lineAudioPath(linesDir, entry.line);

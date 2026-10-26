@@ -196,6 +196,16 @@ function keyChecks(): DoctorCheck[] {
           label: "GEMINI_API_KEY not set",
           status: "skip",
         },
+    process.env.ELEVENLABS_API_KEY
+      ? {
+          label: "ELEVENLABS_API_KEY set (ElevenLabs narration)",
+          status: "ok",
+        }
+      : {
+          detail: "only needed for `vs narrate --model eleven_*`",
+          label: "ELEVENLABS_API_KEY not set",
+          status: "skip",
+        },
   ];
 }
 

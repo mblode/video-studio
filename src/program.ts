@@ -585,7 +585,7 @@ export function buildProgram(): Command {
     .command("narrate")
     .enablePositionalOptions()
     .description(
-      "Generate Gemini TTS narration from a TSV (NN\\ttext) or --text-file scratch VO"
+      "Generate Gemini or ElevenLabs TTS narration from a TSV (NN\\ttext) or --text-file scratch VO"
     )
     .argument("[lines-file]", "path to lines.tsv (omit with --text-file)")
     .option(
@@ -594,13 +594,17 @@ export function buildProgram(): Command {
     )
     .option(
       "--voice <name>",
-      "Gemini voice name or library id (or set GEMINI_TTS_VOICE; default Charon)"
+      "Gemini voice name (or GEMINI_TTS_VOICE; default Charon), or an ElevenLabs voice_id (required for eleven_* models, or ELEVENLABS_VOICE_ID)"
     )
     .option(
       "--style <text>",
-      "delivery direction for every line, e.g. 'hushed, tense, slow'"
+      "delivery direction for every line, e.g. 'hushed, tense, slow' (sent as a leading [audio tag] on ElevenLabs)"
     )
-    .option("--model <id>", "Gemini TTS model id", GEMINI_TTS_MODEL)
+    .option(
+      "--model <id>",
+      "TTS model id: gemini-* runs on Google, eleven_* (e.g. eleven_v4) or elevenlabs:<id> on ElevenLabs",
+      GEMINI_TTS_MODEL
+    )
     .option(
       "--output <path>",
       "output dir for line-NN.mp3, or scratch mp3 path with --text-file"

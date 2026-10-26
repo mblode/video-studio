@@ -21,6 +21,10 @@ vs score "Warm cinematic underscore, sparse piano and strings" \
 # 2. Per-line VO from narration/lines.tsv (NN<TAB>text)
 vs narrate films/<slug>/narration/lines.tsv --voice Charon \
   --style "warm, unhurried documentary narration"
+#    or on ElevenLabs (ELEVENLABS_API_KEY): --model eleven_v4 needs a voice_id,
+#    and --style becomes a leading [audio tag] on every line
+vs narrate films/<slug>/narration/lines.tsv --model eleven_v4 \
+  --voice <voice_id> --style "gravelly old-West storyteller"
 
 # 3. Place lines on the stitch timeline (line<TAB>shotId<TAB>offset)
 vs narrate assemble films/<slug>/shots.json \
