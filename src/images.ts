@@ -1,8 +1,13 @@
+import { gateway } from "@ai-sdk/gateway";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { ImageModelV4 } from "@ai-sdk/provider";
 
-import { requireGeminiApiKey, requireOpenAiApiKey } from "./env.js";
+import {
+  requireGatewayCredential,
+  requireGeminiApiKey,
+  requireOpenAiApiKey,
+} from "./env.js";
 import { VsError } from "./errors.js";
 import type { StillAspectRatio } from "./types.js";
 
@@ -40,7 +45,19 @@ const GEMINI_IMAGE_MODEL = /^(?:models\/)?gemini-/u;
  * `gpt-image-2.5-flare` for speed). It takes a pixel `size`, not a ratio, and
  * no seed; `imageCallOptions` is the one place that difference lives.
  */
-const OPENAI_IMAGE_MODEL = /^gpt-image-/u;
+const OPENAI_IMAGE_MODEL = /^(?:openai\/)?gpt-image-/u;
+
+/**
+ * A `creator/model` id (`openai/gpt-image-2.6-sunburst`) is a Vercel AI
+ * Gateway catalog id, the same convention `film.model` uses for video. One
+ * `AI_GATEWAY_API_KEY` then reaches every image model the Gateway lists, with
+ * no per-provider key.
+ */
+const GATEWAY_IMAGE_MODEL = /^[a-z0-9-]+\/[\w.-]+$/u;
+
+function isGatewayImageModel(modelId: string): boolean {
+  return GATEWAY_IMAGE_MODEL.test(modelId) && !GEMINI_IMAGE_MODEL.test(modelId);
+}
 
 function isOpenAiImageModel(modelId: string): boolean {
   return OPENAI_IMAGE_MODEL.test(modelId);
@@ -86,20 +103,28 @@ export function imageCallOptions(
 }
 
 export function assertImageModelSupported(modelId: string): void {
-  if (GEMINI_IMAGE_MODEL.test(modelId) || isOpenAiImageModel(modelId)) {
+  if (
+    GEMINI_IMAGE_MODEL.test(modelId) ||
+    isOpenAiImageModel(modelId) ||
+    isGatewayImageModel(modelId)
+  ) {
     return;
   }
   throw new VsError(
     "invalid_input",
     `stills model "${modelId}" is not one this CLI can run`,
     {
-      hint: `stills run on Google or OpenAI: use "${GEMINI_PRO_IMAGE_MODEL}" or "gpt-image-2.5-sunburst", or drop the top-level \`model\` to take the default. Seedream and Flux need \`npm i @ai-sdk/fal\` and a line in src/images.ts.`,
+      hint: `stills run on Google or OpenAI: use "${GEMINI_PRO_IMAGE_MODEL}" or "gpt-image-2.5-sunburst", or a Vercel AI Gateway id such as "openai/gpt-image-2.6-sunburst", or drop the top-level \`model\` to take the default. Seedream and Flux need \`npm i @ai-sdk/fal\` and a line in src/images.ts.`,
     }
   );
 }
 
 export function resolveImageModel(modelId: string): ImageModelV4 {
   assertImageModelSupported(modelId);
+  if (isGatewayImageModel(modelId)) {
+    requireGatewayCredential();
+    return gateway.image(modelId);
+  }
   if (isOpenAiImageModel(modelId)) {
     return createOpenAI({ apiKey: requireOpenAiApiKey() }).image(modelId);
   }

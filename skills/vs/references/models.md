@@ -186,6 +186,12 @@ OpenAI's GPT Image also works: name a `gpt-image-*` model (for example
 `gpt-image-2.5-sunburst`) and set `OPENAI_API_KEY`. It takes a pixel size, so
 the `ratio` maps to 1536x1024, 1024x1536, or 1024x1024, and `seed` is dropped.
 
+A `creator/model` id goes through **Vercel AI Gateway** instead, the same
+convention `film.model` uses: `openai/gpt-image-2.6-sunburst` needs only
+`AI_GATEWAY_API_KEY`, and so does any other image model in the Gateway catalog.
+An `openai/gpt-image-*` id still takes a pixel size; every other Gateway id
+takes the `ratio` and `seed`.
+
 Nano Banana takes an aspect **`ratio`**, not pixels, and rolls its own seed, so
 a per-still `size` or `seed` is ignored and `vs stills` says so once. Both stay
 in the schema only so a stills file from the Seedream era still loads.

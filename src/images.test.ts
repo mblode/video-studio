@@ -19,6 +19,13 @@ describe("assertImageModelSupported", () => {
     ).not.toThrow();
   });
 
+  it("accepts a Vercel AI Gateway catalog id", () => {
+    expect(() =>
+      assertImageModelSupported("openai/gpt-image-2.6-sunburst")
+    ).not.toThrow();
+    expect(() => assertImageModelSupported("bfl/flux-2-pro")).not.toThrow();
+  });
+
   it("refuses an id from a backend that is no longer wired up", () => {
     // The Seedream client went with the hand-rolled Ark image path. Without
     // this the id is handed to the Gemini endpoint and rejected there, after
@@ -40,6 +47,9 @@ describe("imageCallOptions", () => {
     expect(imageCallOptions(gpt, "9:16")).toEqual({ size: "1024x1536" });
     expect(imageCallOptions(gpt, "1:1")).toEqual({ size: "1024x1024" });
     expect(imageCallOptions(gpt)).toEqual({ size: "1024x1024" });
+    expect(imageCallOptions("openai/gpt-image-2.6-sunburst", "16:9")).toEqual({
+      size: "1536x1024",
+    });
     expect(imageCallOptions("gemini-3-pro-image", "16:9", 7)).toEqual({
       aspectRatio: "16:9",
       seed: 7,
