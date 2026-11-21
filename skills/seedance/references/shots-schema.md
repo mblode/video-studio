@@ -224,6 +224,9 @@ segment, measured after any trim; without `duration` the text holds to the end.
 in pixels at a 1080-high frame and is scaled to the real frame, so one file
 reads the same at a 480p draft and a 720p final. `font` must be an installed
 family and defaults to `--font`; `weight` picks a weight of a variable family.
+`wrap` is the characters per line before the text wraps (default 38).
+`band` (6-digit hex) lays a full-width strip of that colour behind the text:
+use it whenever the picture underneath is busy or the same colour as the type.
 `reveal: "word"` places the words one at a time, `stagger` seconds apart,
 without the earlier words moving. Never ask the model to render the words
 instead: in-model lettering is unreliable.

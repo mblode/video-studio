@@ -292,7 +292,14 @@ export interface Overlay {
   weight?: number;
   /** Hex colour, default white. */
   color?: string;
+  /**
+   * Hex colour of a full-width strip behind the text. Type over a busy or
+   * same-coloured picture is unreadable without a ground of its own.
+   */
+  band?: string;
   align?: "start" | "middle" | "end";
+  /** Characters per line before the text wraps, default 38 like a card. */
+  wrap?: number;
   /** "word" places the words one at a time, `stagger` seconds apart. */
   reveal?: "word";
   /** Seconds between words when `reveal` is set, default 0.25. */

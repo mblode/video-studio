@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { cardSvg, cardVideoArgs } from "./cards.js";
-import { decorateTimeline, overlayMatteSvg } from "./overlays.js";
+import { bandMatteSvg, decorateTimeline, overlayMatteSvg } from "./overlays.js";
 import type { TimelineSegment } from "./overlays.js";
 import { buildStitchPlan } from "./stitch.js";
 import { buildFilmSegments } from "./timeline.js";
@@ -22,6 +22,8 @@ const segment = (
   id,
   ...extra,
 });
+
+const count = (svg: string) => svg.match(/<text /gu)?.length;
 
 describe("overlayMatteSvg", () => {
   it("draws white text on black, scaled from a 1080-high frame", () => {
@@ -45,6 +47,14 @@ describe("overlayMatteSvg", () => {
     // The 1280 square is cropped to 720 high, so the frame starts 280 down.
     expect(svg).toContain('x="320" y="1000"');
     expect(svg).toContain('text-anchor="start"');
+  });
+
+  it("wraps at the overlay's own width", () => {
+    const text = "Tell us what your team still does by hand.";
+    expect(count(overlayMatteSvg({ on: "s1", text }, frame, "H"))).toBe(3);
+    expect(
+      count(overlayMatteSvg({ on: "s1", text, wrap: 60 }, frame, "H"))
+    ).toBe(1);
   });
 
   it("hides later words in a reveal without moving the earlier ones", () => {
@@ -136,6 +146,29 @@ describe("decorateTimeline", () => {
       [0.5, 1],
       [1, 2],
     ]);
+  });
+
+  it("lays a band under the text for the whole overlay", () => {
+    const overlay: Overlay = {
+      band: "#f7f7f7",
+      color: "#0a5fe0",
+      fontSize: 90,
+      on: "s1",
+      text: "follow-up",
+    };
+    const { decorations } = decorateTimeline(
+      [segment("s1")],
+      options([overlay])
+    );
+    expect(decorations[0]?.layers.map((layer) => layer.color)).toEqual([
+      "0xf7f7f7",
+      "0x0a5fe0",
+    ]);
+    expect(decorations[0]?.layers[0]).toMatchObject({ end: 4, start: 0 });
+    // One 60px line at the centre of a 720-high frame: 78 + 54 tall.
+    expect(bandMatteSvg(overlay, frame)).toContain(
+      '<rect x="0" y="574" width="1280" height="132" fill="white"/>'
+    );
   });
 
   it("drops the audio map for a silent source", () => {

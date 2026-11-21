@@ -41,6 +41,25 @@ interface Decoration {
   outputPath: string;
 }
 
+/** Where an overlay's text block sits inside the square matte canvas. */
+function textBlock(overlay: Overlay, frame: { height: number; width: number }) {
+  const size = Math.max(frame.width, frame.height);
+  const fontSize = ((overlay.fontSize ?? 64) * frame.height) / REFERENCE_HEIGHT;
+  const lines = wrapCardText(overlay.text, overlay.wrap);
+  const lineHeight = fontSize * 1.3;
+  // The frame is centre-cropped out of the square, so its origin is inset.
+  const centreY = (size - frame.height) / 2 + (overlay.y ?? 0.5) * frame.height;
+  return {
+    centreY,
+    firstY: centreY - ((lines.length - 1) * lineHeight) / 2,
+    fontSize,
+    lineHeight,
+    lines,
+    size,
+    x: (size - frame.width) / 2 + (overlay.x ?? 0.5) * frame.width,
+  };
+}
+
 /**
  * A luma matte for one overlay: white text on black, the full frame, in a
  * square svg like a card. `visibleWords` hides the words past that count with
@@ -53,14 +72,10 @@ export function overlayMatteSvg(
   fontFamily: string,
   visibleWords = Number.POSITIVE_INFINITY
 ): string {
-  const size = Math.max(frame.width, frame.height);
-  const fontSize = ((overlay.fontSize ?? 64) * frame.height) / REFERENCE_HEIGHT;
-  const lines = wrapCardText(overlay.text);
-  const lineHeight = fontSize * 1.3;
-  // The frame is centre-cropped out of the square, so its origin is inset.
-  const x = (size - frame.width) / 2 + (overlay.x ?? 0.5) * frame.width;
-  const centreY = (size - frame.height) / 2 + (overlay.y ?? 0.5) * frame.height;
-  const firstY = centreY - ((lines.length - 1) * lineHeight) / 2;
+  const { firstY, fontSize, lineHeight, lines, size, x } = textBlock(
+    overlay,
+    frame
+  );
   const weight =
     overlay.weight === undefined ? "" : ` font-weight="${overlay.weight}"`;
   let wordIndex = 0;
@@ -81,6 +96,27 @@ export function overlayMatteSvg(
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
   <rect width="100%" height="100%" fill="black"/>
   ${texts}
+</svg>
+`;
+}
+
+/**
+ * The matte for an overlay's `band`: a full-width strip as tall as the text
+ * block plus padding. Full width because nothing here can measure a line of
+ * text, and a strip needs no measuring.
+ */
+export function bandMatteSvg(
+  overlay: Overlay,
+  frame: { height: number; width: number }
+): string {
+  const { centreY, fontSize, lineHeight, lines, size } = textBlock(
+    overlay,
+    frame
+  );
+  const height = lines.length * lineHeight + fontSize * 0.9;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
+  <rect width="100%" height="100%" fill="black"/>
+  <rect x="0" y="${centreY - height / 2}" width="${size}" height="${height}" fill="white"/>
 </svg>
 `;
 }
@@ -111,6 +147,18 @@ function overlayLayers(
   const steps = overlay.reveal === "word" ? wordTotal(overlay.text) : 1;
   const stagger = overlay.stagger ?? DEFAULT_STAGGER;
   const layers: MatteLayer[] = [];
+  if (overlay.band !== undefined && start < end) {
+    // Under the text and on screen for the whole overlay, so a word reveal
+    // builds on a strip that is already there.
+    layers.push({
+      color: overlay.band.replace("#", "0x"),
+      end,
+      fade: { in: true, out: true, seconds: fadeSeconds },
+      png: `${pngBase}-band.png`,
+      start,
+      svg: bandMatteSvg(overlay, frame),
+    });
+  }
   for (let step = 0; step < steps; step += 1) {
     const layerStart = start + step * stagger;
     if (layerStart >= end) {

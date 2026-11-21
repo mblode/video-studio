@@ -295,6 +295,7 @@ const cardSchema = z
 const overlaySchema = z.strictObject({
   align: z.enum(["start", "middle", "end"]).optional(),
   at: z.number().min(0).optional(),
+  band: hexColorSchema.optional(),
   color: hexColorSchema.optional(),
   duration: z.number().positive().optional(),
   fade: z.number().min(0).max(2).optional(),
@@ -305,6 +306,7 @@ const overlaySchema = z.strictObject({
   stagger: z.number().positive().optional(),
   text: z.string().min(1),
   weight: z.number().int().min(100).max(900).optional(),
+  wrap: z.number().int().positive().optional(),
   x: z.number().min(0).max(1).optional(),
   y: z.number().min(0).max(1).optional(),
 });
