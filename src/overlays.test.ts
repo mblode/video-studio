@@ -61,9 +61,14 @@ describe("overlayMatteSvg", () => {
     const overlay: Overlay = { on: "s1", text: "work less today" };
     const one = overlayMatteSvg(overlay, frame, "Helvetica", 1);
     const all = overlayMatteSvg(overlay, frame, "Helvetica");
-    expect(one.match(/fill-opacity="0"/gu)).toHaveLength(2);
-    expect(all).not.toContain("fill-opacity");
-    expect(one.replaceAll(' fill-opacity="0"', "")).toBe(all);
+    // One hidden run, not a tspan per word: WebKit opens a wide gap after the
+    // first word when every word is its own tspan.
+    expect(one.match(/<tspan/gu)).toHaveLength(2);
+    expect(one).toContain(
+      '<tspan>work</tspan><tspan fill-opacity="0"> less today</tspan>'
+    );
+    expect(all).not.toContain("tspan");
+    expect(all).toContain(">work less today</text>");
   });
 });
 

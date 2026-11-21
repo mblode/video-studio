@@ -81,16 +81,23 @@ export function overlayMatteSvg(
   let wordIndex = 0;
   const texts = lines
     .map((line, index) => {
-      const words = line
-        .split(" ")
-        .filter(Boolean)
-        .map((word) => {
-          const hidden = wordIndex >= visibleWords;
-          wordIndex += 1;
-          return `<tspan${hidden ? ' fill-opacity="0"' : ""}>${escapeXml(word)}</tspan>`;
-        })
-        .join(" ");
-      return `<text x="${x}" y="${firstY + index * lineHeight}" font-family="${fontFamily}" font-size="${fontSize}"${weight} fill="white" text-anchor="${overlay.align ?? "middle"}" dominant-baseline="central">${words}</text>`;
+      // One run for the words on screen and one for the words still hidden.
+      // A tspan per word made WebKit open a wide gap after the first word, so
+      // the space between the two runs lives INSIDE the hidden one, kept by
+      // xml:space, and a fully visible line is plain text.
+      const lineWords = line.split(" ").filter(Boolean);
+      const shown = Math.max(
+        0,
+        Math.min(lineWords.length, visibleWords - wordIndex)
+      );
+      wordIndex += lineWords.length;
+      const visible = escapeXml(lineWords.slice(0, shown).join(" "));
+      const hidden = escapeXml(lineWords.slice(shown).join(" "));
+      const words =
+        hidden === ""
+          ? visible
+          : `<tspan>${visible}</tspan><tspan fill-opacity="0">${shown > 0 ? " " : ""}${hidden}</tspan>`;
+      return `<text x="${x}" y="${firstY + index * lineHeight}" font-family="${fontFamily}" font-size="${fontSize}"${weight} fill="white" text-anchor="${overlay.align ?? "middle"}" dominant-baseline="central" xml:space="preserve">${words}</text>`;
     })
     .join("\n  ");
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
