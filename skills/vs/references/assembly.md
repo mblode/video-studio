@@ -85,6 +85,32 @@ an ffmpeg with `drawtext` and adapt `src/cards.ts`.
 `--font` fails loudly for a family that is not installed, because `qlmanage`
 would otherwise substitute a default face and exit 0.
 
+A card can be styled and can carry an image: `background` and `color` take a
+6-digit hex, `image` draws a local svg, png, jpg or webp centred (a logo end
+card), and `fade: false` cuts the card in and out hard. A card with an `id`
+and no text is a blank ground for overlays.
+
+### Overlays and trims
+
+`overlays` in the shots file put text over a shot or a card, and a shot's
+`trim` cuts a part of its clip into the film. Both are applied by `vs stitch`
+(including `--latest`) and `vs animatic`, so the type and the pacing are judged
+on the story reel before any video is paid for.
+
+Each segment that has a trim or an overlay is written as a derived copy under
+`<outputDir>/overlays/` and that copy goes into the cut. The clip under
+`output/clips/` is never modified, so its visual-approval receipt still binds
+the same bytes, and nothing here reaches a provider or changes a `payloadHash`.
+A segment with neither is passed through untouched, which keeps a film with no
+overlays on the fast lossless path.
+
+`qlmanage` always paints an opaque ground, so overlay text is rasterised as a
+white-on-black matte and ffmpeg merges it as the alpha of a flat colour. That
+is why an overlay is one colour, and why overlays are macOS-only like cards.
+Every overlay `font` must be installed; a dry run checks them and fails loudly.
+
+`vs narrate assemble` places lines against the trimmed length of a shot.
+
 The **opening** card (timeline position 0) renders with `fadeIn: false` so
 frame 0 is the visible card rather than black. Messaging apps grab a poster
 frame from the start of the file, and a fade-up gives them a black one. Keep

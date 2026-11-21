@@ -1,3 +1,4 @@
+import { cardLabel } from "./cards.js";
 import { DEFAULT_DURATION } from "./types.js";
 import type { ShotsFile } from "./types.js";
 
@@ -43,7 +44,7 @@ export function buildFilmSegments(
       if (card.after === position) {
         segments.push({
           dur: card.duration ?? 3,
-          id: card.text.slice(0, 40),
+          id: cardLabel(card).slice(0, 40),
           kind: "card",
           trans: card.transition ?? defaultTransition,
         });
@@ -53,7 +54,11 @@ export function buildFilmSegments(
 
   cardsAfter("start");
   for (const shot of file.shots) {
+    // A trim is what the cut actually uses, so it outranks even a probed
+    // clip: narration placed against the untrimmed length would drift later
+    // with every trimmed shot before it.
     const dur =
+      shot.trim?.duration ??
       shotDurations[shot.id] ??
       shot.duration ??
       file.film.defaults?.duration ??

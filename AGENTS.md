@@ -192,6 +192,18 @@ it, delete it.
   cards are rasterised through `qlmanage` and `sips`. `--font` fails loudly for
   a family that is not installed, because qlmanage substitutes a default face
   and exits 0.
+- **Overlays and trims are stitch-time, and they never touch a clip.**
+  `overlays` (text over a shot or card) and a shot's `trim` are applied by
+  `vs stitch` and `vs animatic` to a derived copy under `<outputDir>/overlays/`;
+  the take under `output/clips/` stays immutable, so its approval receipt and
+  `payloadHash` are unaffected. qlmanage cannot render transparency (it always
+  paints an opaque ground), so overlay text is a white-on-black matte that
+  ffmpeg `alphamerge`s onto a flat colour: do not "simplify" it to a
+  transparent PNG. A film with no overlays or trims must keep producing the
+  same `StitchPlan`, lossless path included; a test pins that. Overlay
+  `fontSize` is authored at a 1080-high frame and scaled, unlike a card's,
+  which is raw pixels. A card image travels inside the svg as a data URI
+  because the renderer will not follow a file path out of it.
 - **`vs cast sync` is authoring-time codegen, and it is the only command that
   writes a film's JSON back.** `characters.json` is read by nothing at generate
   time: sync expands it into literal `castPrompt` text and literal sheet

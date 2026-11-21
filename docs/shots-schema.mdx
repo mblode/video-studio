@@ -108,11 +108,13 @@ One shot is one paid task.
 }
 ```
 
-**Per-shot:** `id`, `prompt`, optional `duration` (4–30 or `-1`), `ratio`, `resolution`, `cameraFixed`, `references`, `output`, `seed`, `transition` (0.05–2, crossfade **into** this shot).
+**Per-shot:** `id`, `prompt`, optional `duration` (4–30 or `-1`), `ratio`, `resolution`, `cameraFixed`, `references`, `output`, `seed`, `transition` (0.05–2, crossfade **into** this shot), `trim` (`{ "start": 1, "duration": 1.5 }`: the part of the clip the cut uses, applied at stitch time only).
 
 **`film`:** `title`, `model`, `draftModel`, `outputDir`, `promptPreamble`, `defaults`.
 
-**`cards`:** `after` (`"start"`, `"end"`, or a shot id), `text`, optional `duration` / `fontSize` / `transition`.
+**`cards`:** `after` (`"start"`, `"end"`, or a shot id), then at least one of `text`, `image` (a local svg, png, jpg or webp drawn centred) or `id` (so overlays can target the card). Optional `duration` / `fontSize` / `transition`, `background` and `color` (6-digit hex), `imageWidth` (fraction of the frame width, default 0.3), and `fade: false` for a hard cut in and out.
+
+**`overlays`:** text composited over a shot or a card. `on` (a shot id or card id) and `text`, with optional `at` and `duration` (seconds within the segment, after any trim), `x` / `y` (centre of the text as a fraction of the frame, default 0.5), `fontSize` (pixels at a 1080-high frame, scaled to the real one), `font`, `weight`, `color`, `align` (`start`, `middle`, `end`), `fade` (seconds), and `reveal: "word"` with `stagger` (seconds between words, default 0.25).
 
 Keep `defaults.generateAudio: true` for diegetic SFX — it does not add music or dialogue.
 

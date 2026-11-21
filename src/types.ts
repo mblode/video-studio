@@ -194,12 +194,31 @@ export interface Shot {
    * Overrides `--xfade` when set.
    */
   transition?: number;
+  /**
+   * The part of the generated clip the cut uses, in seconds. Applied at stitch
+   * time only: generation, `payloadHash` and the clip on disk are untouched, so
+   * a 4s minimum-length take can be cut as a 1.5s beat.
+   */
+  trim?: { duration: number; start: number };
 }
 
 export interface TitleCard {
   /** "start", "end", or a shot id this card follows in the stitched film. */
   after: string;
-  text: string;
+  /** Names the card so an overlay can target it with `on`. */
+  id?: string;
+  /** Optional once the card has an `image` or an `id` overlays can target. */
+  text?: string;
+  /** Card ground as a hex colour, default black. */
+  background?: string;
+  /** Text colour as a hex colour, default white. */
+  color?: string;
+  /** Local image (svg, png, jpg, webp) drawn centred, relative to the shots file. */
+  image?: string;
+  /** Width of `image` as a fraction of the frame width, default 0.3. */
+  imageWidth?: number;
+  /** false cuts the card in and out hard instead of dipping through black. */
+  fade?: boolean;
   /** Seconds, default 3. */
   duration?: number;
   /** Default 64. */
@@ -244,6 +263,42 @@ export interface ShotsFile {
   shots: Shot[];
   /** Title cards rendered and inserted by `vs stitch` (composited in post). */
   cards?: TitleCard[];
+  /** Text composited over a shot or card at stitch time. */
+  overlays?: Overlay[];
+}
+
+/**
+ * On-screen text over one timeline segment. Rasterised outside ffmpeg (this
+ * machine's build has no drawtext) and composited by `vs stitch` and
+ * `vs animatic`; it never reaches a provider, so it cannot change a
+ * `payloadHash`.
+ */
+export interface Overlay {
+  /** The shot id or card id this text sits on. */
+  on: string;
+  text: string;
+  /** Seconds from the start of the segment (after any trim), default 0. */
+  at?: number;
+  /** Seconds on screen, default to the end of the segment. */
+  duration?: number;
+  /** Centre of the text block as a fraction of the frame, default 0.5 / 0.5. */
+  x?: number;
+  y?: number;
+  /** Pixels at a 1080-high frame; scaled to the real frame. Default 64. */
+  fontSize?: number;
+  /** Installed font family; defaults to the command's `--font`. */
+  font?: string;
+  /** CSS font weight, for variable families. */
+  weight?: number;
+  /** Hex colour, default white. */
+  color?: string;
+  align?: "start" | "middle" | "end";
+  /** "word" places the words one at a time, `stagger` seconds apart. */
+  reveal?: "word";
+  /** Seconds between words when `reveal` is set, default 0.25. */
+  stagger?: number;
+  /** Seconds to fade in and out, default 0 (a hard cut, on the beat). */
+  fade?: number;
 }
 
 export interface Still {

@@ -9,17 +9,23 @@ import {
   targetDimensions,
 } from "../animatic.js";
 import type { Dimensions } from "../animatic.js";
-import { renderCardPng } from "../cards.js";
+import { cardLabel, renderCardPng } from "../cards.js";
 import { assertFfmpeg, runFfmpeg } from "../ffmpeg.js";
+import {
+  decorateTimeline,
+  decorationCommands,
+  renderDecorations,
+} from "../overlays.js";
+import type { TimelineSegment } from "../overlays.js";
 import { resolveOutput } from "../paths.js";
 import type { Pass } from "../paths.js";
 import { lintShotsFile } from "../shots.js";
 import { buildStitchPlan, orderTimeline } from "../stitch.js";
-import type { StitchClip } from "../stitch.js";
+import type { TitleCard } from "../types.js";
 import { assertNewVideoOutput, nextRenderPath } from "../versions.js";
 import { resolveFilm } from "./context.js";
 import { emit, heading, line, note, ok, warn } from "./output.js";
-import { filmFrame } from "./stitch.js";
+import { cardImagePath, filmFrame } from "./stitch.js";
 
 export interface AnimaticOptions {
   draft: boolean;
@@ -55,12 +61,11 @@ export async function runAnimatic(
 
   const timeline = orderTimeline(file.shots, file.cards ?? []);
   // Jobs: each produces one uniform segment mp4 to concatenate.
-  const segmentJobs: {
+  const segmentJobs: (TimelineSegment & {
     args: string[];
-    clip: StitchClip;
     description: string;
-    slate?: { png: string; text: string };
-  }[] = [];
+    slate?: { card: TitleCard; imagePath?: string; png: string };
+  })[] = [];
   let lastStill: string | null = null;
 
   for (const [index, item] of timeline.entries()) {
@@ -69,10 +74,22 @@ export async function runAnimatic(
       const duration = item.card.duration ?? 3;
       const png = join(workDir, `card-${index + 1}.png`);
       segmentJobs.push({
-        args: stillSegmentArgs(png, duration, dim, ANIMATIC_FPS, seg),
+        args: stillSegmentArgs(
+          png,
+          duration,
+          dim,
+          ANIMATIC_FPS,
+          seg,
+          item.card.fade !== false
+        ),
         clip: { duration, path: seg, transition: 0 },
-        description: `card "${item.card.text}"`,
-        slate: { png, text: item.card.text },
+        description: `card "${cardLabel(item.card)}"`,
+        id: item.card.id,
+        slate: {
+          card: item.card,
+          imagePath: cardImagePath(item.card, shotsDir),
+          png,
+        },
       });
       continue;
     }
@@ -85,6 +102,8 @@ export async function runAnimatic(
         args: stillSegmentArgs(still, duration, dim, ANIMATIC_FPS, seg),
         clip: { duration, path: seg, transition: 0 },
         description: `${shot.id} (still)`,
+        id: shot.id,
+        trim: shot.trim,
       });
     } else {
       const png = join(workDir, `slate-${index + 1}.png`);
@@ -92,27 +111,36 @@ export async function runAnimatic(
         args: stillSegmentArgs(png, duration, dim, ANIMATIC_FPS, seg),
         clip: { duration, path: seg, transition: 0 },
         description: `${shot.id} (slate)`,
-        slate: { png, text: shot.id },
+        id: shot.id,
+        slate: { card: { after: "", text: shot.id }, png },
+        trim: shot.trim,
       });
     }
   }
 
+  // The same pre-pass as `vs stitch`, so type timing is judged on the story
+  // reel, before any video is paid for.
+  const decorateDir = join(workDir, "overlays");
+  const frameSpec = { ...dim, fps: ANIMATIC_FPS };
+  const decorated = decorateTimeline(segmentJobs, {
+    font: options.font,
+    frame: frameSpec,
+    overlays: file.overlays,
+    workDir: decorateDir,
+  });
   const concatListPath = join(workDir, "animatic-list.txt");
-  const plan = buildStitchPlan(
-    segmentJobs.map((job) => job.clip),
-    {
-      cardPaths: new Map(),
-      concatListPath,
-      font: options.font,
-      musicGainDb: options.musicGain,
-      musicPath: options.music,
-      narrationGainDb: options.narrationGain,
-      narrationPath: options.narration,
-      outputPath,
-      sfxGainDb: 0,
-      xfade: 0,
-    }
-  );
+  const plan = buildStitchPlan(decorated.clips, {
+    cardPaths: new Map(),
+    concatListPath,
+    font: options.font,
+    musicGainDb: options.musicGain,
+    musicPath: options.music,
+    narrationGainDb: options.narrationGain,
+    narrationPath: options.narration,
+    outputPath,
+    sfxGainDb: 0,
+    xfade: 0,
+  });
 
   if (options.dryRun) {
     const commands = [
@@ -120,6 +148,7 @@ export async function runAnimatic(
         args: job.args,
         description: `segment: ${job.description}`,
       })),
+      ...(await decorationCommands(decorated.decorations)),
       ...plan.steps,
     ];
     emit({ commands, dryRun: true, outputPath }, () => {
@@ -137,16 +166,18 @@ export async function runAnimatic(
   for (const job of segmentJobs) {
     if (job.slate) {
       await renderCardPng(
-        { after: "", text: job.slate.text },
+        job.slate.card,
         dim.width,
         dim.height,
         job.slate.png,
-        options.font
+        options.font,
+        job.slate.imagePath
       );
     }
     await runFfmpeg(job.args);
     note(job.description);
   }
+  await renderDecorations(decorated.decorations, frameSpec, decorateDir);
   if (plan.concatList) {
     await writeFile(concatListPath, plan.concatList, "utf-8");
   }
