@@ -53,7 +53,8 @@ description: Every vs command and the flags that matter across the pipeline.
 - A plain `vs stitch` with no `--music` / `--narration` is SFX-only and sounds empty
 - Generate at **720p**, then `vs upscale` for delivery (free) — do not default to 1080p generation
 - Seedance 2.5 runs are **strictly serial** (1 concurrent), regardless of `--concurrency`
-- Title cards are **macOS-only** (rasterised via `qlmanage` and `sips`)
+- Title cards and text overlays are **macOS-only** (rasterised via `qlmanage` and `sips`)
+- `overlays` and a shot's `trim` are applied at stitch time to a derived copy; the generated clip is never modified
 - `vs narrate assemble --xfade` must match `vs stitch --xfade`
 
 ## Requirements

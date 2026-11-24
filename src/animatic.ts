@@ -86,10 +86,16 @@ export function stillSegmentArgs(
   duration: number,
   dim: Dimensions,
   fps: number,
-  outputPath: string
+  outputPath: string,
+  fades = true
 ): string[] {
   const fade = Math.min(0.4, duration / 4);
   const fadeOutStart = Math.max(0, duration - fade);
+  // A card authored with `fade: false` cuts hard in the real film, so the
+  // story reel must not dip it through black either.
+  const dips = fades
+    ? `,fade=t=in:st=0:d=${fade},fade=t=out:st=${fadeOutStart.toFixed(2)}:d=${fade}`
+    : "";
   return [
     "-y",
     "-loop",
@@ -109,7 +115,7 @@ export function stillSegmentArgs(
     "-map",
     "1:a:0",
     "-vf",
-    `${scalePad(dim)},fade=t=in:st=0:d=${fade},fade=t=out:st=${fadeOutStart.toFixed(2)}:d=${fade},format=yuv420p`,
+    `${scalePad(dim)}${dips},format=yuv420p`,
     "-c:v",
     "libx264",
     "-c:a",

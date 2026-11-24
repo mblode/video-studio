@@ -191,10 +191,45 @@ validates every shot against the draft model, and `dreamina-seedance-2-0-fast-26
 is documented at 4-15s, so a 30s film with that draft model is **refused**, not
 warned. Unset, `--draft` runs the film's own model at 480p with audio off.
 
-**`cards`.** Each has `after` (`"start"`, `"end"`, or a shot id), `text`
-(required), `duration` (default 3), `fontSize` (default 64), `transition`.
-Cards are rendered in post because in-model text is unreliable, and they add
-real runtime on top of the summed clip durations.
+**`cards`.** Each has `after` (`"start"`, `"end"`, or a shot id) and at least
+one of `text`, `image` (a local svg, png, jpg or webp, drawn centred, for a
+logo card) or `id` (a name overlays can target). Optional: `duration`
+(default 3), `fontSize` (default 64), `transition`, `background` and `color`
+(6-digit hex; default white on black), `imageWidth` (fraction of the frame
+width, default 0.3), and `fade: false` to cut in and out hard instead of
+dipping through black. Cards are rendered in post because in-model text is
+unreliable, and they add real runtime on top of the summed clip durations.
+
+**`trim`** (per shot). `{ "start": 1, "duration": 1.5 }` cuts that part of the
+clip into the film. The model's minimum clip is 4s, so a fast montage is
+generated as 4s takes and trimmed. It is applied at stitch time only: the
+prompt, the request and `payloadHash` do not change, and neither does the clip
+on disk. `start + duration` must fit inside the shot's `duration`.
+
+**`overlays`.** On-screen text over a shot or a card, for a film that speaks in
+type rather than narration:
+
+```json
+"overlays": [
+  { "on": "open", "text": "People should work less.", "color": "#121d2c", "reveal": "word", "stagger": 0.25 },
+  { "on": "shot-03", "text": "re-keying the booking", "font": "Menlo", "fontSize": 30, "y": 0.9 },
+  { "on": "shot-04", "text": "Instead, the week disappears.", "at": 0.5, "duration": 1.5, "fade": 0.2 }
+]
+```
+
+`on` is a shot id or a card `id`. `at` and `duration` are seconds inside that
+segment, measured after any trim; without `duration` the text holds to the end.
+`x` and `y` place the centre of the text block as a fraction of the frame
+(default 0.5 and 0.5), and `align` is `start`, `middle` or `end`. `fontSize` is
+in pixels at a 1080-high frame and is scaled to the real frame, so one file
+reads the same at a 480p draft and a 720p final. `font` must be an installed
+family and defaults to `--font`; `weight` picks a weight of a variable family.
+`wrap` is the characters per line before the text wraps (default 38).
+`band` (6-digit hex) lays a full-width strip of that colour behind the text:
+use it whenever the picture underneath is busy or the same colour as the type.
+`reveal: "word"` places the words one at a time, `stagger` seconds apart,
+without the earlier words moving. Never ask the model to render the words
+instead: in-model lettering is unreliable.
 
 Keep `defaults.generateAudio: true`. It produces the diegetic SFX the prompt
 asks for; it does not add music or dialogue.

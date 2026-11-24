@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, extname, join } from "node:path";
 import { promisify } from "node:util";
 
 import { VsError } from "./errors.js";
@@ -41,38 +41,90 @@ export function wrapCardText(text: string, width = WRAP_AT): string[] {
   return lines;
 }
 
-function escapeXml(text: string): string {
+/** What to call a card in a log line or an error: its text, else its id. */
+export function cardLabel(card: { id?: string; text?: string }): string {
+  return card.text ?? card.id ?? "(blank)";
+}
+
+export function escapeXml(text: string): string {
   return text
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
 }
 
+const IMAGE_MIME: Record<string, string> = {
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+};
+
+/**
+ * A card image as a data URI. qlmanage renders in a sandbox that will not
+ * follow a file path out of the svg, so the bytes travel inside it.
+ */
+async function imageDataUri(path: string): Promise<string> {
+  const mime = IMAGE_MIME[extname(path).toLowerCase()];
+  if (!mime) {
+    throw new VsError(
+      "invalid_input",
+      `${path}: a card image must be svg, png, jpg or webp`
+    );
+  }
+  let bytes: Buffer;
+  try {
+    bytes = await readFile(path);
+  } catch (error) {
+    throw new VsError("file_not_found", `${path}: no such card image`, {
+      cause: error,
+      hint: "card `image` paths are relative to the shots file",
+    });
+  }
+  return `data:${mime};base64,${bytes.toString("base64")}`;
+}
+
 /**
  * A SQUARE svg sized to the larger video dimension with the card content
  * centred — qlmanage thumbnails scale-to-fill a square, so a square source
  * renders 1:1 and a centre crop recovers the video frame.
+ *
+ * `imageUri` is the card's image already read into a data URI; when it and
+ * text are both present the image sits above centre and the text below.
  */
 export function cardSvg(
   card: TitleCard,
   width: number,
   height: number,
-  fontFamily = "Helvetica"
+  fontFamily = "Helvetica",
+  imageUri?: string
 ): string {
   const size = Math.max(width, height);
   const fontSize = card.fontSize ?? 64;
-  const lines = wrapCardText(card.text);
+  const lines = card.text === undefined ? [] : wrapCardText(card.text);
   const lineHeight = fontSize * 1.4;
-  const firstY = size / 2 - ((lines.length - 1) * lineHeight) / 2;
+  const imageWidth = width * (card.imageWidth ?? 0.3);
+  // A wide box the image is fitted inside, so a lockup and a square mark both
+  // land centred without the card needing to know the file's own ratio.
+  const imageHeight = imageWidth / 2;
+  const both = imageUri !== undefined && lines.length > 0;
+  const imageY = size / 2 - imageHeight / 2 - (both ? height * 0.08 : 0);
+  const textCentre = both ? imageY + imageHeight + height * 0.1 : size / 2;
+  const firstY = textCentre - ((lines.length - 1) * lineHeight) / 2;
+  const image =
+    imageUri === undefined
+      ? ""
+      : `<image href="${imageUri}" x="${size / 2 - imageWidth / 2}" y="${imageY}" width="${imageWidth}" height="${imageHeight}" preserveAspectRatio="xMidYMid meet"/>\n  `;
   const tspans = lines
     .map(
       (line, index) =>
-        `<text x="${size / 2}" y="${firstY + index * lineHeight}" font-family="${fontFamily}" font-size="${fontSize}" fill="white" text-anchor="middle" dominant-baseline="central">${escapeXml(line)}</text>`
+        `<text x="${size / 2}" y="${firstY + index * lineHeight}" font-family="${fontFamily}" font-size="${fontSize}" fill="${card.color ?? "white"}" text-anchor="middle" dominant-baseline="central">${escapeXml(line)}</text>`
     )
     .join("\n  ");
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
-  <rect width="100%" height="100%" fill="black"/>
-  ${tspans}
+  <rect width="100%" height="100%" fill="${card.background ?? "black"}"/>
+  ${image}${tspans}
 </svg>
 `;
 }
@@ -99,7 +151,7 @@ const fontChecks = new Map<string, boolean | null>();
  * qlmanage substitutes a default face for a family it cannot resolve and exits
  * 0, so an unavailable font produces a silently wrong card. Fail instead.
  */
-async function assertFontResolves(family: string): Promise<void> {
+export async function assertFontResolves(family: string): Promise<void> {
   let available = fontChecks.get(family);
   if (available === undefined) {
     available = await fontIsAvailable(family);
@@ -143,30 +195,29 @@ async function runCardTool(
 }
 
 /**
- * Render a card to a PNG matching the video frame, via macOS qlmanage + sips
- * (this machine's ffmpeg lacks drawtext, so text is rasterised outside
- * ffmpeg entirely).
+ * Rasterise a square svg to a PNG of exactly the video frame, via macOS
+ * qlmanage + sips (this machine's ffmpeg lacks drawtext, so text is rasterised
+ * outside ffmpeg entirely). qlmanage always paints an opaque ground, which is
+ * why overlays are rendered as luma mattes rather than transparent PNGs.
  */
-export async function renderCardPng(
-  card: TitleCard,
+export async function renderSvgPng(
+  svg: string,
   width: number,
   height: number,
-  outputPng: string,
-  fontFamily?: string
+  outputPng: string
 ): Promise<void> {
   if (process.platform !== "darwin") {
     throw new VsError(
       "missing_dependency",
       `title-card rendering uses macOS qlmanage/sips, which do not exist on ${process.platform}`,
       {
-        hint: "install an ffmpeg built with drawtext and adapt src/cards.ts (please file an issue), or remove `cards` from shots.json and stitch without title cards",
+        hint: "install an ffmpeg built with drawtext and adapt src/cards.ts (please file an issue), or remove `cards` and `overlays` from shots.json and stitch without them",
       }
     );
   }
-  await assertFontResolves(fontFamily ?? "Helvetica");
   const size = Math.max(width, height);
   const svgPath = outputPng.replace(/\.png$/u, ".svg");
-  await writeFile(svgPath, cardSvg(card, width, height, fontFamily), "utf-8");
+  await writeFile(svgPath, svg, "utf-8");
   const outDir = dirname(outputPng);
   await runCardTool("qlmanage", [
     "-t",
@@ -189,6 +240,29 @@ export async function renderCardPng(
 }
 
 /**
+ * Render a card to a PNG matching the video frame. `imagePath` is the card's
+ * `image` already resolved against the shots file.
+ */
+export async function renderCardPng(
+  card: TitleCard,
+  width: number,
+  height: number,
+  outputPng: string,
+  fontFamily?: string,
+  imagePath?: string
+): Promise<void> {
+  await assertFontResolves(fontFamily ?? "Helvetica");
+  const imageUri =
+    imagePath === undefined ? undefined : await imageDataUri(imagePath);
+  await renderSvgPng(
+    cardSvg(card, width, height, fontFamily, imageUri),
+    width,
+    height,
+    outputPng
+  );
+}
+
+/**
  * ffmpeg args to turn the card PNG into a video segment with fades. The opening
  * card of a film passes `fadeIn: false` so frame 0 is the visible card rather
  * than pure black — otherwise messaging apps (WhatsApp) grab a black poster.
@@ -198,13 +272,14 @@ export function cardVideoArgs(
   duration: number,
   fps: number,
   outputPath: string,
-  fadeIn = true
+  fadeIn = true,
+  fadeOut = true
 ): string[] {
   const fade = 0.5;
   const fadeOutStart = Math.max(0, duration - fade);
   const filters = [
     ...(fadeIn ? [`fade=t=in:st=0:d=${fade}`] : []),
-    `fade=t=out:st=${fadeOutStart}:d=${fade}`,
+    ...(fadeOut ? [`fade=t=out:st=${fadeOutStart}:d=${fade}`] : []),
     "format=yuv420p",
   ].join(",");
   return [

@@ -51,7 +51,7 @@ commands.
 | Reference                 | Read when                                                                 |
 | ------------------------- | ------------------------------------------------------------------------- |
 | `references/workflow.md`  | Running a film end to end. The ladder, draft/final, cost ceilings, retakes, resumption |
-| `references/assembly.md`  | `animatic`, `review`, `stitch`, `upscale`, `share`. Title cards           |
+| `references/assembly.md`  | `animatic`, `review`, `stitch`, `upscale`, `share`. Title cards, overlays |
 | `references/audio-mix.md` | Anything about how the cut sounds                                         |
 | `references/models.md`    | Choosing a model or resolution. Ids, rate limits, reference limits, cost  |
 
@@ -94,7 +94,10 @@ commands.
   URLs expire in about 24 hours, so `generate` downloads immediately.
 - **`--force` creates a new revision.** It never replaces a clip. A failed
   retake leaves the previous downloaded revision selected.
-- **Title cards are macOS-only** (rasterised via `qlmanage` and `sips`), and
+- **Overlays and trims are stitch-time.** On-screen text (`overlays`) and a
+  shot's `trim` are applied by `stitch` and `animatic`, never by a model, and
+  never to the clip on disk. See `references/assembly.md`.
+- **Title cards and overlays are macOS-only** (rasterised via `qlmanage` and `sips`), and
   ffmpeg is required for `animatic`, `review`, `stitch`, and `upscale`.
 - **`--output` resolves against the cwd** and refuses to replace an existing
   video. Omit it for an automatically numbered render.

@@ -22,6 +22,82 @@ const makeImageRefs = (count: number) =>
     url: `./s${i}.png`,
   }));
 
+describe("overlays, trims and styled cards", () => {
+  const base = {
+    cards: [{ after: "start", background: "#f7f7f7", duration: 3, id: "open" }],
+    film: { defaults: { duration: 4 }, title: "T" },
+    shots: [validShot],
+  };
+
+  it("accepts an overlay on a shot and on a card", async () => {
+    const path = await writeShotsFile({
+      ...base,
+      overlays: [
+        { on: "shot-01", text: "label" },
+        { duration: 3, on: "open", reveal: "word", text: "work less" },
+      ],
+      shots: [{ ...validShot, trim: { duration: 1.5, start: 1 } }],
+    });
+    const file = await loadShotsFile(path);
+    expect(file.overlays).toHaveLength(2);
+    expect(file.shots[0]?.trim).toEqual({ duration: 1.5, start: 1 });
+  });
+
+  it("rejects an overlay on a segment that does not exist", async () => {
+    const path = await writeShotsFile({
+      ...base,
+      overlays: [{ on: "shot-99", text: "label" }],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/overlay on "shot-99"/u);
+  });
+
+  it("rejects an overlay that outlasts its trimmed shot", async () => {
+    const path = await writeShotsFile({
+      ...base,
+      overlays: [{ at: 1, duration: 1, on: "shot-01", text: "label" }],
+      shots: [{ ...validShot, trim: { duration: 1.5, start: 0 } }],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/runs to 2s/u);
+  });
+
+  it("rejects a trim longer than the shot", async () => {
+    const path = await writeShotsFile({
+      ...base,
+      shots: [{ ...validShot, trim: { duration: 3, start: 2 } }],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/trim ends at 5s/u);
+  });
+
+  it("rejects a card id that collides with a shot id", async () => {
+    const path = await writeShotsFile({
+      ...base,
+      cards: [{ after: "start", id: "shot-01", text: "x" }],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/card id "shot-01"/u);
+  });
+
+  it("rejects a colour that is not a 6-digit hex", async () => {
+    const path = await writeShotsFile({
+      ...base,
+      cards: [{ after: "start", background: "chalk", text: "x" }],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/6-digit hex/u);
+  });
+
+  it("rejects a card with nothing to show and nothing to target", async () => {
+    const path = await writeShotsFile({ ...base, cards: [{ after: "start" }] });
+    await expect(loadShotsFile(path)).rejects.toThrow(/a card needs/u);
+  });
+
+  it("rejects a card image outside the film directory", async () => {
+    const path = await writeShotsFile({
+      ...base,
+      cards: [{ after: "start", image: "../logo.svg" }],
+    });
+    await expect(loadShotsFile(path)).rejects.toThrow(/film directory/u);
+  });
+});
+
 describe("loadShotsFile", () => {
   it("accepts a minimal valid file", async () => {
     const path = await writeShotsFile({

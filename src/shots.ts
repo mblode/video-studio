@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 
 import { z } from "zod";
 
+import { cardLabel } from "./cards.js";
 import { fileReadError, VsError } from "./errors.js";
 import {
   DEFAULT_VIDEO_MODEL,
@@ -16,6 +17,7 @@ import { referenceCountsByType } from "./payload.js";
 import { stillOutputPath } from "./stills.js";
 import {
   ASPECT_RATIOS,
+  DEFAULT_DURATION,
   DURATION_AUTO,
   DURATION_MAX,
   DURATION_MIN,
@@ -224,6 +226,12 @@ const shotSchema = z
     resolution: resolutionSchema.optional(),
     seed: z.number().int().optional(),
     transition: z.number().min(0.05).max(2).optional(),
+    trim: z
+      .strictObject({
+        duration: z.number().positive(),
+        start: z.number().min(0),
+      })
+      .optional(),
   })
   .superRefine((shot, ctx) => {
     const refs = shot.references ?? [];
@@ -243,13 +251,145 @@ const shotSchema = z
     }
   });
 
-const cardSchema = z.strictObject({
-  after: z.string().min(1),
+const hexColorSchema = z
+  .string()
+  .regex(/^#[0-9a-f]{6}$/iu, "colour must be a 6-digit hex like #f7f7f7");
+
+const cardSchema = z
+  .strictObject({
+    after: z.string().min(1),
+    background: hexColorSchema.optional(),
+    color: hexColorSchema.optional(),
+    duration: z.number().positive().optional(),
+    fade: z.boolean().optional(),
+    fontSize: z.number().positive().optional(),
+    id: z
+      .string()
+      .regex(ID_PATTERN, "card id must be alphanumeric/dash/underscore")
+      .optional(),
+    image: z.string().min(1).optional(),
+    imageWidth: z.number().positive().max(1).optional(),
+    text: z.string().min(1).optional(),
+    transition: z.number().min(0.05).max(2).optional(),
+  })
+  .superRefine((card, ctx) => {
+    if (
+      card.text === undefined &&
+      card.image === undefined &&
+      card.id === undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "a card needs `text`, an `image`, or an `id` that overlays target",
+      });
+    }
+    if (card.image !== undefined && !isLocalPathSafe(card.image)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `image "${card.image}" ${UNSAFE_LOCAL_PATH}`,
+      });
+    }
+  });
+
+const overlaySchema = z.strictObject({
+  align: z.enum(["start", "middle", "end"]).optional(),
+  at: z.number().min(0).optional(),
+  band: hexColorSchema.optional(),
+  color: hexColorSchema.optional(),
   duration: z.number().positive().optional(),
+  fade: z.number().min(0).max(2).optional(),
+  font: z.string().min(1).optional(),
   fontSize: z.number().positive().optional(),
+  on: z.string().min(1),
+  reveal: z.literal("word").optional(),
+  stagger: z.number().positive().optional(),
   text: z.string().min(1),
-  transition: z.number().min(0.05).max(2).optional(),
+  weight: z.number().int().min(100).max(900).optional(),
+  wrap: z.number().int().positive().optional(),
+  x: z.number().min(0).max(1).optional(),
+  y: z.number().min(0).max(1).optional(),
 });
+
+/**
+ * How long a segment is ON THE TIMELINE, as far as the file alone can say. An
+ * auto-length shot (-1) is unknowable until a clip exists, so it returns
+ * undefined and the bounds checks that need a number are skipped for it.
+ */
+function authoredSeconds(
+  shot: { duration?: number; trim?: { duration: number } },
+  fallback: number | undefined
+): number | undefined {
+  if (shot.trim) {
+    return shot.trim.duration;
+  }
+  const seconds = shot.duration ?? fallback ?? DEFAULT_DURATION;
+  return seconds > 0 ? seconds : undefined;
+}
+
+interface OverlayTargets {
+  cards?: { duration?: number; id?: string }[];
+  film: { defaults?: { duration?: number } };
+  overlays?: { at?: number; duration?: number; on: string }[];
+  shots: {
+    duration?: number;
+    id: string;
+    trim?: { duration: number; start: number };
+  }[];
+}
+
+/**
+ * Overlays and trims are stitch-time, so nothing downstream would reject a bad
+ * one until ffmpeg had already rendered a silently wrong cut: text aimed at a
+ * shot that does not exist simply never appears.
+ */
+function refineOverlays(file: OverlayTargets, ctx: z.RefinementCtx): void {
+  const fallback = file.film.defaults?.duration;
+  const seconds = new Map<string, number | undefined>();
+  for (const shot of file.shots) {
+    seconds.set(shot.id, authoredSeconds(shot, fallback));
+    const full = authoredSeconds({ duration: shot.duration }, fallback);
+    if (
+      shot.trim &&
+      full !== undefined &&
+      shot.trim.start + shot.trim.duration > full + 1e-6
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `shot ${shot.id}: trim ends at ${shot.trim.start + shot.trim.duration}s but the shot is ${full}s long`,
+      });
+    }
+  }
+  for (const card of file.cards ?? []) {
+    if (card.id === undefined) {
+      continue;
+    }
+    if (seconds.has(card.id) || card.id === "start" || card.id === "end") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `card id "${card.id}" is already a shot id, another card id, or a reserved position`,
+      });
+    }
+    seconds.set(card.id, card.duration ?? 3);
+  }
+  for (const overlay of file.overlays ?? []) {
+    if (!seconds.has(overlay.on)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `overlay on "${overlay.on}" — must be an existing shot id or card id`,
+      });
+      continue;
+    }
+    const length = seconds.get(overlay.on);
+    const end = (overlay.at ?? 0) + (overlay.duration ?? 0);
+    if (length !== undefined && end > length + 1e-6) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `overlay on "${overlay.on}" runs to ${end}s but that segment is ${length}s long`,
+      });
+    }
+  }
+}
 
 const shotsFileSchema = z
   .strictObject({
@@ -272,6 +412,7 @@ const shotsFileSchema = z
       requireVisualApproval: z.boolean().optional(),
       title: z.string().min(1),
     }),
+    overlays: z.array(overlaySchema).optional(),
     shots: z.array(shotSchema).min(1),
   })
   .superRefine((file, ctx) => {
@@ -326,10 +467,11 @@ const shotsFileSchema = z
       ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `card "${card.text}" after "${card.after}" — must be "start", "end", or an existing shot id`,
+          message: `card "${cardLabel(card)}" after "${card.after}" — must be "start", "end", or an existing shot id`,
         });
       }
     }
+    refineOverlays(file, ctx);
   });
 
 const stillSchema = z
