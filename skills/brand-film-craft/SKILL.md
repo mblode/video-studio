@@ -26,7 +26,7 @@ Read `tokens.json` before setting any card or overlay. Never invent per-line fon
 | `statement` | Söhne Kräftig (`500`) | `84px` | `128` | `-0.024em` | 30 chars / 2 lines | Multi-cut build lines and secondary bridges |
 | `lockup` | Söhne Kräftig (`500`) | `112px` | `168` | `-0.025em` | 1 word | Live `Amtec` beside/under the A mark on Chalk (`#F7F7F7`) |
 | `tagline` | Söhne Buch (`400`) | `44px` | `68` | `-0.015em` | 40 chars | End-card descriptor (`Enabling AI for your business`) |
-| `url` | Ioskeley Mono (`400`) | `32px` | `52` | `+0.020em` | 28 chars | End-card address (`amtecai.com`) |
+| `url` | Söhne Kräftig (`500`) | `32px` | `52` | `-0.010em` | 28 chars | End-card address (`amtecai.com`) |
 
 - **No body weight over live footage.** Söhne Buch (`400`) is reserved for light-ground end-card descriptors. Any text over moving footage uses `Halbfett` (`600`) for primary claims or `Kräftig` (`500`) for secondary statements.
 - **Zero glyph drift on word builds.** Lay out the complete phrase once at its final size and reveal word spans by opacity (`fill-opacity="0"` -> `"1"`). Persistent glyph drift across word arrivals must stay `<= 1px` at 1080p.

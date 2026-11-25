@@ -11,7 +11,7 @@ Run every item below before posting a render to Slack, attaching it to a PR, or 
 ## 2. Typography & Layout (`tokens.json`)
 - [ ] **Only token roles used:** Every title maps to one of the 6 roles in `tokens.json` (`hero`, `title`, `statement`, `lockup`, `tagline`, `url`). Zero ad-hoc per-line font sizes.
 - [ ] **Title weight over footage:** Primary thesis claims (`"Rome wasn't built in a day."`) use **Söhne Halbfett (`600`)** at `96px` (`144` in Resolve Basic Title), and secondary build lines use **Söhne Kräftig (`500`)** at `84px` (`128` in Resolve). Söhne Buch (`400`) is never used over live footage.
-- [ ] **Mono for technical/URL labels:** `amtecai.com` uses **Ioskeley Mono Regular (`400`)**, never Söhne.
+- [ ] **Single display family on end cards:** `amtecai.com` uses **Söhne Kräftig (`500`)** at `32px` (`52` in Resolve), matching the `Amtec` lockup.
 - [ ] **Zero glyph drift (`<= 1px`):** Phrases that build word-by-word lay out the full string once and reveal words in place so earlier letters never shift horizontally or shrink when the next word arrives.
 
 ## 3. Phone-Size Legibility (`390x220` iPhone Viewport)
