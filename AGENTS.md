@@ -26,6 +26,7 @@ it, delete it.
 | Writing a treatment, beat sheet, or shot list | `skills/storycraft/` |
 | Generating stills or keyframe boards | `skills/nano-banana-2/` |
 | Driving the CLI through a film, end to end | `skills/vs/` |
+| Setting type, pacing, loudness or export for an Amtec brand film | `skills/brand-film-craft/` |
 | A worked, runnable example of every feature | `films/lighthouse/` |
 | Scope, non-goals, verification tiers | `CONTRIBUTING.md` |
 | Key handling, what lands in a manifest | `SECURITY.md` |
